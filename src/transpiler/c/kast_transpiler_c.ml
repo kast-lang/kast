@@ -629,7 +629,14 @@ module Impl = struct
                                         })
                                  ]
                              } )))
-            | Types.T_List _ -> copy
+            | Types.T_List _ ->
+              Apply
+                { f =
+                    E_Native
+                      { parts = [ Raw (ty_to_string (transpile_ty ty_ty)); Raw "_claim" ]
+                      }
+                ; args = [ Claim (Ident arg_name) ]
+                }
             | Types.T_Ty -> copy
             | Types.T_Fn { is_closure; _ } ->
               if is_closure |> Inference.await_inferred_simple
@@ -820,7 +827,13 @@ module Impl = struct
                           [ Claim (Field { obj = Ident var; field = member_name member })
                           ]
                       })))
-          | Types.T_List _ -> todo
+          | Types.T_List _ ->
+            insert_stmt
+              (Expr
+                 (Apply
+                    { f = Claim (Ident (ty_to_string (transpile_ty ty_ty) ^ "_drop"))
+                    ; args = [ Claim (Ident var) ]
+                    }))
           | Types.T_Ty -> ()
           | Types.T_Fn { is_closure; _ } ->
             let is_closure = is_closure |> Inference.await_inferred_simple in

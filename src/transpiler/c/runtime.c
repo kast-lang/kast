@@ -1066,6 +1066,7 @@ typedef struct Context Context;
         T* buf;                                                                \
         size_t capacity;                                                       \
         size_t length;                                                         \
+        Kast_Claimed claimed;                                                  \
     } ArrayList_##T;
 
 #define impl_ArrayList(T)                                                      \
@@ -1075,16 +1076,25 @@ typedef struct Context Context;
             .buf = NULL,                                                       \
             .capacity = 0,                                                     \
             .length = 0,                                                       \
+            .claimed = Kast_Claimed_init("ArrayList"),                         \
         };                                                                     \
     }                                                                          \
                                                                                \
+    ArrayList_##T ArrayList_##T##_claim(ArrayList_##T* list) {                 \
+        ArrayList_##T moved = *list;                                           \
+        Kast_mark_as_claimed(&list->claimed);                                  \
+        return moved;                                                          \
+    }                                                                          \
+                                                                               \
     void ArrayList_##T##_drop(ArrayList_##T list) {                            \
-        if (list.T_TypeInfo->drop != NULL) {                                   \
-            for (size_t i = 0; i < list.length; i++) {                         \
-                list.T_TypeInfo->drop(&list.buf[i]);                           \
+        if (Kast_Claimed_drop(list.claimed) == Kast_Claimed_State_Owned) {     \
+            if (list.T_TypeInfo->drop != NULL) {                               \
+                for (size_t i = 0; i < list.length; i++) {                     \
+                    list.T_TypeInfo->drop(&list.buf[i]);                       \
+                }                                                              \
             }                                                                  \
+            Kast_free(list.buf);                                               \
         }                                                                      \
-        Kast_free(list.buf);                                                   \
     }                                                                          \
                                                                                \
     ArrayList_##T ArrayList_##T##_with_capacity(                               \
