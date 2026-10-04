@@ -462,7 +462,7 @@ module Print = struct
          | Union variants ->
            variants
            |> StringMap.iter (fun _ variant_ty -> ensure_type_completed variant_ty)
-         | Alias _ -> ());
+         | Alias ty -> ensure_type_declared ty);
         write_comment def.comment;
         (match def.shape with
          | RuntimeDefined -> ()

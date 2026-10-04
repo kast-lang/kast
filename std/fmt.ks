@@ -2,40 +2,44 @@ use collections.ArrayList;
 
 module:
 
-# For simplicity, lets write to String in the most ineffecient way
-const write_to = (output :: &mut String, s :: String) => (
-    output^ = String.concat_owned(output^, s);
+const Write = [Self] newtype {
+    .write :: (&mut Self, &str) -> (),
+};
+
+impl StringBuilder.t as Write = {
+    .write = (self, s) => (
+        StringBuilder.add_str(self, s);
+    ),
+};
+
+const write_to = [T] (output :: &mut T, s :: &str) => (
+    (T as Write).write(output, s);
 );
 
-# Parse fmt string, write every character directly to output,
-# but every occurence of {} will be written to output after being converted to string
 const write_impl = (
     output :: Ast,
-    fmt :: &str,
+    fmt :: Ast,
     args :: ArrayList.t[Ast],
 ) -> Ast => (
-    let mut next_arg_idx = 0;
+    let fmt = match fmt |> Ast.shape with (
+        | :String fmt => fmt
+        | _ => panic("Expected format string")
+    );
     let mut result = `();
-    let mut i = 0;
-    while i < String.length(fmt) do (
-        let c = String.at(fmt, i);
-        if (
-            c == '{'
-            and i + 1 < String.length(fmt)
-            and String.at(fmt, i + 1) == '}'
-        ) then (
-            result = `(
-                $result;
-                write_to($output, String.to_string($(args.[next_arg_idx])));
-            );
-            next_arg_idx += 1;
-            i += 2;
-        ) else (
-            result = `(
-                $result;
-                write_to($output, String.to_string(c));
-            );
-            i += 1;
+    for part in fmt.parts |> ArrayList.into_iter do (
+        match part with (
+            | :Content { .content, ... } => (
+                result = `(
+                    $result;
+                    write_to($output, &content |> String.as_str);
+                );
+            )
+            | :Interpolate { .value, ... } => (
+                result = `(
+                    $result;
+                    write_to($output, &String.to_string($value) |> String.as_str);
+                );
+            )
         );
     );
     result
@@ -55,12 +59,21 @@ const write = (args :: Ast) -> Ast => (
     );
     # A little magic: we ast-interpolate only fmt
     # since we want to evaluate it to an actual string
-    `(include_ast write_impl(output, $fmt, fmt_args))
+    `(include_ast write_impl(output, fmt, fmt_args))
+);
+
+const writeln = (args_ast :: Ast) -> Ast => (
+    let args :: ArrayList.t[Ast] = args_ast |> Ast.get_comma_separated_list;
+    let output = args.[0];
+    `(
+        write!($args_ast);
+        write!($output, "\n");
+    )
 );
 
 const format = (args :: Ast) -> Ast => `(
-    let mut output = String.from_str("");
+    let mut output = StringBuilder.new();
     write!(&mut output, $args);
-    output
+    output |> StringBuilder.into_string
 );
 

@@ -46,8 +46,10 @@ const op = include "./op.ks";
 
 include "./char.ks";
 include "./string.ks";
+include "./string_builder.ks";
 include "./float64.ks";
 
+const collections = include "./collections/_mod.ks";
 const reflection = include "./reflection.ks";
 const range = include "./range.ks";
 const iter = include "./iter.ks";
@@ -55,6 +57,7 @@ const Option = include "./option.ks";
 const Result = include "./result.ks";
 const dbg = include "./dbg.ks";
 const convert = include "./convert.ks";
+const fmt = (include "./fmt.ks");
 const io = include "./io.ks";
 const path = include "./path.ks";
 const fs = include "./fs.ks";
@@ -62,8 +65,6 @@ const net = include "./net.ks";
 const sys = include "./sys.ks";
 const random = include "./random.ks";
 const repr = include "./repr.ks";
-const collections = include "./collections/_mod.ks";
-const fmt = (include "./fmt.ks");
 
 const backend = include "./backend/_mod.ks";
 
@@ -75,5 +76,3 @@ const thread = include "./thread.ks";
 const sync = include "./sync.ks";
 
 const prelude = include "./prelude.ks";
-
-include "./syntax-post.ks";

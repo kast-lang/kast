@@ -9,6 +9,12 @@ const print = (line :: &str) -> () => (
         | target.name == "javascript" => (@native "Kast.io.print")(line)
     )
 );
+const println = (args :: Ast) -> Ast => `(
+    std.fmt.writeln!(&mut stdout.instance(), $args);
+);
+const eprintln = (args :: Ast) -> Ast => `(
+    std.fmt.writeln!(&mut stderr.instance(), $args);
+);
 # similar to print, but print to stderr
 const eprint = (line :: &str) -> () => (
     @cfg (
@@ -30,6 +36,15 @@ const input = async (prompt :: &str) -> String => (
 
 const stdout = (
     module:
+    
+    const t = newtype {};
+    const instance = () -> t => {};
+
+    impl t as std.fmt.Write = {
+        .write = (self, s) => (
+            write(s);
+        ),
+    };
 
     const isatty = () -> Bool => @cfg (
         | target.name == "interpreter" => (@native "io.stdout.isatty")()
@@ -48,6 +63,15 @@ const stdout = (
 
 const stderr = (
     module:
+    
+    const t = newtype {};
+    const instance = () -> t => {};
+
+    impl t as std.fmt.Write = {
+        .write = (self, s) => (
+            write(s);
+        ),
+    };
 
     const isatty = () -> Bool => @cfg (
         | target.name == "interpreter" => (@native "io.stderr.isatty")()

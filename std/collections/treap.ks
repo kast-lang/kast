@@ -222,18 +222,18 @@ const update_at = [T] (a :: Treap.t[T], idx :: Int32, f :: &T -> T) -> Treap.t[T
     set_at(a, idx, f(at(&a, idx)))
 );
 const to_string = [T] (v :: &Treap.t[T], t_to_string :: &T -> String) -> String => (
-    StringBuilder.build(() => (
-        StringBuilder.add_str("[");
-        let mut i :: Int32 = 0;
-        for x in iter(v) do (
-            if i != 0 then (
-                StringBuilder.add_str(", ");
-            );
-            StringBuilder.add_String(t_to_string(x));
-            i += 1;
+    let mut result = StringBuilder.new();
+    &mut result |> StringBuilder.add_str("[");
+    let mut i :: Int32 = 0;
+    for x in iter(v) do (
+        if i != 0 then (
+            &mut result |> StringBuilder.add_str(", ");
         );
-        StringBuilder.add_str("]");
-    ))
+        &mut result |> StringBuilder.add_String(t_to_string(x));
+        i += 1;
+    );
+    &mut result |> StringBuilder.add_str("]");
+    result |> StringBuilder.into_string
 );
 const into_iter = [T] (v :: Treap.t[T]) -> std.iter.Iterable[T] => {
     .iter = @move f => (

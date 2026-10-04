@@ -790,7 +790,7 @@ StringView StringView_from_C_StringView(const C_StringView s) {
 String String_from_C_StringView(const C_StringView s) {
     size_t length = strlen(s);
     char* buf = Kast_allocate_raw(length);
-    strcpy(buf, s);
+    memcpy(buf, s, length);
     return String_from_raw_parts(buf, length);
 }
 

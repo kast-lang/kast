@@ -97,11 +97,13 @@ let init_natives () =
         | _ ->
           Error.error caller "create_context_type expected a type";
           V_Error |> Value.inferred ~span)
-    ; native_fn "panic" (fun _ty ~caller:_ ~state:_ arg ->
+    ; native_fn "panic" (fun _ty ~caller ~state:_ arg ->
         let arg = single_arg ~span arg in
-        match arg |> Value.expect_string with
+        match arg |> Value.expect_any_string with
         | Some s -> raise (Panic s)
-        | None -> V_Error |> Value.inferred ~span)
+        | None ->
+          Error.error caller "panic expected a string";
+          V_Error |> Value.inferred ~span)
     ; native_fn "new_opaque_type" (fun _ty ~caller ~state args ->
         let args = args |> Value.expect_tuple |> Option.unwrap in
         let native_name =

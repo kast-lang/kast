@@ -1,2 +1,2 @@
-print("hello");
-"world" |> print;
+let name = "You";
+println!("Hello, \(name)!");

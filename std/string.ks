@@ -191,11 +191,11 @@ impl String as module = (
             );
             let replaced_rest = replace_all_owned(rest, .old, .new);
             
-            StringBuilder.build(() => (
-                StringBuilder.add_str(substring(s, 0, start));
-                StringBuilder.add_str(new);
-                StringBuilder.add_String(replaced_rest);
-            ))
+            let mut result = StringBuilder.new();
+            &mut result |> StringBuilder.add_str(substring(s, 0, start));
+            &mut result |> StringBuilder.add_str(new);
+            &mut result |> StringBuilder.add_String(replaced_rest);
+            result |> StringBuilder.into_string
         )
     );
     
@@ -237,11 +237,13 @@ impl String as module = (
     const to_ascii_lowercase = (s :: &str) -> String => (
         let next_alphabet = find_match(s, Char.is_ascii_uppercase);
         match next_alphabet with (
-            | :Some { i, c } => StringBuilder.build(() => (
-                StringBuilder.add_str(substring(s, 0, i));
-                StringBuilder.add_String(to_string(Char.to_ascii_lowercase(c)));
-                StringBuilder.add_String(to_ascii_lowercase(substring(s, i + 1, length(s) - i - 1)));
-            ))
+            | :Some { i, c } => (
+                let mut result = StringBuilder.new();
+                &mut result |> StringBuilder.add_str(substring(s, 0, i));
+                &mut result |> StringBuilder.add_String(Char.to_ascii_lowercase(c) |> String.to_string);
+                &mut result |> StringBuilder.add_String(to_ascii_lowercase(substring(s, i + 1, length(s) - i - 1)));
+                result |> StringBuilder.into_string
+            )
             | :None => from_str(s)
         )
     );
@@ -249,11 +251,13 @@ impl String as module = (
     const to_ascii_uppercase = (s :: &str) -> String => (
         let next_alphabet = find_match(s, Char.is_ascii_lowercase);
         match next_alphabet with (
-            | :Some { i, c } => StringBuilder.build(() => (
-                StringBuilder.add_str(substring(s, 0, i));
-                StringBuilder.add_String(to_string(Char.to_ascii_uppercase(c)));
-                StringBuilder.add_String(to_ascii_uppercase(substring(s, i + 1, length(s) - i - 1)));
-            ))
+            | :Some { i, c } => (
+                let mut result = StringBuilder.new();
+                &mut result |> StringBuilder.add_str(substring(s, 0, i));
+                &mut result |> StringBuilder.add_String(Char.to_ascii_uppercase(c) |> String.to_string);
+                &mut result |> StringBuilder.add_String(to_ascii_uppercase(substring(s, i + 1, length(s) - i - 1)));
+                result |> StringBuilder.into_string
+            )
             | :None => from_str(s)
         )
     );
@@ -391,75 +395,74 @@ impl String as module = (
     );
 
     const escape_contents = (s :: &str, .delimiter :: &str) -> String => (
-        StringBuilder.build(() => (
-            let mut result = String.from_str("");
-            for c in String.iter(s) do (
-                if c == '\\' then (
-                    StringBuilder.add_str("\\\\");
-                    continue;
-                );
-                if c == '\n' then (
-                    StringBuilder.add_str("\\n");
-                    continue;
-                );
-                if c == '\r' then (
-                    StringBuilder.add_str("\\r");
-                    continue;
-                );
-                if c == '\b' then (
-                    StringBuilder.add_str("\\b");
-                    continue;
-                );
-                if c == '\f' then (
-                    StringBuilder.add_str("\\f");
-                    continue;
-                );
-                if c == '\t' then (
-                    StringBuilder.add_str("\\t");
-                    continue;
-                );
-                if Char.is_ascii_control(c) then (
-                    let code = Char.code(c);
-                    if code <= 0x7f then (
-                        let c1 = code / 16;
-                        let c2 = code % 16;
-                        StringBuilder.add_str("\\x");
-                        StringBuilder.add_String(to_string(Char.from_digit_radix(c1, 16)));
-                        StringBuilder.add_String(to_string(Char.from_digit_radix(c2, 16)));
-                    ) else (
-                        StringBuilder.add_str("\\u{");
-                        let mut p = 1;
-                        while p * 16 <= code do (
-                            p *= 16;
-                        );
-                        let mut code = code;
-                        while p > 0 do (
-                            let digit = code / p;
-                            StringBuilder.add_String(
-                                to_string(Char.from_digit_radix(digit, 16))
-                            );
-                            code = code - digit * p;
-                            p /= 16;
-                        );
-                        StringBuilder.add_str("}");
-                    );
-                    continue;
-                );
-                let cs = to_string(c);
-                if &cs |> as_str == delimiter then (
-                    StringBuilder.add_str("\\");
-                );
-                StringBuilder.add_String(cs);
+        let mut result = StringBuilder.new();
+        for c in String.iter(s) do (
+            if c == '\\' then (
+                &mut result |> StringBuilder.add_str("\\\\");
+                continue;
             );
-        ))
+            if c == '\n' then (
+                &mut result |> StringBuilder.add_str("\\n");
+                continue;
+            );
+            if c == '\r' then (
+                &mut result |> StringBuilder.add_str("\\r");
+                continue;
+            );
+            if c == '\b' then (
+                &mut result |> StringBuilder.add_str("\\b");
+                continue;
+            );
+            if c == '\f' then (
+                &mut result |> StringBuilder.add_str("\\f");
+                continue;
+            );
+            if c == '\t' then (
+                &mut result |> StringBuilder.add_str("\\t");
+                continue;
+            );
+            if Char.is_ascii_control(c) then (
+                let code = Char.code(c);
+                if code <= 0x7f then (
+                    let c1 = code / 16;
+                    let c2 = code % 16;
+                    &mut result |> StringBuilder.add_str("\\x");
+                    &mut result |> StringBuilder.add_String(to_string(Char.from_digit_radix(c1, 16)));
+                    &mut result |> StringBuilder.add_String(to_string(Char.from_digit_radix(c2, 16)));
+                ) else (
+                    &mut result |> StringBuilder.add_str("\\u{");
+                    let mut p = 1;
+                    while p * 16 <= code do (
+                        p *= 16;
+                    );
+                    let mut code = code;
+                    while p > 0 do (
+                        let digit = code / p;
+                        &mut result |> StringBuilder.add_String(
+                            to_string(Char.from_digit_radix(digit, 16))
+                        );
+                        code = code - digit * p;
+                        p /= 16;
+                    );
+                    &mut result |> StringBuilder.add_str("}");
+                );
+                continue;
+            );
+            let cs = to_string(c);
+            if &cs |> as_str == delimiter then (
+                &mut result |> StringBuilder.add_str("\\");
+            );
+            &mut result |> StringBuilder.add_String(cs);
+        );
+        result |> StringBuilder.into_string
     );
 
     const escape_with = (s :: &str, .delimiter :: &str) -> String => (
-        StringBuilder.build(() => (
-            StringBuilder.add_str(delimiter);
-            StringBuilder.add_String(escape_contents(s, .delimiter));
-            StringBuilder.add_str(delimiter);
-        ))
+        let mut result = StringBuilder.new();
+        &mut result |> StringBuilder.add_str(delimiter);
+        &mut result |> StringBuilder.add_String(escape_contents(s, .delimiter));
+        &mut result |> StringBuilder.add_str(delimiter);
+        result |> StringBuilder.into_string
     );
 
     const escape = s => escape_with(s, .delimiter = "\"");
@@ -474,34 +477,5 @@ impl String as module = (
         | target.name == "c" => (
             @native "String_concat(\(a), \(b))"
         )
-    );
-);
-
-const StringBuilder = (
-    module:
-
-    const CtxT = newtype {
-        .result :: String,
-    };
-
-    const Ctx = @context CtxT;
-
-    const init = () -> CtxT => {
-        .result = String.from_str(""),
-    };
-
-    const build = (f :: () -> ()) => (
-        with Ctx = init();
-        f();
-        (@current Ctx).result
-    );
-
-    const add_str = (s :: &str) => (
-        add_String(String.from_str(s));
-    );
-
-    const add_String = (s :: String) => (
-        let result = &mut (@current Ctx).result;
-        result^ = String.concat_owned(result^, s);
     );
 );

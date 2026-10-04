@@ -129,4 +129,3 @@
 @syntax "core:__FILE__" 1000 @wrap never = "__FILE__";
 @syntax "core:current_compiler_scope" 1000 @wrap never = "@current_scope";
 @syntax "comment_out" 1000 @wrap if_any = "@comment_out" " " "(" ""/"\n\t" _:any ""/"\\\n" ")";
-@syntax "interpolate_String" 1000 @wrap if_any = "@interpolate_String" " " "(" ""/"\n\t" _:any ""/"\\\n" ")";

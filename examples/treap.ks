@@ -5,24 +5,15 @@ for i in 0..10 do (
 );
 # std.dbg.print v;
 let Treap_to_string = v => Treap.to_string(v, &x => to_string(x));
-print(&@interpolate_String("v = ", Treap_to_string(&v)) |> String.as_str);
+println!("v = \(Treap_to_string(&v))");
 let { left, right } = Treap.split_at(v, 8);
-print(&@interpolate_String(
-    "split_at 8:\n  left = ",
-    Treap_to_string(&left),
-    "\n  right = ",
-    Treap_to_string(&right),
-) |> String.as_str);
+println!(''
+    split_at 8:
+        left = \(Treap_to_string(&left))
+        right = \(Treap_to_string(&right))'');
 let v = Treap.join(left, right);
-print(&@interpolate_String(
-    "at 5 = ",
-    to_string((Treap.at(&v, 5))^),
-) |> String.as_str);
+println!("at 5 = \(Treap.at(&v, 5)^)");
 let v = Treap.set_at(v, 7, 67);
-print("set at 7 = 67");
-print(&@interpolate_String(
-    "v = ",
-    Treap_to_string(&v),
-) |> String.as_str);
-@comment_out(
-);
+println!("set at 7 = 67");
+println!("v = \(Treap_to_string(&v))");
+

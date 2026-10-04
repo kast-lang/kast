@@ -35,7 +35,7 @@ let init () =
         let variant =
           if cmp < 0 then "Less" else if cmp > 0 then "Greater" else "Equal"
         in
-        Mod_reflection.construct_variant
+        construct_variant
           ~span:caller
           (ty.result |> Ty.await_inferred |> Ty.Shape.expect_variant |> Option.unwrap)
           variant

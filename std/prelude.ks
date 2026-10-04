@@ -14,7 +14,7 @@ use String.ToString;
 use String.to_string;
 use String.Parse;
 use String.parse;
-use io.print;
+use io.println;
 use io.eprint;
 use io.input;
 use panic;

@@ -53,5 +53,77 @@ let init () =
       | _ ->
         Error.error span "Ast.get_comma_separated_list expected ast arg";
         V_Error |> Value.inferred ~span)
+  ; native_fn "Ast.shape" (fun fn_ty ~caller:span ~state:_ arg : value ->
+      let shape_ty =
+        fn_ty.result |> Ty.await_inferred |> Ty.Shape.expect_variant |> Option.unwrap
+      in
+      let arg = single_arg ~span arg in
+      match arg |> Value.await_inferred with
+      | V_Ast ast ->
+        (match ast.shape with
+         | String { parts; _ } ->
+           let make_parts parts_ty =
+             let parts_ty =
+               parts_ty |> Ty.await_inferred |> Ty.Shape.expect_list |> Option.unwrap
+             in
+             let part_ty =
+               parts_ty.element_ty
+               |> Ty.await_inferred
+               |> Ty.Shape.expect_variant
+               |> Option.unwrap
+             in
+             construct_list
+               ~span
+               parts_ty
+               (parts
+                |> List.map (fun (part : Ast.str_part) ->
+                  match part with
+                  | Content { contents; _ } ->
+                    let content_data content_data_ty =
+                      let content_data_ty =
+                        content_data_ty
+                        |> Ty.await_inferred
+                        |> Ty.Shape.expect_tuple
+                        |> Option.unwrap
+                      in
+                      construct_tuple
+                        ~span
+                        content_data_ty
+                        (Tuple.make
+                           []
+                           [ ( "content"
+                             , fun _ -> V_String contents |> Value.inferred ~span )
+                           ])
+                    in
+                    construct_variant ~span part_ty "Content" (Some content_data)
+                  | Interpolate { value; _ } ->
+                    let interpolate_data interpolate_data_ty =
+                      let interpolate_data_ty =
+                        interpolate_data_ty
+                        |> Ty.await_inferred
+                        |> Ty.Shape.expect_tuple
+                        |> Option.unwrap
+                      in
+                      construct_tuple
+                        ~span
+                        interpolate_data_ty
+                        (Tuple.make
+                           []
+                           [ ("value", fun _ -> V_Ast value.ast |> Value.inferred ~span) ])
+                    in
+                    construct_variant ~span part_ty "Interpolate" (Some interpolate_data))
+               )
+           in
+           let make_data data_ty =
+             let data_ty =
+               data_ty |> Ty.await_inferred |> Ty.Shape.expect_tuple |> Option.unwrap
+             in
+             construct_tuple ~span data_ty (Tuple.make [] [ "parts", make_parts ])
+           in
+           construct_variant ~span shape_ty "String" (Some make_data)
+         | _ -> construct_variant ~span shape_ty "Unknown" None)
+      | _ ->
+        Error.error span "Ast.shape expected ast arg";
+        V_Error |> Value.inferred ~span)
   ]
 ;;
