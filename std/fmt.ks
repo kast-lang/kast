@@ -22,11 +22,22 @@ impl &str as Display = {
     ),
 };
 
-impl Int32 as Display = {
-    .display = (self, fmt) => (
-        fmt^.write_str(&String.to_string(self^) |> String.as_str);
-    ),
-};
+const Display_via_to_string = T => `(
+    impl Int32 as Display = {
+        .display = (self, fmt) => (
+            fmt^.write_str(&String.to_string(self^) |> String.as_str);
+        ),
+    };
+);
+
+include_ast Display_via_to_string(Bool);
+include_ast Display_via_to_string(Int32);
+include_ast Display_via_to_string(UInt32);
+include_ast Display_via_to_string(Int64);
+include_ast Display_via_to_string(UInt64);
+include_ast Display_via_to_string(Float32);
+include_ast Display_via_to_string(Float64);
+include_ast Display_via_to_string(Char);
 
 const Write = [Self] newtype {
     .write :: (&mut Self, &str) -> (),
