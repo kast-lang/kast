@@ -23,7 +23,7 @@ impl &str as Display = {
 };
 
 const Display_via_to_string = T => `(
-    impl Int32 as Display = {
+    impl T as Display = {
         .display = (self, fmt) => (
             fmt^.write_str(&String.to_string(self^) |> String.as_str);
         ),
