@@ -1,4 +1,5 @@
 module:
+
 const print = (line :: &str) -> () => (
     @cfg (
         | target.name == "interpreter" => (@native "io.print")(line)
@@ -9,12 +10,14 @@ const print = (line :: &str) -> () => (
         | target.name == "javascript" => (@native "Kast.io.print")(line)
     )
 );
-const println = (args :: Ast) -> Ast => `(
+
+const println = (args :: Ast) -> Ast => @comptime_only `(
     std.fmt.writeln!(&mut stdout.instance(), $args);
 );
-const eprintln = (args :: Ast) -> Ast => `(
+const eprintln = (args :: Ast) -> Ast => @comptime_only `(
     std.fmt.writeln!(&mut stderr.instance(), $args);
 );
+
 # similar to print, but print to stderr
 const eprint = (line :: &str) -> () => (
     @cfg (

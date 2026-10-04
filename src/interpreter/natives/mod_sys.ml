@@ -6,11 +6,11 @@ let init () =
   let chdir =
     native_fn "sys.chdir" (fun _ty ~caller ~state:_ args : value ->
       let arg = single_arg ~span args in
-      match arg |> Value.await_inferred with
-      | V_String path ->
+      match arg |> Value.expect_any_string with
+      | Some path ->
         Stdlib.Sys.chdir path;
         V_Unit |> Value.inferred ~span
-      | _ ->
+      | None ->
         Error.error caller "sys.chdir expected string arg";
         V_Error |> Value.inferred ~span)
   in
@@ -27,7 +27,7 @@ let init () =
          | None ->
            Error.error caller "sys.argv_at out of bounds";
            V_Error |> Value.inferred ~span
-         | Some arg -> V_String arg |> Value.inferred ~span)
+         | Some arg -> V_StringView arg |> Value.inferred ~span)
       | _ ->
         Error.error caller "sys.argv_at expected int32 arg";
         V_Error |> Value.inferred ~span)
@@ -35,10 +35,10 @@ let init () =
   let exec =
     native_fn "sys.exec" (fun _ty ~caller ~state:_ args : value ->
       let arg = single_arg ~span args in
-      match arg |> Value.await_inferred with
-      | V_String cmd ->
+      match arg |> Value.expect_any_string with
+      | Some cmd ->
         V_Int32 (Stdlib.Sys.command cmd |> Int32.of_int) |> Value.inferred ~span
-      | _ ->
+      | None ->
         Error.error caller "sys.exec expected string arg";
         V_Error |> Value.inferred ~span)
   in
@@ -74,8 +74,8 @@ let init () =
           label
         | _ -> unreachable "sys.get_env returns row of 2 variants"
       in
-      match arg |> Value.await_inferred with
-      | V_String var ->
+      match arg |> Value.expect_any_string with
+      | Some var ->
         let env_val =
           try Some (Stdlib.Sys.getenv var) with
           | Not_found -> None
@@ -91,7 +91,7 @@ let init () =
          | None ->
            V_Variant { label = label_not_found; data = None; ty = sum_variant_ty }
            |> Value.inferred ~span)
-      | _ ->
+      | None ->
         Error.error caller "sys.exec expected string arg";
         V_Error |> Value.inferred ~span)
   in

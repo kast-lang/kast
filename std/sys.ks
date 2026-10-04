@@ -1,5 +1,5 @@
 module:
-const chdir :: String -> () = path => @cfg (
+const chdir = (path :: &str) -> () => @cfg (
     | target.name == "interpreter" => (@native "sys.chdir")(path)
     | target.name == "c" => @native "Kast_chdir(\(path))"
     | target.name == "javascript" => (@native "Kast.sys.chdir")(path)
@@ -9,19 +9,19 @@ const argc = () -> Int32 => @cfg (
     | target.name == "c" => @native "CLI_ARGS.argc"
     | target.name == "javascript" => (@native "Kast.sys.argc")()
 );
-const argv_at = (idx :: Int32) -> String => @cfg (
+const argv_at = (idx :: Int32) -> &str => @cfg (
     | target.name == "interpreter" => (@native "sys.argv_at")(idx)
     | target.name == "c" => @native "CLI_ARGS.argv[\(idx)]"
     | target.name == "javascript" => (@native "Kast.sys.argv_at")(idx)
 );
 # accepts the command to exec, returns the return-code
-const exec = (cmd :: String) -> Int32 => @cfg (
+const exec = (cmd :: &str) -> Int32 => @cfg (
     | target.name == "interpreter" => (@native "sys.exec")(cmd)
     | target.name == "c" => @native "Kast_exec(\(cmd))"
     | target.name == "javascript" => (@native "Kast.sys.exec")(cmd)
 );
 # accepts the environment variable, returns its value if it exists or NotFound
-const get_env = (var :: String) -> Option.t[String] => @cfg (
+const get_env = (var :: &str) -> Option.t[String] => @cfg (
     | target.name == "interpreter" => (@native "sys.get_env")(var)
     | target.name == "c" => (
         let s :: String = @native "Kast_getenv(\(var))";

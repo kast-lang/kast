@@ -71,7 +71,7 @@ module Impl = struct
     | V_Float64 value -> fprintf fmt "@{<italic>%f@}" value
     | V_Char value -> fprintf fmt "@{<green>%a@}" Uchar.print_debug value
     | V_String value -> fprintf fmt "@{<green>%a@}" String.print_debug value
-    | V_StringView value -> fprintf fmt "@{<green>%a@}" String.print_debug value
+    | V_StringView value -> fprintf fmt "@{<green>&%a@}" String.print_debug value
     | V_Box boxed -> fprintf fmt "boxed %a" (print_place_value_with print_value) boxed
     | V_Ref { mut; place } ->
       fprintf fmt "&";

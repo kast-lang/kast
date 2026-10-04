@@ -20,7 +20,7 @@ type gc_mode =
   | RuntimeBorrowChecker
   | Disabled
 
-let gc_mode = ref EscapeAnalyze
+let gc_mode = ref Disabled
 let typed_gc = ref true
 let allocation_stats = ref false
 
@@ -458,6 +458,7 @@ module Impl = struct
        | None -> ty (* fail "named type %S is not found in ctx.types???" name *))
 
   and generate_claim (ty : ty) : string =
+    transpile_ty ty |> ignore;
     let ctx = Effect.perform GetCtx in
     let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
     Inference.Var.setup_default_if_needed ty.var;
@@ -690,6 +691,7 @@ module Impl = struct
   and generate_drop (ty : ty) : string =
     let ctx = Effect.perform GetCtx in
     let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
+    transpile_ty ty |> ignore;
     Inference.Var.setup_default_if_needed ty.var;
     let ty =
       Interpreter.Substitute_bindings.sub_ty
@@ -917,6 +919,8 @@ module Impl = struct
       let ty_name = !ty_name |> Option.get in
       if !do_prepend
       then (
+        let _ : string = generate_claim ty in
+        let _ : string = generate_drop ty in
         (match
            Interpreter.cast_as_module_opt
              ~span

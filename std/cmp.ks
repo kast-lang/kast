@@ -308,9 +308,9 @@ const greater = [T] (a :: &T, b :: &T) -> Bool => (
 );
 
 const default_compare = [T] (a :: &T, b :: &T) -> Ordering => (
-    if a < b then (
+    if a^ < b^ then (
         :Less
-    ) else if a == b then (
+    ) else if a^ == b^ then (
         :Equal
     ) else (
         :Greater

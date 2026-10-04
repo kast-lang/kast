@@ -894,7 +894,7 @@ void Kast_init(int argc, char* argv[]) {
 #endif
     CLI_ARGS.argc = argc;
     CLI_ARGS.original_argv = argv;
-    CLI_ARGS.argv = Kast_allocate_array(&String_TypeInfo, argc);
+    CLI_ARGS.argv = Kast_allocate_array(&StringView_TypeInfo, argc);
     for (int i = 0; i < argc; i++) {
         CLI_ARGS.argv[i] = (StringView) {
             .buf = argv[i],
@@ -1080,7 +1080,7 @@ typedef struct Context Context;
         };                                                                     \
     }                                                                          \
                                                                                \
-    ArrayList_##T##_drop(ArrayList_##T list) {                                 \
+    void ArrayList_##T##_drop(ArrayList_##T list) {                            \
         if (list.T_TypeInfo->drop != NULL) {                                   \
             for (size_t i = 0; i < list.length; i++) {                         \
                 list.T_TypeInfo->drop(&list.buf[i]);                           \

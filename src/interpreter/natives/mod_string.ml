@@ -76,7 +76,7 @@ let init () =
           |> Value.expect_int32
           |> Option.unwrap_or_else (error "expected len be int32")
         in
-        V_String (String.sub s (Int32.to_int start) (Int32.to_int len))
+        V_StringView (String.sub s (Int32.to_int start) (Int32.to_int len))
         |> Value.inferred ~span))
   ; native_fn "string.iter" (fun _ty ~caller ~state args : value ->
       with_return (fun { return } ->
@@ -206,6 +206,23 @@ let init () =
         in
         V_String s)
       |> Value.inferred ~span)
+  ; native_fn "String.from_str" (fun _ ~caller ~state:_ args ->
+      match single_arg ~span args |> Value.expect_string_view with
+      | Some s -> V_String s |> Value.inferred ~span
+      | None ->
+        Error.error caller "String.from_str expected a &str";
+        V_Error |> Value.inferred ~span)
+  ; native_fn "String.as_str" (fun _ ~caller ~state:_ args ->
+      match single_arg ~span args |> Value.expect_ref with
+      | Some ref ->
+        (match ref.place |> read_place ~span |> Value.await_inferred with
+         | V_String s -> V_StringView s |> Value.inferred ~span
+         | _ ->
+           Error.error caller "String.as_str expected a &String";
+           V_Error |> Value.inferred ~span)
+      | None ->
+        Error.error caller "String.as_str expected a &String";
+        V_Error |> Value.inferred ~span)
   ; native_fn "parse" (fun ty ~caller ~state:_ args ->
       let { is_closure = _; call_convention = _; args = _; result = result_ty }
         : Types.ty_fn
@@ -213,8 +230,8 @@ let init () =
         ty
       in
       let arg = single_arg ~span args in
-      match arg |> Value.await_inferred with
-      | V_String s ->
+      match arg |> Value.expect_any_string with
+      | Some s ->
         let shape : Value.shape =
           let parsed =
             match result_ty |> Ty.await_inferred with
@@ -241,7 +258,7 @@ let init () =
             V_Error
         in
         shape |> Value.inferred ~span
-      | _ ->
+      | None ->
         Error.error caller "string_to_int32 expected a string";
         V_Error |> Value.inferred ~span)
   ]

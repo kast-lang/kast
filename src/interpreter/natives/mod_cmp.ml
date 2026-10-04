@@ -29,12 +29,15 @@ let init () =
       match value |> Value.await_inferred with
       | V_Tuple { ty = _; tuple } ->
         let a, b = tuple |> Tuple.unwrap_unnamed2 in
-        let a = a.place |> claim ~span:caller |> await_fully_inferred in
-        let b = b.place |> claim ~span:caller |> await_fully_inferred in
-        let cmp = compare a b in
+        let a = a.place |> claim ~span:caller in
+        let b = b.place |> claim ~span:caller in
+        a |> await_fully_inferred |> ignore;
+        b |> await_fully_inferred |> ignore;
+        let cmp = Types.ValueImpl.compare a b in
         let variant =
           if cmp < 0 then "Less" else if cmp > 0 then "Greater" else "Equal"
         in
+        (* println "compared %a & %a = %s" Value.print a Value.print b variant; *)
         construct_variant
           ~span:caller
           (ty.result |> Ty.await_inferred |> Ty.Shape.expect_variant |> Option.unwrap)

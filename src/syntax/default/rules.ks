@@ -40,6 +40,7 @@
 @syntax "core:fn_type" 6.5 @wrap never = raw_fn=("fn" " ")? call_convention=("@call" " " _: >= 5000 " ")? async=("async" _=("=" value)? " ")? arg " " context=("with" " " _ " ")? result=("->" " " _ _=(" " "with" " " context " ")?);
 
 @syntax "core:fn" 7 @wrap never = move=("@move" " ")? raw_fn=("fn" " ")? call_convention=("@call" " " _: >= 5000 " ")? async=("async" _=("=" value)? " ")? arg " " context=("with" " " _ " ")? result=("->" " " _ " " _=("with" " " context " ")?)? "=>" " " body;
+@syntax "comptime_only" 7.1 @wrap never = "@comptime_only" " " _;
 
 @syntax "if_without_else" 7.5 @wrap never = "if" " " cond " " "then" " " then_case;
 @syntax "core:if" 7.5 @wrap never = "if" " " cond " " "then" " " then_case " " "else" " " else_case ->;

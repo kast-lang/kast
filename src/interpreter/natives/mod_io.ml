@@ -11,9 +11,21 @@ let isatty s f =
 let init () =
   [ native_fn "io.print" (fun _ty ~caller ~state:_ args ->
       let value = single_arg ~span args in
-      (match value |> Value.await_inferred with
-       | V_String s -> println "%s" s
-       | _ -> Error.error caller "io.print expected a string");
+      (match value |> Value.expect_any_string with
+       | Some s -> println "%s" s
+       | None -> Error.error caller "io.print expected a string");
+      V_Unit |> Value.inferred ~span)
+  ; native_fn "io.stdout.write" (fun _ty ~caller ~state:_ args ->
+      let value = single_arg ~span args in
+      (match value |> Value.expect_any_string with
+       | Some s -> Format.printf "%s" s
+       | None -> Error.error caller "io.print expected a string");
+      V_Unit |> Value.inferred ~span)
+  ; native_fn "io.stderr.write" (fun _ty ~caller ~state:_ args ->
+      let value = single_arg ~span args in
+      (match value |> Value.expect_any_string with
+       | Some s -> Format.eprintf "%s" s
+       | None -> Error.error caller "io.print expected a string");
       V_Unit |> Value.inferred ~span)
   ; native_fn "io.eprint" (fun _ty ~caller ~state:_ args ->
       let value = single_arg ~span args in
@@ -23,11 +35,11 @@ let init () =
       V_Unit |> Value.inferred ~span)
   ; native_fn "io.input" (fun _ty ~caller ~state:_ args ->
       let prompt = single_arg ~span args in
-      match prompt |> Value.await_inferred with
-      | V_String s ->
+      match prompt |> Value.expect_any_string with
+      | Some s ->
         let line = Effect.perform (Input s) in
         V_String line |> Value.inferred ~span
-      | _ ->
+      | None ->
         Error.error caller "io.input expected a string";
         V_Error |> Value.inferred ~span)
   ; isatty "stdout" Unix.stdout

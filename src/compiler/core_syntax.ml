@@ -2172,7 +2172,7 @@ let __file__ : core_syntax =
         let span = ast.data.span in
         match kind with
         | Expr ->
-          const_shape (V_String (span.uri |> Uri.path) |> Value.inferred ~span)
+          const_shape (V_StringView (span.uri |> Uri.path) |> Value.inferred ~span)
           |> init_expr span C.state
         | _ ->
           error span "__FILE__ must be expr";

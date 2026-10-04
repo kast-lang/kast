@@ -177,3 +177,10 @@ impl syntax (@comment_out ( _ ) ) = `();
 
 impl syntax (&str) = `(StringView);
 
+impl syntax (@comptime_only thing) = `(
+    @cfg (
+        | (@no_hygiene target).name == "interpreter" => $thing
+        | true => panic("comptime only")
+    )
+);
+

@@ -2,6 +2,32 @@ use collections.ArrayList;
 
 module:
 
+const Formatter = newtype {
+    .write_str :: &str -> (),
+};
+
+const Display = [Self] newtype {
+    .display :: (&Self, &mut Formatter) -> (),
+};
+
+impl String as Display = {
+    .display = (self, fmt) => (
+        fmt^.write_str(self |> String.as_str);
+    ),
+};
+
+impl &str as Display = {
+    .display = (self, fmt) => (
+        fmt^.write_str(self^);
+    ),
+};
+
+impl Int32 as Display = {
+    .display = (self, fmt) => (
+        fmt^.write_str(&String.to_string(self^) |> String.as_str);
+    ),
+};
+
 const Write = [Self] newtype {
     .write :: (&mut Self, &str) -> (),
 };
@@ -20,12 +46,18 @@ const write_impl = (
     output :: Ast,
     fmt :: Ast,
     args :: ArrayList.t[Ast],
-) -> Ast => (
+) -> Ast => @comptime_only (
     let fmt = match fmt |> Ast.shape with (
         | :String fmt => fmt
         | _ => panic("Expected format string")
     );
-    let mut result = `();
+    let formatter = `(fmt);
+    let mut result = `(
+        let output = $output;
+        let mut $formatter :: Formatter = {
+            .write_str = s => ((typeof (output^)) as Write).write(output, s),
+        };
+    );
     for part in fmt.parts |> ArrayList.into_iter do (
         match part with (
             | :Content { .content, ... } => (
@@ -37,7 +69,8 @@ const write_impl = (
             | :Interpolate { .value, ... } => (
                 result = `(
                     $result;
-                    write_to($output, &String.to_string($value) |> String.as_str);
+                    let value = &$value;
+                    ((typeof (value^)) as Display).display(value, &mut $formatter)
                 );
             )
         );
@@ -47,7 +80,7 @@ const write_impl = (
 
 # The macro!(args) syntax calls a macro fn with args as single arg,
 # we need to parse it into (output, fmt, fmt_args)
-const write = (args :: Ast) -> Ast => (
+const write = (args :: Ast) -> Ast => @comptime_only (
     # get_comma_separated_list is builtin for now
     # ideally would want to have pattern matching for asts I think
     let args :: ArrayList.t[Ast] = args |> Ast.get_comma_separated_list;
@@ -62,7 +95,7 @@ const write = (args :: Ast) -> Ast => (
     `(include_ast write_impl(output, fmt, fmt_args))
 );
 
-const writeln = (args_ast :: Ast) -> Ast => (
+const writeln = (args_ast :: Ast) -> Ast => @comptime_only (
     let args :: ArrayList.t[Ast] = args_ast |> Ast.get_comma_separated_list;
     let output = args.[0];
     `(
@@ -71,7 +104,7 @@ const writeln = (args_ast :: Ast) -> Ast => (
     )
 );
 
-const format = (args :: Ast) -> Ast => `(
+const format = (args :: Ast) -> Ast => @comptime_only `(
     let mut output = StringBuilder.new();
     write!(&mut output, $args);
     output |> StringBuilder.into_string
