@@ -1,5 +1,9 @@
 module:
 
+for c in String.iteri_rev("h🦄i") do (
+    dbg.print(c);
+);
+
 const Foo = newtype {
     Float64,
     String,

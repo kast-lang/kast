@@ -690,6 +690,14 @@ void utf8_char_encode_step(char** s, Char c) {
     *s += bytes;
 }
 
+void Char_dbg_write(Char* c, Kast_Formatter* fmt) {
+    char s[4];
+    char* out = s;
+    utf8_char_encode_step(&out, *c);
+    size_t byte_length = out - s;
+    Kast_Formatter_printf(fmt, "'%.*s'", byte_length, s);
+}
+
 size_t Char_utf8_length_based_on_first_byte(char byte) {
     size_t length = 0;
     while (byte & (1 << (7 - length))) {

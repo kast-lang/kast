@@ -53,48 +53,48 @@ impl String as module = (
             | :None => false
         )
     );
-    const iter = (s :: &str) -> std.iter.Iterable[Char] => @cfg (
-        | target.name == "interpreter" => {
-            .iter = f => (@native "string.iter")(s, f)
-        }
-        | target.name == "c" => {
-            .iter = f => (
+    const iter = (s :: &str) -> std.iter.Iterable[Char] => {
+        .iter = @move f => @cfg (
+            | target.name == "interpreter" => (
+                (@native "string.iter")(s, f)
+            )
+            | target.name == "c" => (
                 let @"impl" :: fn (&str, Char -> ()) -> () = @native "String_iter";
-                @"impl"(s, f);
-            ),
-        }
-        | target.name == "javascript" => {
-            .iter = f => (@native "Kast.String.iter")(s, f)
-        }
-    );
-    const iteri = (s :: &str) -> std.iter.Iterable[type { Int32, Char }] => @cfg (
-        | target.name == "interpreter" => {
-            .iter = f => (@native "string.iteri")(s, (i, c) => f({ i, c }))
-        }
-        | target.name == "c" => {
-            .iter = @move f => (
+                @"impl"(s, f)
+            )
+            | target.name == "javascript" => (
+                (@native "Kast.String.iter")(s, f)
+            )
+        ),
+    };
+    const iteri = (s :: &str) -> std.iter.Iterable[type { Int32, Char }] => {
+        .iter = @move f => @cfg (
+            | target.name == "interpreter" => (
+                (@native "string.iteri")(s, (i, c) => f({ i, c }))
+            )
+            | target.name == "c" => (
                 let @"impl" :: fn (&str, (Int32, Char) -> ()) -> () = @native "String_iteri";
                 @"impl"(s, @move (i, c) => f({ i, c }));
-            ),
-        }
-        | target.name == "javascript" => {
-            .iter = f => (@native "Kast.String.iteri")(s, f)
-        }
-    );
-    const iteri_rev = (s :: &str) -> std.iter.Iterable[type { Int32, Char }] => @cfg (
-        | target.name == "interpreter" => {
-            .iter = f => (@native "string.iteri_rev")(s, (i, c) => f({ i, c }))
-        }
-        | target.name == "c" => {
-            .iter = @move f => (
+            )
+            | target.name == "javascript" => (
+                (@native "Kast.String.iteri")(s, f)
+            )
+        ),
+    };
+    const iteri_rev = (s :: &str) -> std.iter.Iterable[type { Int32, Char }] => {
+        .iter = @move f => @cfg (
+            | target.name == "interpreter" => (
+                (@native "string.iteri_rev")(s, (i, c) => f({ i, c }))
+            )
+            | target.name == "c" => (
                 let @"impl" :: fn (&str, (Int32, Char) -> ()) -> () = @native "String_iteri_rev";
                 @"impl"(s, @move (i, c) => f({ i, c }));
-            ),
-        }
-        | target.name == "javascript" => {
-            .iter = f => (@native "Kast.String.iteri_rev")(s, f)
-        }
-    );
+            )
+            | target.name == "javascript" => (
+                (@native "Kast.String.iteri_rev")(s, f)
+            )
+        ),
+    };
 
     const index_of = (s :: &str, c :: Char) -> Int32 => with_return (
         for { i, c_at_i } in iteri(s) do (
