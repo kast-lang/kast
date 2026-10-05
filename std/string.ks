@@ -326,6 +326,17 @@ impl String as module = (
         .to_string :: Self -> String
     };
 
+    impl Type as ToString = {
+        .to_string = T => @cfg (
+            | target.name == "interpreter" => (
+                (@native "to_string")(T)
+            )
+            | target.name == "c" => (
+                @native "String_from_C_StringView(\(T)->name)"
+            )
+        ),
+    };
+
     impl String as ToString = {
         .to_string = s => s,
     };

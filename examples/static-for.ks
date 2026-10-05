@@ -47,5 +47,5 @@ let foo :: Foo = {
     .c = 3,
 };
 @static_for { field_name, field_value } in foo do (
-    dbg.print({ field_name, typeof(field_value), field_value });
+    println!(".\(field_name) :: \(typeof(field_value)) = \(field_value)");
 );
