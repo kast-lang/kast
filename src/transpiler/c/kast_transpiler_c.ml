@@ -2569,7 +2569,7 @@ module Impl = struct
              ; else_case = Some (new_block (fun () -> old_unwind_ctx.insert_unwind ()))
              });
         insert_stmt (GotoLabel label_result);
-        Some (Claim result_place)
+        Some (claim_c result_place expr.data.signature.ty)
         (* let token_ident = gen_name "token" in *)
         (* Unwindable *)
         (*   { token_ident *)

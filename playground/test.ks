@@ -1,2 +1,6 @@
-std.cmp.default_compare[Int32](&1, &2);
-# std.cmp.less[Int32](&1, &2);
+let s = unwindable block (
+    unwind block String.from_str("hi");
+    panic("unreachable")
+);
+
+println!("\(s)");
