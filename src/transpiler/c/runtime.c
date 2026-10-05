@@ -106,11 +106,58 @@ typedef enum {
 } TypeInfoKind;
 #endif
 
+typedef struct {
+    void* user_data;
+    void (*vprintf)(void*, const char* f, va_list);
+} Kast_Writer;
+
+typedef struct {
+    bool indent_printed;
+    int indent;
+    Kast_Writer writer;
+} Kast_Formatter;
+
+Kast_Formatter Kast_Formatter_new(Kast_Writer writer) {
+    return (Kast_Formatter) {
+        .indent_printed = false,
+        .indent = 0,
+        .writer = writer,
+    };
+}
+
+void Kast_Formatter_printf(Kast_Formatter* fmt, const char* f, ...) {
+    if (!fmt->indent_printed) {
+        fmt->indent_printed = true;
+        for (int i = 0; i < fmt->indent; i++) {
+            Kast_Formatter_printf(fmt, "    ");
+        }
+    }
+    va_list va;
+    va_start(va, f);
+    fmt->writer.vprintf(fmt->writer.user_data, f, va);
+    va_end(va);
+}
+
+void Kast_Formatter_println(Kast_Formatter* fmt) {
+    fmt->indent_printed = true;
+    Kast_Formatter_printf(fmt, "\n");
+    fmt->indent_printed = false;
+}
+
+void Kast_Formatter_inc_indent(Kast_Formatter* fmt) {
+    fmt->indent++;
+}
+
+void Kast_Formatter_dec_indent(Kast_Formatter* fmt) {
+    fmt->indent--;
+}
+
 struct TypeInfo {
     const char* name;
     size_t alignment;
     size_t size;
     size_t stride;
+    void (*dbg_write)(void*, Kast_Formatter* fmt);
     void (*drop)(void*);
     void (*claim)(void* place, void* result);
 #ifdef KAST_ALLOCATION_STATS
@@ -140,7 +187,7 @@ struct TypeInfo {
 #define TypeInfo_simple(kind, T)                                               \
     (TypeInfo) {                                                               \
         .name = #T, .alignment = alignof(T), .size = sizeof(T),                \
-        .stride = sizeof(T),                                                   \
+        .stride = sizeof(T), .dbg_write = T##_dbg_write_type_erased,           \
         KAST_ALLOCATION_STATS_NEW_FIELD KAST_GC_SIMPLE_TYPE_INFO_FIELDS(kind)  \
     }
 
@@ -156,6 +203,37 @@ typedef uint64_t UInt64;
 typedef float Float32;
 typedef double Float64;
 typedef uint32_t Char;
+
+void Kast_stderr_vprintf(void* user_data, const char* f, va_list va) {
+    vfprintf(stderr, f, va);
+}
+
+Kast_Writer Kast_stderr_writer = {
+    .user_data = NULL,
+    .vprintf = Kast_stderr_vprintf,
+};
+
+void Kast_dbg_write(void* value, TypeInfo* T, Kast_Formatter* fmt) {
+    if (T->dbg_write != NULL) {
+        T->dbg_write(value, fmt);
+    } else {
+        Kast_Formatter_printf(fmt, "<unknown>");
+    }
+}
+
+void Kast_dbg_print(void* value, TypeInfo* T) {
+    Kast_Formatter fmt = Kast_Formatter_new(Kast_stderr_writer);
+    Kast_dbg_write(value, T, &fmt);
+    Kast_Formatter_println(&fmt);
+}
+
+void Byte_dbg_write(Byte value, Kast_Formatter* fmt) {
+    Kast_Formatter_printf(fmt, "0x%02X", value);
+}
+
+void Byte_dbg_write_type_erased(void* value, Kast_Formatter* fmt) {
+    Byte_dbg_write(*((Byte*)value), fmt);
+}
 
 TypeInfo Byte_TypeInfo = TypeInfo_simple(primitive, Byte);
 TypeInfo String_TypeInfo;
@@ -765,6 +843,14 @@ int StringView_cmp(StringView a, StringView b) {
 typedef const char* C_String;
 typedef const char* C_StringView;
 
+void String_dbg_write(String* s, Kast_Formatter* fmt) {
+    Kast_Formatter_printf(fmt, "\"%.*s\"", s->length, s->buf);
+}
+
+void StringView_dbg_write(StringView* s, Kast_Formatter* fmt) {
+    Kast_Formatter_printf(fmt, "\"%.*s\"", s->length, s->buf);
+}
+
 void Kast_write(FILE* f, StringView s) {
     if (s.buf != NULL) {
         fwrite(s.buf, sizeof(char), s.length, f);
@@ -1080,6 +1166,19 @@ typedef struct Context Context;
         };                                                                     \
     }                                                                          \
                                                                                \
+    void ArrayList_##T##_dbg_write(ArrayList_##T* list, Kast_Formatter* fmt) { \
+        Kast_Formatter_printf(fmt, "[");                                       \
+        Kast_Formatter_inc_indent(fmt);                                        \
+        Kast_Formatter_println(fmt);                                           \
+        for (size_t i = 0; i < list->length; i++) {                            \
+            Kast_dbg_write(&list->buf[i], list->T_TypeInfo, fmt);              \
+            Kast_Formatter_printf(fmt, ",");                                   \
+            Kast_Formatter_println(fmt);                                       \
+        }                                                                      \
+        Kast_Formatter_dec_indent(fmt);                                        \
+        Kast_Formatter_printf(fmt, "]");                                       \
+    }                                                                          \
+                                                                               \
     ArrayList_##T ArrayList_##T##_claim(ArrayList_##T* list) {                 \
         ArrayList_##T moved = *list;                                           \
         Kast_mark_as_claimed(&list->claimed);                                  \
@@ -1192,6 +1291,10 @@ void TypeInfo_drop(TypeInfo* T, void* value) {
             .T_TypeInfo = T_TypeInfo,                                          \
             .claimed = Kast_Claimed_init("Box"),                               \
         };                                                                     \
+    }                                                                          \
+    void Box_##T##_dbg_write(Box_##T* box, Kast_Formatter* fmt) {              \
+        Kast_Formatter_printf(fmt, "box ");                                    \
+        Kast_dbg_write(box->value, box->T_TypeInfo, fmt);                      \
     }                                                                          \
     Box_##T Box_##T##_claim(Box_##T* place) {                                  \
         Box_##T moved = *place;                                                \

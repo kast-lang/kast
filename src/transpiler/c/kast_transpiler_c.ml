@@ -64,6 +64,7 @@ type ctx =
   ; mutable captured_values : string ValueMap.t
   ; mutable captured_types : C_ast.ty progress ValueMap.t
   ; mutable drop_fns : string ValueMap.t
+  ; mutable dbg_write_fns : string ValueMap.t
   ; mutable claim_fns : string ValueMap.t
   ; mutable contexts : Types.value_context_ty Id.Map.t
   ; runtime_defined_closure_types : string StringListMap.t
@@ -658,6 +659,279 @@ module Impl = struct
             | Types.T_Error -> copy
           in
           insert_stmt (Return result))
+    }
+
+  and generate_dbg_write (ty : ty) : string =
+    let ctx = Effect.perform GetCtx in
+    let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
+    let c_ty = transpile_ty ty in
+    Inference.Var.setup_default_if_needed ty.var;
+    let ty =
+      Interpreter.Substitute_bindings.sub_ty
+        ~span
+        ~state:(Interpreter.sub_here interpreter)
+        ty
+    in
+    Inference.Var.setup_default_if_needed ty.var;
+    ty |> Ty.await_inferred |> ignore;
+    match ty.var |> Inference.Var.inferred_opt with
+    | Some (T_Blocked _value) -> failwith __LOC__
+    | _ ->
+      let dbg_write_name = ref None in
+      let do_prepend = ref false in
+      (* Log.info (fun log -> log "Checking in ValueMap: %a" Ty.print ty); *)
+      (* let old_captured_types = ctx.captured_types in *)
+      let ty_as_value = V_Ty ty |> Value.inferred ~span in
+      ctx.dbg_write_fns
+      <- ctx.dbg_write_fns
+         |> ValueMap.update ty_as_value (fun name ->
+           let name =
+             match name with
+             | Some name -> name
+             | None ->
+               let name = gen_name (ty_to_string c_ty ^ "_dbg_write") in
+               do_prepend := true;
+               name
+           in
+           dbg_write_name := Some name;
+           Some name);
+      let dbg_write_name = !dbg_write_name |> Option.get in
+      if !do_prepend
+      then (
+        let dbg_write_impl = generate_dbg_write_impl ty in
+        add_dbg_write_impl_with_type_erased
+          dbg_write_name
+          (transpile_ty ty)
+          dbg_write_impl);
+      dbg_write_name
+
+  and add_dbg_write_impl_with_type_erased
+        (dbg_write_name : string)
+        (ty : C_ast.ty)
+        (dbg_write_impl : C_ast.fn_def)
+    =
+    let ctx = Effect.perform GetCtx in
+    ctx.fns <- ctx.fns |> StringMap.add dbg_write_name dbg_write_impl;
+    let dbg_write_impl_type_erased : C_ast.fn_def =
+      { comment = None
+      ; args =
+          [ { name = "value"; ty = Ptr Void }
+          ; { name = "fmt"; ty = Ptr (Named "Kast_Formatter") }
+          ]
+      ; result_ty = Void
+      ; body =
+          new_block (fun () ->
+            insert_stmt
+              (Expr
+                 (Apply
+                    { f = Claim (Ident dbg_write_name)
+                    ; args =
+                        [ Cast { value = Claim (Ident "value"); target = Ptr ty }
+                        ; Claim (Ident "fmt")
+                        ]
+                    })))
+      }
+    in
+    ctx.fns
+    <- ctx.fns
+       |> StringMap.add (dbg_write_name ^ "_type_erased") dbg_write_impl_type_erased
+
+  and generate_dbg_write_impl (ty : ty) : C_ast.fn_def =
+    let ty_ty = ty in
+    let var = "value" in
+    let fmt_var = "fmt" in
+    { comment = Some (make_string "dbg_write for %a" Ty.print ty)
+    ; args =
+        [ { name = var; ty = Ptr (transpile_ty ty) }
+        ; { name = fmt_var; ty = Ptr (Named "Kast_Formatter") }
+        ]
+    ; result_ty = Void
+    ; body =
+        new_block (fun () ->
+          let ty =
+            match ty.var |> Inference.Var.inferred_opt with
+            | None -> fail "can't generate_dbg_write_impl for not inferred"
+            | Some ty -> ty
+          in
+          let printf (f : string) (args : C_ast.expr list) =
+            insert_stmt
+              (S_Native
+                 { parts =
+                     [ C_ast.Raw "Kast_Formatter_printf(fmt, "
+                     ; Raw (make_string "%a" String.print_debug f)
+                     ]
+                     @ (args
+                        |> List.map (fun arg : C_ast.native_expr_part list ->
+                          [ Raw ", "; Interpolated arg ])
+                        |> List.flatten)
+                     @ [ Raw ")" ]
+                 })
+          in
+          let println () =
+            insert_stmt (S_Native { parts = [ Raw "Kast_Formatter_println(fmt)" ] })
+          in
+          let inc_indent () =
+            insert_stmt (S_Native { parts = [ Raw "Kast_Formatter_inc_indent(fmt)" ] })
+          in
+          let dec_indent () =
+            insert_stmt (S_Native { parts = [ Raw "Kast_Formatter_dec_indent(fmt)" ] })
+          in
+          let printf_primitive f = printf f [ Claim (Deref (Claim (Ident var))) ] in
+          match ty with
+          | Types.T_Unit -> printf "()" []
+          | Types.T_Bool ->
+            insert_stmt
+              (If
+                 { cond = Claim (Ident var)
+                 ; then_case = new_block (fun () -> printf "true" [])
+                 ; else_case = Some (new_block (fun () -> printf "false" []))
+                 })
+          | Types.T_Int32 -> printf_primitive "%d"
+          | Types.T_UInt32 -> printf_primitive "%u"
+          | Types.T_Int64 -> printf_primitive "%lld"
+          | Types.T_UInt64 -> printf_primitive "%llu"
+          | Types.T_Float32 -> printf_primitive "%g"
+          | Types.T_Float64 -> printf_primitive "%g"
+          | Types.T_StringView ->
+            insert_stmt
+              (Expr
+                 (Apply
+                    { f = E_Native { parts = [ Raw "StringView_dbg_write" ] }
+                    ; args = [ Claim (Ident var); Claim (Ident fmt_var) ]
+                    }))
+          | Types.T_String ->
+            insert_stmt
+              (Expr
+                 (Apply
+                    { f = E_Native { parts = [ Raw "String_dbg_write" ] }
+                    ; args = [ Claim (Ident var); Claim (Ident fmt_var) ]
+                    }))
+          | Types.T_Char ->
+            insert_stmt
+              (Expr
+                 (Apply
+                    { f = E_Native { parts = [ Raw "Char_dbg_write" ] }
+                    ; args = [ Claim (Ident var); Claim (Ident fmt_var) ]
+                    }))
+          | Types.T_Box boxed ->
+            insert_stmt
+              (Expr
+                 (Apply
+                    { f =
+                        E_Native
+                          { parts =
+                              [ Raw "Box_"
+                              ; Raw (ty_to_string (transpile_ty boxed))
+                              ; Raw "_dbg_write"
+                              ]
+                          }
+                    ; args = [ Claim (Ident var); Claim (Ident fmt_var) ]
+                    }))
+          | Types.T_Ref { mut; referenced } ->
+            printf (if IsMutable.await_inferred mut then "&mut " else "&") [];
+            insert_stmt
+              (Expr
+                 (Apply
+                    { f = Claim (Ident (generate_dbg_write referenced))
+                    ; args = [ Claim (Deref (Claim (Ident var))); Claim (Ident fmt_var) ]
+                    }))
+          | Types.T_Variant variant ->
+            (match variant.variants |> Row.await_inferred_to_list with
+             | [] -> ()
+             | variants ->
+               insert_stmt
+                 (Switch
+                    { value =
+                        Claim (Field { obj = Deref (Claim (Ident var)); field = "tag" })
+                    ; cases =
+                        variants
+                        |> List.map
+                             (fun
+                                 ((label, data) : Label.t * Types.ty_variant_data)
+                                  : C_ast.switch_case
+                                ->
+                                { value = Claim (Ident (variant_tag_name ty_ty label))
+                                ; body =
+                                    new_block (fun () ->
+                                      printf (make_string ":%a" Label.print label) [];
+                                      match data.data with
+                                      | None -> ()
+                                      | Some data ->
+                                        printf " " [];
+                                        insert_stmt
+                                          (Expr
+                                             (Apply
+                                                { f =
+                                                    Claim
+                                                      (Ident (generate_dbg_write data))
+                                                ; args =
+                                                    [ AddrOf
+                                                        (Field
+                                                           { obj =
+                                                               Field
+                                                                 { obj =
+                                                                     Deref
+                                                                       (Claim (Ident var))
+                                                                 ; field = "data"
+                                                                 }
+                                                           ; field =
+                                                               make_correct_ident
+                                                                 (Label.get_name label)
+                                                           })
+                                                    ; Claim (Ident "fmt")
+                                                    ]
+                                                })))
+                                })
+                    ; default = None
+                    }))
+          | Types.T_Tuple tuple ->
+            printf "{" [];
+            inc_indent ();
+            println ();
+            tuple.tuple
+            |> Tuple.iter (fun member (field : Types.ty_tuple_field) ->
+              (match member with
+               | Index _ -> ()
+               | Name name -> printf (make_string ".%s = " name) []);
+              insert_stmt
+                (Expr
+                   (Apply
+                      { f = Claim (Ident (generate_dbg_write field.ty))
+                      ; args =
+                          [ AddrOf
+                              (Field
+                                 { obj = Deref (Claim (Ident var))
+                                 ; field = member_name member
+                                 })
+                          ; Claim (Ident fmt_var)
+                          ]
+                      }));
+              printf "," [];
+              println ());
+            dec_indent ();
+            printf "}" []
+          | Types.T_List _ ->
+            insert_stmt
+              (Expr
+                 (Apply
+                    { f = Claim (Ident (ty_to_string (transpile_ty ty_ty) ^ "_dbg_write"))
+                    ; args = [ Claim (Ident var); Claim (Ident fmt_var) ]
+                    }))
+          | Types.T_Ty -> printf "<ty>" []
+          | Types.T_Fn { is_closure; _ } ->
+            if is_closure |> Inference.await_inferred_simple
+            then printf "<closure>" []
+            else printf "<fn>" []
+          | Types.T_Generic _ -> printf "<generic>" []
+          | Types.T_Ast -> printf "<ast>" []
+          | Types.T_UnwindToken _ -> printf "<unwind token>" []
+          | Types.T_Target -> printf "<target>" []
+          | Types.T_ContextTy -> printf "<context ty>" []
+          | Types.T_ImplicitContext -> printf "<implicit context>" []
+          | Types.T_CompilerScope -> printf "<compiler scope>" []
+          | Types.T_Opaque _ -> printf "<opaque>" []
+          | Types.T_Blocked _ -> printf "<blocked>" []
+          | Types.T_Error -> printf "<error>" [])
     }
 
   and generate_drop (ty : ty) : string =
@@ -2786,6 +3060,7 @@ module Impl = struct
            ; "alignment", C_ast.E_Native { parts = [ Raw "alignof("; Raw name; Raw ")" ] }
            ; "size", E_Native { parts = [ Raw "sizeof("; Raw name; Raw ")" ] }
            ; "stride", E_Native { parts = [ Raw "sizeof("; Raw name; Raw ")" ] }
+           ; "dbg_write", Claim (Ident (generate_dbg_write kast_ty ^ "_type_erased"))
            ; "drop", Claim (Ident (generate_drop kast_ty ^ "_type_erased"))
            ; "claim", Claim (Ident (generate_claim kast_ty ^ "_type_erased"))
            ]
@@ -2798,18 +3073,32 @@ module Impl = struct
            else [])
     and construct_ty_type_info (kast_ty : ty) (ty : C_ast.ty) =
       let ctx = Effect.perform GetCtx in
-      let primitive s : C_ast.expr =
-        E_Native { parts = [ Raw "TypeInfo_simple(primitive, "; Raw s; Raw ")" ] }
-      in
-      match ty with
-      | T_Unit -> primitive "Unit"
-      | T_Raw { c = raw_ty; is_primitive } ->
+      let raw (raw_ty : string) : C_ast.expr =
         if raw_ty = "String"
         then E_Native { parts = [ Raw "String_TypeInfo" ] }
-        else if is_primitive
-        then
-          E_Native { parts = [ Raw "TypeInfo_simple(primitive, "; Raw raw_ty; Raw ")" ] }
-        else E_Native { parts = [ Raw "TypeInfo_simple(raw, "; Raw raw_ty; Raw ")" ] }
+        else
+          c_compound_literal
+            (T_Raw { c = "TypeInfo"; is_primitive = false })
+            ([ "name", C_ast.Literal (String (make_string "%a" Ty.print kast_ty))
+             ; ( "alignment"
+               , C_ast.E_Native { parts = [ Raw "alignof("; Raw raw_ty; Raw ")" ] } )
+             ; "size", E_Native { parts = [ Raw "sizeof("; Raw raw_ty; Raw ")" ] }
+             ; "stride", E_Native { parts = [ Raw "sizeof("; Raw raw_ty; Raw ")" ] }
+             ; "dbg_write", Claim (Ident (generate_dbg_write kast_ty ^ "_type_erased"))
+             ; "drop", Claim (Ident (generate_drop kast_ty ^ "_type_erased"))
+             ; "claim", Claim (Ident (generate_claim kast_ty ^ "_type_erased"))
+             ]
+             @
+             if !allocation_stats
+             then
+               [ ( "allocation_stats"
+                 , C_ast.E_Native { parts = [ Raw "Kast_type_allocation_stats_new()" ] } )
+               ]
+             else [])
+      in
+      match ty with
+      | T_Unit -> raw "Unit"
+      | T_Raw { c = raw_ty; is_primitive } -> raw raw_ty
       | Named name ->
         let def =
           ctx.types
@@ -2817,7 +3106,7 @@ module Impl = struct
           |> Option.unwrap_or_else (fun () -> failwith __LOC__)
         in
         construct_ty_def_type_info kast_ty name def
-      | Ptr _ -> primitive "void*"
+      | Ptr _ -> raw "void*" (* TODO void* technically works but should fix *)
       | Void -> fail "tried to create type info for void?"
     in
     let init_type_infos_fn : C_ast.fn_def =
@@ -2887,6 +3176,7 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
     ; captured_values = ValueMap.empty
     ; captured_types = ValueMap.empty
     ; drop_fns = ValueMap.empty
+    ; dbg_write_fns = ValueMap.empty
     ; claim_fns = ValueMap.empty
     ; types =
         StringMap.of_list
@@ -2906,7 +3196,7 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
               ( name
               , { shape = C_ast.RuntimeDefined { is_primitive = true }; comment = None } ))
            )
-           @ ([ "String"; "TypeInfo"; "Context"; "StringView" ]
+           @ ([ "String"; "TypeInfo"; "Context"; "StringView"; "Kast_Formatter" ]
               |> List.map (fun name : (string * C_ast.ty_def) ->
                 ( name
                 , { shape = C_ast.RuntimeDefined { is_primitive = false }

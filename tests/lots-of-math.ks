@@ -1,4 +1,3 @@
-
 let mut sum = 0;
 
 let is_prime = x => (
@@ -12,7 +11,7 @@ let is_prime = x => (
     )
 );
 
-for x in 2..30000 do (
+for x in 2..3000 do (
     if is_prime(x) then (
         sum += x;
     );
