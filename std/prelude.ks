@@ -30,4 +30,5 @@ use from_never;
 
 use Box;
 use Box_new;
+use Box_leak;
 use fmt.format;

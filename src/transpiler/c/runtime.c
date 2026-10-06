@@ -263,7 +263,11 @@ char* C_String_clone(const char* s) {
     }
     size_t length = strlen(s);
     char* cloned = malloc(length + 1);
-    strcpy(cloned, s);
+    if (cloned == NULL) {
+        fprintf(stderr, "failed to malloc when cloning c string\n");
+        _exit(-1);
+    }
+    memcpy(cloned, s, length + 1);
     return cloned;
 }
 
@@ -307,6 +311,10 @@ Kast_Backtrace Kast_Backtrace_get() {
 
 Kast_Backtrace* Kast_Backtrace_get_boxed() {
     Kast_Backtrace* trace = malloc(sizeof(Kast_Backtrace));
+    if (trace == NULL) {
+        fprintf(stderr, "OOM allocating backtrace\n");
+        _exit(-1);
+    }
     *trace = Kast_Backtrace_get();
     return trace;
 }
@@ -432,8 +440,12 @@ noreturn void Kast_match_non_exhaustive() {
     exit_with_error("Non exhausitve match");
 }
 
-noreturn void exit_errno(const char* s) {
-    perror(s);
+noreturn void exit_errno(const char* fmt, ...) {
+    va_list va;
+    va_start(va, fmt);
+    vfprintf(stderr, fmt, va);
+    va_end(va);
+    fprintf(stderr, "%s\n", strerror(errno));
     exit_with_error(NULL);
 }
 
@@ -524,22 +536,26 @@ void Kast_dump_allocation_stats() {
 #endif
 
 void* Kast_allocate_array(TypeInfo* T, size_t length) {
+    size_t memory_size = T->stride * length;
+    if (memory_size == 0) {
+        return NULL;
+    }
 #ifdef USE_GC
     void* result;
-    // result = GC_MALLOC(T->stride * length);
+    // result = GC_MALLOC(memory_size);
     switch (T->kind) {
         case TypeInfoKind_primitive:
-            result = GC_MALLOC_ATOMIC(T->stride * length);
+            result = GC_MALLOC_ATOMIC(memory_size);
             break;
         case TypeInfoKind_raw:
-            result = GC_MALLOC(T->stride * length);
+            result = GC_MALLOC(memory_size);
             break;
         case TypeInfoKind_object:
 #ifdef KAST_TYPED_GC
             result = GC_CALLOC_EXPLICITLY_TYPED(length, T->stride, T->gc_descr);
 #else
             // TODO explicitly typed breaks with finalizers????
-            result = GC_MALLOC(T->stride * length);
+            result = GC_MALLOC(memory_size);
 #endif
             break;
         case TypeInfoKind_N:
@@ -555,7 +571,7 @@ void* Kast_allocate_array(TypeInfo* T, size_t length) {
     finalize_data->T = T;
     finalize_data->array_length = length;
     T->allocation_stats.allocations++;
-    T->allocation_stats.total_memory += T->stride * length;
+    T->allocation_stats.total_memory += memory_size;
     if (T == &Byte_TypeInfo) {
         Kast_allocation_stats.raw.allocations++;
         Kast_allocation_stats.raw.total_memory += length;
@@ -563,7 +579,7 @@ void* Kast_allocate_array(TypeInfo* T, size_t length) {
     Kast_type_allocation_stats* kind_data =
         &Kast_allocation_stats.by_kind[T->kind];
     kind_data->allocations++;
-    kind_data->total_memory += T->stride * length;
+    kind_data->total_memory += memory_size;
     kind_data->scannable_ptrs += T->gc_inner_ptrs;
     GC_register_finalizer_no_order(
         result,
@@ -575,9 +591,15 @@ void* Kast_allocate_array(TypeInfo* T, size_t length) {
 #endif
     return result;
 #else
-    void* result = malloc(T->stride * length);
+    void* result = malloc(memory_size);
     if (!result) {
-        exit_errno("Kast_allocate_array");
+        exit_errno(
+            "Kast_allocate_array failed allocating %zu elements of %s (stride %zu), total memory = %zu",
+            length,
+            T->name,
+            T->stride,
+            memory_size
+        );
     }
     return result;
 #endif
@@ -593,25 +615,38 @@ void* Kast_reallocate_array(
     size_t old_length,
     size_t new_length
 ) {
+    size_t new_memory_size = T->stride * new_length;
 #ifdef USE_GC
     void* result = Kast_allocate_array(T, new_length);
     if (a != NULL) {
-        memcpy(result, a, T->stride * old_length);
+        memcpy(result, a, new_memory_size);
     }
 #else
-    void* result = realloc(a, T->stride * new_length);
-#endif
-    if (!result) {
-        exit_errno("Kast_reallocate_array");
+    if (new_memory_size == 0) {
+        free(a);
+        return NULL;
+    } else {
+        void* result = realloc(a, new_memory_size);
+        if (!result) {
+            exit_errno(
+                "Kast_reallocate_array failed allocating %zu elements of %s (stride %zu), old_length = %zu, total memory = %zu",
+                new_length,
+                T->name,
+                T->stride,
+                old_length,
+                new_memory_size
+            );
+        }
+        return result;
     }
-    return result;
+#endif
 }
 
 void Kast_free(const void* memory) {
 #ifdef USE_GC
     GC_FREE(memory);
 #else
-    free(memory);
+    free((void*)memory);
 #endif
 }
 
@@ -903,7 +938,9 @@ StringView StringView_from_C_StringView(const C_StringView s) {
 String String_from_C_StringView(const C_StringView s) {
     size_t length = strlen(s);
     char* buf = Kast_allocate_raw(length);
-    memcpy(buf, s, length);
+    if (buf != NULL) {
+        memcpy(buf, s, length);
+    }
     return String_from_raw_parts(buf, length);
 }
 
@@ -1237,12 +1274,12 @@ typedef struct Context Context;
         };                                                                     \
     }                                                                          \
                                                                                \
-    void ArrayList_##T##_reserve(ArrayList_##T* list, size_t len) {            \
-        if (list->capacity < len) {                                            \
+    void ArrayList_##T##_reserve(ArrayList_##T* list, size_t capacity) {       \
+        if (list->capacity < capacity) {                                       \
             size_t old_capacity = list->capacity;                              \
             list->capacity = (list->capacity == 0) ? 4 : (list->capacity * 2); \
-            if (len > list->capacity) {                                        \
-                list->capacity = len;                                          \
+            if (list->capacity < capacity) {                                   \
+                list->capacity = capacity;                                     \
             }                                                                  \
             list->buf = Kast_reallocate_array(                                 \
                 list->T_TypeInfo,                                              \
@@ -1321,6 +1358,9 @@ void TypeInfo_drop(TypeInfo* T, void* value) {
             .claimed = Kast_Claimed_init("Box"),                               \
         };                                                                     \
     }                                                                          \
+    T* Box_##T##_leak(Box_##T box) {                                           \
+        return box.value;                                                      \
+    }                                                                          \
     void Box_##T##_dbg_write(Box_##T* box, Kast_Formatter* fmt) {              \
         Kast_Formatter_printf(fmt, "box ");                                    \
         Kast_dbg_write(box->value, box->T_TypeInfo, fmt);                      \
@@ -1342,7 +1382,9 @@ void TypeInfo_drop(TypeInfo* T, void* value) {
 
 String String_from_StringView(StringView s) {
     char* buf = Kast_allocate_raw(s.length);
-    memcpy(buf, s.buf, s.length);
+    if (buf != NULL) {
+        memcpy(buf, s.buf, s.length);
+    }
     return String_from_raw_parts(buf, s.length);
 }
 

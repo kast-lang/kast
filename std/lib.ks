@@ -36,6 +36,16 @@ const Box_new = [T] (mut value :: T) -> Box[T] => @cfg (
     | true => panic("TODO box")
 );
 
+const Box_leak = [T] (box :: Box[T]) -> &mut T => @cfg (
+    | target.name == "c" => (
+        @native "Box_\(type T)_leak(\(box))"
+    )
+    | true => (
+        let mut box = box;
+        &mut box^
+    )
+);
+
 const mem = include "./mem.ks";
 
 include "./never.ks";
