@@ -240,16 +240,13 @@ TypeInfo Byte_TypeInfo = TypeInfo_simple(primitive, Byte);
 TypeInfo String_TypeInfo;
 TypeInfo StringView_TypeInfo;
 
-void Kast_backtrace_error_callback(void* data, const char* msg, int errnum) {
+void Kast_Backtrace_error_callback(void* data, const char* msg, int errnum) {
     fprintf(stderr, "libbacktrace error: %s (errnum: %d)\n", msg, errnum);
     exit(-1);
 }
 
 typedef struct Kast_Backtrace_C_Entry {
     uintptr_t pc;
-    const char* filename;
-    int lineno;
-    const char* function;
     struct Kast_Backtrace_C_Entry* next;
 } Kast_Backtrace_C_Entry;
 
@@ -257,7 +254,7 @@ typedef struct {
     Kast_Backtrace_C_Entry* c_entries;
 } Kast_Backtrace;
 
-char* C_String_clone(const char* s) {
+char* unused_C_String_clone(const char* s) {
     if (s == NULL) {
         return NULL;
     }
@@ -271,7 +268,7 @@ char* C_String_clone(const char* s) {
     return cloned;
 }
 
-int Kast_backtrace_callback(
+int Kast_Backtrace_callback(
     void* data,
     uintptr_t pc,
     const char* filename,
@@ -286,9 +283,6 @@ int Kast_backtrace_callback(
     }
     *new_entry = (Kast_Backtrace_C_Entry) {
         .pc = pc,
-        .filename = C_String_clone(filename),
-        .lineno = lineno,
-        .function = C_String_clone(function),
         .next = trace->c_entries,
     };
     trace->c_entries = new_entry;
@@ -302,8 +296,8 @@ Kast_Backtrace Kast_Backtrace_get() {
     backtrace_full(
         BACKTRACE_STATE,
         1,
-        Kast_backtrace_callback,
-        Kast_backtrace_error_callback,
+        Kast_Backtrace_callback,
+        Kast_Backtrace_error_callback,
         &trace
     );
     return trace;
@@ -323,8 +317,6 @@ void Kast_Backtrace_drop(Kast_Backtrace trace) {
     Kast_Backtrace_C_Entry* entry = trace.c_entries;
     while (entry != NULL) {
         Kast_Backtrace_C_Entry* next = entry->next;
-        free((void*)entry->function);
-        free((void*)entry->filename);
         free(entry);
         entry = next;
     }
@@ -335,17 +327,35 @@ void Kast_Backtrace_drop_boxed(Kast_Backtrace* trace) {
     free(trace);
 }
 
+int Kast_Backtrace_print_entry(
+    void* data,
+    uintptr_t pc,
+    const char* filename,
+    int lineno,
+    const char* function
+) {
+    int* frame_num = data;
+    fprintf(
+        stderr,
+        "%d. %s() at %s:%d\n",
+        (*frame_num)++,
+        function ? function : "??",
+        filename ? filename : "??",
+        lineno
+    );
+    return 0;
+}
+
 void Kast_Backtrace_print(Kast_Backtrace* trace) {
     int frame_num = 0;
     for (Kast_Backtrace_C_Entry* entry = trace->c_entries; entry != NULL;
          entry = entry->next) {
-        fprintf(
-            stderr,
-            "%d. %s() at %s:%d\n",
-            frame_num++,
-            entry->function ? entry->function : "??",
-            entry->filename ? entry->filename : "??",
-            entry->lineno
+        backtrace_pcinfo(
+            BACKTRACE_STATE,
+            entry->pc,
+            Kast_Backtrace_print_entry,
+            Kast_Backtrace_error_callback,
+            &frame_num
         );
     }
 }
@@ -1051,7 +1061,7 @@ void Kast_init(int argc, char* argv[]) {
 #endif
 #ifdef USE_BACKTRACE
     BACKTRACE_STATE =
-        backtrace_create_state(NULL, 1, Kast_backtrace_error_callback, NULL);
+        backtrace_create_state(NULL, 1, Kast_Backtrace_error_callback, NULL);
 #endif
     CLI_ARGS.argc = argc;
     CLI_ARGS.original_argv = argv;
