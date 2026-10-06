@@ -538,7 +538,12 @@ module Impl = struct
       | Some inferred -> complete_inferred inferred
       | None ->
         let span = Span.fake "<completion>" in
-        error span "%s not inferred during completion" name)
+        error
+          span
+          "%s not inferred during completion: %a"
+          name
+          (List.print Span.print)
+          (var |> Inference.Var.spans |> SpanSet.to_list))
   ;;
 end
 

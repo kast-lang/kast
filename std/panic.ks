@@ -21,3 +21,7 @@ const default_panic_handler :: PanicHandlerT = {
 const panic = [T] (s :: &str) -> T => (
     (@current PanicHandler).handle(s) |> from_never
 );
+
+const panic_fmt = (args :: Ast) -> Ast => `(
+    panic(&std.fmt.format!($args) |> String.as_str)
+);

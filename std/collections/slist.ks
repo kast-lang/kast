@@ -9,7 +9,7 @@ const t = [T] newtype (
 );
 
 const into_iter = [T] (list :: t[T]) -> std.iter.Iterable[T] => {
-    .iter = f => match list with (
+    .iter = @move f => match list with (
         | :Nil => ()
         | :Cons { .value, .tail } => (
             f(value);
@@ -19,7 +19,7 @@ const into_iter = [T] (list :: t[T]) -> std.iter.Iterable[T] => {
 };
 
 const iter = [T] (list :: &t[T]) -> std.iter.Iterable[type (&T)] => {
-    .iter = f => match list^ with (
+    .iter = @move f => match list^ with (
         | :Nil => ()
         | :Cons { .value = ref value, .tail = ref tail } => (
             f(value);

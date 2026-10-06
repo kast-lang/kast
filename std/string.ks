@@ -13,6 +13,10 @@ impl String as module = (
         | target.name == "javascript" => @native "\(s)"
     );
 
+    const clone = (s :: &String) -> String => (
+        from_str(as_str(s))
+    );
+
     const length = (s :: &str) -> Int32 => @cfg (
         | target.name == "interpreter" => (@native "string.length")(s)
         | target.name == "c" => @native "String_length(\(s))"

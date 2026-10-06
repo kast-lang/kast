@@ -33,7 +33,7 @@ const zip_TODO = [A, B] (
     a :: Iterable[A],
     b :: Iterable[B],
 ) -> Iterable[type { A, B }] => {
-    .iter = consume => (
+    .iter = @move consume => (
         panic("TODO std.iter.zip");
         (#
         let element_of_a = _;
@@ -56,7 +56,7 @@ const map = [A, B] (
     iter :: Iterable[A],
     f :: A -> B,
 ) -> Iterable[B] => {
-    .iter = consume => (
+    .iter = @move consume => (
         iter.iter(a => consume(f(a)))
     )
 };
@@ -66,7 +66,7 @@ const enumerate = [T] (
 ) -> Iterable[type { Int32, T }] => (
     let mut i = 0;
     {
-        .iter = consume => (
+        .iter = @move consume => (
             iter.iter(
                 x => (
                     consume({ i, x });

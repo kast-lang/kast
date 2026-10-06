@@ -44,6 +44,12 @@ const Write = [Self] newtype {
     .write :: (&mut Self, &str) -> (),
 };
 
+impl Formatter as Write = {
+    .write = (self, s) => (
+        self^.write_str(s);
+    ),
+};
+
 impl StringBuilder.t as Write = {
     .write = (self, s) => (
         StringBuilder.add_str(self, s);

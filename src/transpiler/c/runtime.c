@@ -872,6 +872,10 @@ StringView String_as_StringView(const String* s) {
     };
 }
 
+int String_cmp(String* a, String* b) {
+    return StringView_cmp(String_as_StringView(a), String_as_StringView(b));
+}
+
 StringView StringView_from_C_StringView(const C_StringView s) {
     return (StringView) {
         .buf = s,

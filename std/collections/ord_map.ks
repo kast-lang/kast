@@ -23,7 +23,7 @@ const new_with_compare = [K, V] (compare :: std.cmp.Compare[K]) -> OrdMap.t[K, V
 
 const split_inner_at_key = [K, V](
     map :: OrdMap.t[K, V],
-    key :: K,
+    key :: &K,
 ) -> {
     .less :: Treap.t[KV[K, V]],
     .equal :: Treap.t[KV[K, V]],
@@ -31,7 +31,7 @@ const split_inner_at_key = [K, V](
 } => (
     let split_with = (treap, f) => Treap.split(
         treap,
-        data => if map.compare(&data^.value.key, &key) |> f then (
+        data => if map.compare(&data^.value.key, key) |> f then (
             :LeftSubtree
         ) else (
             :RightSubtree
@@ -49,15 +49,15 @@ const split_inner_at_key = [K, V](
 );
 
 const add = [K, V] (map :: &mut OrdMap.t[K, V], key :: K, value :: V) => (
-    let { .less, .equal = _, .greater } = split_inner_at_key(map^, key);
+    let { .less, .equal = _, .greater } = split_inner_at_key(map^, &key);
     let equal = Treap.singleton({ .key, .value });
     map^.inner = Treap.join(less, Treap.join(equal, greater));
 );
 
-const get = [K, V] (map :: &OrdMap.t[K, V], key :: K) -> Option.t[type (&V)] => (
+const get = [K, V] (map :: &OrdMap.t[K, V], key :: &K) -> Option.t[type (&V)] => (
     Treap.lookup(
         &map^.inner,
-        data => match map^.compare(&key, &data^.value.key) with (
+        data => match map^.compare(key, &data^.value.key) with (
             | :Less => :LeftSubtree
             | :Greater => :RightSubtree
             | :Equal => :Here
@@ -66,10 +66,10 @@ const get = [K, V] (map :: &OrdMap.t[K, V], key :: K) -> Option.t[type (&V)] => 
         |> Option.map(kv => &kv^.value)
 );
 
-const get_mut = [K, V] (map :: &mut OrdMap.t[K, V], key :: K) -> Option.t[type (&mut V)] => (
+const get_mut = [K, V] (map :: &mut OrdMap.t[K, V], key :: &K) -> Option.t[type (&mut V)] => (
     Treap.lookup_mut(
         &mut map^.inner,
-        data => match map^.compare(&key, &data^.value.key) with (
+        data => match map^.compare(key, &data^.value.key) with (
             | :Less => :LeftSubtree
             | :Greater => :RightSubtree
             | :Equal => :Here
@@ -78,7 +78,7 @@ const get_mut = [K, V] (map :: &mut OrdMap.t[K, V], key :: K) -> Option.t[type (
         |> Option.map(kv => &mut kv^.value)
 );
 
-const remove = [K, V] (map :: &mut OrdMap.t[K, V], key :: K) -> Option.t[V] => (
+const remove = [K, V] (map :: &mut OrdMap.t[K, V], key :: &K) -> Option.t[V] => (
     let { .less, .equal, .greater } = split_inner_at_key(map^, key);
     map^.inner = Treap.join(less, greater);
     match equal with (
@@ -92,16 +92,18 @@ const get_or_init = [K, V] (
     key :: K,
     init :: () -> V,
 ) -> &mut V => (
-    match get_mut(map, key) with (
+    match get_mut(map, &key) with (
         | :Some value => value
         | :None => (
-            let { .less, .equal, .greater } = split_inner_at_key(map^, key);
+            let { .less, .equal, .greater } = split_inner_at_key(map^, &key);
             let mut equal = match equal with (
                 | :Empty => Treap.singleton({ .key, .value = init() })
                 | :Node _ => panic("get_mut said key no exists??")
             );
+            let count_less = Treap.length(&less);
             map^.inner = Treap.join(less, Treap.join(equal, greater));
-            get_mut(map, key) |> Option.unwrap
+            let entry = &mut map^.inner |> Treap.at_mut(count_less);
+            &mut entry^.value
         )
     )
 );

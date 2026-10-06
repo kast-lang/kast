@@ -14,14 +14,14 @@ const clone = [T] (self :: &OrdSet.t[T]) -> OrdSet.t[T] => {
     },
 };
 
-const contains = [T] (self :: &OrdSet.t[T], x :: T) -> Bool => (
+const contains = [T] (self :: &OrdSet.t[T], x :: &T) -> Bool => (
     match &self^.inner |> OrdMap.get(x) with (
         | :Some _ => true
         | :None => false
     )
 );
 
-const remove = [T] (self :: &mut OrdSet.t[T], x :: T) -> Bool => (
+const remove = [T] (self :: &mut OrdSet.t[T], x :: &T) -> Bool => (
     match &mut self^.inner |> OrdMap.remove(x) with (
         | :None => false
         | :Some () => true
