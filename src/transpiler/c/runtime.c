@@ -391,35 +391,46 @@ typedef enum {
 } Kast_Claimed_State;
 
 typedef struct {
+    const char* name;
+    Kast_Claimed_State state;
 #ifdef KAST_DEBUG
     Kast_Backtrace* trace;
-    const char* name;
-#else
-    Kast_Claimed_State state;
 #endif
 } Kast_Claimed;
 
 Kast_Claimed Kast_Claimed_init(const char* name) {
     return (Kast_Claimed) {
+        .name = name,
+        .state = Kast_Claimed_State_Owned,
 #ifdef KAST_DEBUG
         .trace = NULL,
-        .name = name,
-#else
-        .state = Kast_Claimed_State_Owned,
 #endif
     };
 }
 
 void Kast_mark_as_claimed(Kast_Claimed* claimed) {
+    switch (claimed->state) {
+        case Kast_Claimed_State_Moved:
 #ifdef KAST_DEBUG
-    if (claimed->trace != NULL) {
-        fprintf(stderr, "%s was previously claimed here:\n", claimed->name);
-        Kast_Backtrace_print(claimed->trace);
-        exit_with_error("Trying to claim a moved %s", claimed->name);
+            if (claimed->trace != NULL) {
+                fprintf(
+                    stderr,
+                    "%s was previously claimed here:\n",
+                    claimed->name
+                );
+                Kast_Backtrace_print(claimed->trace);
+            }
+#endif
+            exit_with_error("Trying to claim a moved %s", claimed->name);
+            break;
+        case Kast_Claimed_State_Owned:
+            break;
+        default:
+            exit_with_error("looks like someone forgot a case in switch...");
     }
-    claimed->trace = Kast_Backtrace_get_boxed();
-#else
     claimed->state = Kast_Claimed_State_Moved;
+#ifdef KAST_DEBUG
+    claimed->trace = Kast_Backtrace_get_boxed();
 #endif
 }
 
