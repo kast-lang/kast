@@ -1,6 +1,2 @@
-module:
-
-const Foo = newtype {
-    .field :: Int32,
-};
-
+let x = Box_new(123);
+x; x^;

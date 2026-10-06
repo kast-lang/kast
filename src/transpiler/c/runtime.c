@@ -418,6 +418,28 @@ Kast_Claimed Kast_Claimed_init(const char* name) {
     };
 }
 
+void Kast_Claimed_access(Kast_Claimed* claimed) {
+    switch (claimed->state) {
+        case Kast_Claimed_State_Moved:
+#ifdef KAST_DEBUG
+            if (claimed->trace != NULL) {
+                fprintf(
+                    stderr,
+                    "%s was previously claimed here:\n",
+                    claimed->name
+                );
+                Kast_Backtrace_print(claimed->trace);
+            }
+#endif
+            exit_with_error("Trying to access a moved %s", claimed->name);
+            break;
+        case Kast_Claimed_State_Owned:
+            break;
+        default:
+            exit_with_error("looks like someone forgot a case in switch...");
+    }
+}
+
 void Kast_mark_as_claimed(Kast_Claimed* claimed) {
     switch (claimed->state) {
         case Kast_Claimed_State_Moved:
@@ -1379,7 +1401,12 @@ void TypeInfo_drop(TypeInfo* T, void* value) {
             .claimed = Kast_Claimed_init("Box"),                               \
         };                                                                     \
     }                                                                          \
+    T* Box_##T##_deref(Box_##T* box) {                                         \
+        Kast_Claimed_access(&box->claimed);                                    \
+        return box->value;                                                     \
+    }                                                                          \
     T* Box_##T##_leak(Box_##T box) {                                           \
+        Kast_Claimed_access(&box.claimed);                                     \
         return box.value;                                                      \
     }                                                                          \
     void Box_##T##_dbg_write(Box_##T* box, Kast_Formatter* fmt) {              \

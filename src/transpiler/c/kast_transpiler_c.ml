@@ -393,8 +393,14 @@ module Impl = struct
          Field { obj = (if !boxed_structs then Deref (Claim obj) else obj); field }
        | Types.PE_Deref expr ->
          (match expr.data.signature.ty |> Ty.await_inferred with
-          | T_Box _ ->
-            Deref (Claim (Field { obj = transpile_place_expr expr; field = "value" }))
+          | T_Box boxed_ty ->
+            Deref
+              (Apply
+                 { f =
+                     Claim
+                       (Ident ("Box_" ^ ty_to_string (transpile_ty boxed_ty) ^ "_deref"))
+                 ; args = [ AddrOf (transpile_place_expr expr) ]
+                 })
           | _ -> Deref (Claim (transpile_place_expr expr)))
        | Types.PE_Temp expr ->
          let var = gen_name "temp" in
