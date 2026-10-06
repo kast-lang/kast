@@ -432,7 +432,7 @@ noreturn void Kast_match_non_exhaustive() {
     exit_with_error("Non exhausitve match");
 }
 
-noreturn void panic_errno(const char* s) {
+noreturn void exit_errno(const char* s) {
     perror(s);
     exit_with_error(NULL);
 }
@@ -546,7 +546,7 @@ void* Kast_allocate_array(TypeInfo* T, size_t length) {
             exit_with_error("wrong type info kind");
     }
     if (!result) {
-        panic_errno("Kast_allocate_array");
+        exit_errno("Kast_allocate_array");
     }
 #ifdef KAST_ALLOCATION_STATS
     Kast_ensure_type_is_tracked(T);
@@ -577,7 +577,7 @@ void* Kast_allocate_array(TypeInfo* T, size_t length) {
 #else
     void* result = malloc(T->stride * length);
     if (!result) {
-        panic_errno("Kast_allocate_array");
+        exit_errno("Kast_allocate_array");
     }
     return result;
 #endif
@@ -602,7 +602,7 @@ void* Kast_reallocate_array(
     void* result = realloc(a, T->stride * new_length);
 #endif
     if (!result) {
-        panic_errno("Kast_reallocate_array");
+        exit_errno("Kast_reallocate_array");
     }
     return result;
 }
@@ -629,7 +629,7 @@ void Kast_sleep_ns(int64_t ns) {
             break;
         }
         if (errno != EINTR) {
-            panic_errno("Failed to sleep");
+            exit_errno("Failed to sleep");
         }
     }
 }
@@ -1031,7 +1031,7 @@ String Kast_asprintf(const char* fmt, ...) {
     length = vsnprintf(buf, buf_size, fmt, va2);
     va_end(va2);
     if (length < 0) {
-        panic_errno("Kast_asprintf");
+        exit_errno("Kast_asprintf");
     }
     return String_from_raw_parts(buf, length);
 }
@@ -1102,15 +1102,15 @@ String Kast_read_exactly(FILE* f, size_t size) {
 String Kast_read_to_end(FILE* f) {
     int res = fseek(f, 0, SEEK_END);
     if (res < 0) {
-        panic_errno("Kast_read_to_end.fseek(1)");
+        exit_errno("Kast_read_to_end.fseek(1)");
     }
     long size = ftell(f);
     if (size < 0) {
-        panic_errno("Kast_read_to_end.ftell");
+        exit_errno("Kast_read_to_end.ftell");
     }
     res = fseek(f, 0, SEEK_SET);
     if (res < 0) {
-        panic_errno("Kast_read_to_end.fseek(2)");
+        exit_errno("Kast_read_to_end.fseek(2)");
     }
     return Kast_read_exactly(f, size);
 }
@@ -1120,11 +1120,11 @@ String Kast_read_file(StringView path) {
     FILE* f = fopen(path_c, "r");
     Kast_free(path_c);
     if (!f) {
-        panic_errno("Kast_read_file.fopen");
+        exit_errno("Kast_read_file.fopen");
     }
     String result = Kast_read_to_end(f);
     if (fclose(f) != 0) {
-        panic_errno("Kast_read_file.fclose");
+        exit_errno("Kast_read_file.fclose");
     }
     return result;
 }
@@ -1168,7 +1168,7 @@ String Kast_input(StringView prompt) {
 bool Kast_isatty(FILE* f) {
     int desc = fileno(f);
     if (desc < 0) {
-        panic_errno("Kast_isatty");
+        exit_errno("Kast_isatty");
     }
     return isatty(desc);
 }
@@ -1404,7 +1404,7 @@ void Kast_chdir(StringView path) {
     char* path_c = StringView_to_C_String(path);
     int res = chdir(path_c);
     if (res == -1) {
-        panic_errno("Kast_chdir");
+        exit_errno("Kast_chdir");
     }
     Kast_free(path_c);
 }
@@ -1415,12 +1415,12 @@ Int32 Kast_exec(StringView cmd) {
     Kast_free(cmd_c);
 #ifdef __POSIX__
     if (res == -1) {
-        panic_errno("Kast_exec");
+        exit_errno("Kast_exec");
     }
     return WEXITSTATUS(res);
 #elif defined(_WIN32)
     if (res == -1) {
-        panic_errno("Kast_exec");
+        exit_errno("Kast_exec");
     }
     return res;
 #else
@@ -1448,11 +1448,11 @@ typedef struct {
 tcp_Stream tcp_Stream_from_fd(int fd) {
     FILE* reader = fdopen(fd, "r");
     if (!reader) {
-        panic_errno("tcp_Stream_from_fd");
+        exit_errno("tcp_Stream_from_fd");
     }
     FILE* writer = fdopen(fd, "w");
     if (!writer) {
-        panic_errno("tcp_Stream_from_fd");
+        exit_errno("tcp_Stream_from_fd");
     }
     return (tcp_Stream) {
         .sock_fd = fd,
@@ -1484,7 +1484,7 @@ tcp_Stream tcp_Stream_connect(StringView addr) {
     int res = getaddrinfo(host_c, port_c, NULL, &ai);
     if (res) {
         if (res == EAI_SYSTEM) {
-            panic_errno("tcp_Stream_connect.getaddrinfo");
+            exit_errno("tcp_Stream_connect.getaddrinfo");
         } else {
             fprintf(stderr, "getaddrinfo failed with %d", res);
             exit(-1);
@@ -1498,7 +1498,7 @@ tcp_Stream tcp_Stream_connect(StringView addr) {
         }
         int sock_fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
         if (sock_fd == -1) {
-            panic_errno("tcp_Stream_connect.socket");
+            exit_errno("tcp_Stream_connect.socket");
         }
         int res = connect(sock_fd, rp->ai_addr, rp->ai_addrlen);
         if (res == 0) {
@@ -1515,12 +1515,12 @@ tcp_Stream tcp_Stream_connect(StringView addr) {
 void tcp_Stream_close(tcp_Stream s) {
     int res = fclose(s.reader);
     if (res != 0) {
-        panic_errno("tcp_Stream_close.reader");
+        exit_errno("tcp_Stream_close.reader");
     }
     // Dont need to close writer since reader closes underlying fd
     // res = fclose(s.writer);
     // if (res != 0) {
-    //     panic_errno("tcp_Stream_close.writer");
+    //     exit_errno("tcp_Stream_close.writer");
     // }
 }
 
@@ -1531,7 +1531,7 @@ String tcp_Stream_read_line(tcp_Stream* s) {
 void tcp_Stream_write(tcp_Stream* s, StringView data) {
     Kast_write(s->writer, data);
     if (fflush(s->writer) != 0) {
-        panic_errno("tcp_Stream_write.fflush");
+        exit_errno("tcp_Stream_write.fflush");
     }
 }
 
@@ -1558,7 +1558,7 @@ tcp_Listener tcp_Listener_bind(StringView addr) {
     int res = getaddrinfo(host_c, port_c, NULL, &ai);
     if (res) {
         if (res == EAI_SYSTEM) {
-            panic_errno("tcp_Listener_bind.getaddrinfo");
+            exit_errno("tcp_Listener_bind.getaddrinfo");
         } else {
             fprintf(stderr, "getaddrinfo failed with %d", res);
             exit(-1);
@@ -1569,7 +1569,7 @@ tcp_Listener tcp_Listener_bind(StringView addr) {
     for (rp = ai; rp != NULL; rp = rp->ai_next) {
         int fd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
         if (fd == -1) {
-            panic_errno("tcp_Listener_bind.socket");
+            exit_errno("tcp_Listener_bind.socket");
         }
         int so_reuseaddr = true;
         setsockopt(
@@ -1601,7 +1601,7 @@ void tcp_Listener_listen(tcp_Listener* l, int max_pending) {
 #pragma GCC diagnostic ignored "-Wanalyzer-fd-leak"
     int res = listen(l->fd, max_pending);
     if (res == -1) {
-        panic_errno("tcp_Listener_listen");
+        exit_errno("tcp_Listener_listen");
     }
 #pragma GCC diagnostic pop
 #endif
@@ -1625,7 +1625,7 @@ tcp_Listener_accepted tcp_Listener_accept(tcp_Listener* l, bool close_on_exec) {
     // int fd = accept4(l->fd, &addr, &addr_len, flags);
     int fd = accept(l->fd, &addr, &addr_len);
     if (fd == -1) {
-        panic_errno("tcp_Listener_accept.accept4");
+        exit_errno("tcp_Listener_accept.accept4");
     }
     size_t host_len = 100;
     char host[host_len];
@@ -1634,7 +1634,7 @@ tcp_Listener_accepted tcp_Listener_accept(tcp_Listener* l, bool close_on_exec) {
     int res = getnameinfo(&addr, addr_len, host, host_len, port, port_len, 0);
     if (res) {
         if (res == EAI_SYSTEM) {
-            panic_errno("tcp_Listener_accept.getnameinfo");
+            exit_errno("tcp_Listener_accept.getnameinfo");
         } else {
             fprintf(stderr, "getnameinfo errored with %d\n", res);
             exit(-1);
@@ -1660,7 +1660,7 @@ tcp_Listener_accepted tcp_Listener_accept(tcp_Listener* l, bool close_on_exec) {
 void tcp_Listener_close(tcp_Listener l) {
     int res = close(l.fd);
     if (res == -1) {
-        panic_errno("tcp_Listener_close");
+        exit_errno("tcp_Listener_close");
     }
 }
 
