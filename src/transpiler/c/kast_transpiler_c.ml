@@ -13,6 +13,7 @@ module CTyMap = Map.Make (struct
   end)
 
 let print_span = Span.print
+let debug = ref false
 
 type gc_mode =
   | EscapeAnalyze

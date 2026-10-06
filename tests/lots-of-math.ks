@@ -11,7 +11,7 @@ let is_prime = x => (
     )
 );
 
-for x in 2..3000 do (
+for x in 2..10000 do (
     if is_prime(x) then (
         sum += x;
     );

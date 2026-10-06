@@ -1,3 +1,4 @@
+// #define KAST_DEBUG
 // #define USE_SANITIZERS
 // #define KAST_ALLOCATION_STATS
 // #define USE_GC
@@ -376,39 +377,55 @@ noreturn void exit_with_error(const char* fmt, ...) {
 #endif
 }
 
+typedef enum {
+    Kast_Claimed_State_Moved,
+    Kast_Claimed_State_Owned
+} Kast_Claimed_State;
+
 typedef struct {
+#ifdef KAST_DEBUG
     Kast_Backtrace* trace;
     const char* name;
+#else
+    Kast_Claimed_State state;
+#endif
 } Kast_Claimed;
 
 Kast_Claimed Kast_Claimed_init(const char* name) {
     return (Kast_Claimed) {
+#ifdef KAST_DEBUG
         .trace = NULL,
         .name = name,
+#else
+        .state = Kast_Claimed_State_Owned,
+#endif
     };
 }
 
 void Kast_mark_as_claimed(Kast_Claimed* claimed) {
+#ifdef KAST_DEBUG
     if (claimed->trace != NULL) {
         fprintf(stderr, "%s was previously claimed here:\n", claimed->name);
         Kast_Backtrace_print(claimed->trace);
         exit_with_error("Trying to claim a moved %s", claimed->name);
     }
     claimed->trace = Kast_Backtrace_get_boxed();
+#else
+    claimed->state = Kast_Claimed_State_Moved;
+#endif
 }
 
-typedef enum {
-    Kast_Claimed_State_Moved,
-    Kast_Claimed_State_Owned
-} Kast_Claimed_State;
-
 Kast_Claimed_State Kast_Claimed_drop(Kast_Claimed claimed) {
+#ifdef KAST_DEBUG
     if (claimed.trace != NULL) {
         Kast_Backtrace_drop_boxed(claimed.trace);
         return Kast_Claimed_State_Moved;
     } else {
         return Kast_Claimed_State_Owned;
     }
+#else
+    return claimed.state;
+#endif
 }
 
 noreturn void Kast_match_non_exhaustive() {
@@ -590,7 +607,7 @@ void* Kast_reallocate_array(
     return result;
 }
 
-void Kast_free(void* memory) {
+void Kast_free(const void* memory) {
 #ifdef USE_GC
     GC_FREE(memory);
 #else
