@@ -1346,7 +1346,7 @@ typedef struct Context Context;
     typedef struct {                                                           \
         void* captured;                                                        \
         TypeInfo* captured_TypeInfo;                                           \
-        Ret (*f)(Context*, void* __VA_OPT__(, ) __VA_ARGS__);                  \
+        Ret (*f)(Context*, void*, ##__VA_ARGS__);                              \
     } name;                                                                    \
                                                                                \
     name name##_claim(name* place) {                                           \
