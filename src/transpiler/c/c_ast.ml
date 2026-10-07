@@ -292,7 +292,8 @@ module Print = struct
       write label
     | GotoLabel label ->
       write label;
-      write ":"
+      write ":";
+      write "0;"
     | For { body } ->
       write "for(;;) ";
       print_block body

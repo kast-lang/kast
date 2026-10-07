@@ -1,2 +1,3 @@
-let x = Box_new(123);
-x; x^;
+let x :: Int32 = 69;
+@native ''printf("usual printf: %d\\n", \(x))'';
+println!("\(x)");

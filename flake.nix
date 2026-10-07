@@ -179,6 +179,7 @@
             clang_22
             boehmgc
             libbacktrace
+            tinycc
           ]);
           # Since I dont have cmake or whatever
           CLANGD_FLAGS = "--query-driver=${pkgs.clang_22}/bin/clang*";
