@@ -1224,9 +1224,18 @@ module Impl = struct
     ty.variants |> Row.await_inferred_to_list |> List.length > 0
 
   and uninitialized (ty : C_ast.ty) : C_ast.expr =
-    match ty with
-    | T_Unit -> E_Pure Pure_Unit
-    | _ -> E_Pure (Pure_Compound { ty; fields = [] })
+    let var = gen_name "uninitialized" in
+    let_c_var ty var None;
+    (* memset prevents UB? *)
+    insert_stmt
+      (S_Native
+         [ N_Raw "memset(&"; N_Raw var; N_Raw ", 0, sizeof("; N_Raw var; N_Raw "))" ]);
+    E_Pure (Pure_Copy (P_Ident var))
+  (* match ty with *)
+  (* | T_Unit -> E_Pure Pure_Unit *)
+  (* | _ -> E_Pure (Pure_Compound { ty; fields = [] }) *)
+  (* (ty){0} -- empty initializer is not supported by tcc *)
+  (* | _ -> E_Native [ N_Raw ("(" ^ ty_to_string ty ^ "){0}") ] *)
 
   and mono_value (value : value) : value =
     profile "mono_value" (fun () ->
