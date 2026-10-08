@@ -25,7 +25,7 @@ let allocation_stats = ref false
 let boxed_structs = ref false
 
 let tuple_place_to_data_place place : C_ast.place_expr =
-  if !boxed_structs then P_Deref (E_Copy place) else place
+  if !boxed_structs then P_Deref (Pure_Copy place) else place
 ;;
 
 let tuple_place var : C_ast.place_expr = tuple_place_to_data_place (P_Ident var)
@@ -239,69 +239,73 @@ module Impl = struct
          ; value = E_Native [ N_Raw ("Kast_allocate(&" ^ ty_info_name ^ ")") ]
          })
 
+  and make_pure (ty : C_ast.ty) (expr : C_ast.expr) (temp_var_name_prefix : string)
+    : C_ast.pure_expr
+    =
+    match expr with
+    | E_Pure expr -> expr
+    | _ ->
+      let name = gen_name temp_var_name_prefix in
+      insert_stmt (S_Comment "pure");
+      let_c_var ty name (Some expr);
+      Pure_Copy (P_Ident name)
+
   and insert_drop (kast_ty : ty) (value : C_ast.expr) : unit =
+    let value = make_pure (transpile_ty kast_ty) value "to_drop" in
     insert_stmt
-      (S_Expr (E_Apply { f = E_Copy (P_Ident (generate_drop kast_ty)); args = [ value ] }))
+      (S_Expr
+         (E_Apply { f = Pure_Copy (P_Ident (generate_drop kast_ty)); args = [ value ] }))
 
-  and declare_var ?(drop : bool = false) (kast_ty : ty) (name : string) : unit =
-    let ty = transpile_ty kast_ty in
-    insert_stmt (S_DeclareVar { name; ty });
-    if drop then defer (fun () -> insert_drop kast_ty (E_Copy (P_Ident name)))
-
-  and declare_c_var (ty : C_ast.ty) (name : string) : unit =
-    insert_stmt (S_DeclareVar { name; ty })
-
-  and let_c_var (ty : C_ast.ty) (name : string) (value : C_ast.expr) : unit =
-    declare_c_var ty name;
-    insert_stmt (S_Assign { assignee = P_Ident name; value })
-
-  and let_var ?(drop : bool = true) (kast_ty : ty) (name : string) (value : C_ast.expr)
+  and let_var
+        ?(drop : bool = true)
+        (kast_ty : ty)
+        (name : string)
+        (value : C_ast.expr option)
     : unit
     =
-    declare_var ~drop kast_ty name;
-    insert_stmt (S_Assign { assignee = P_Ident name; value })
+    let ty = transpile_ty kast_ty in
+    insert_stmt (S_DeclareVar { name; ty; value });
+    if drop then defer (fun () -> insert_drop kast_ty (E_Pure (Pure_Copy (P_Ident name))))
+
+  and let_c_var (ty : C_ast.ty) (name : string) (value : C_ast.expr option) : unit =
+    insert_stmt (S_DeclareVar { name; ty; value })
 
   and c_compound_literal (ty : C_ast.ty) (fields : (string * C_ast.expr) list)
     : C_ast.expr
     =
-    let result_name = gen_name "compound" in
-    declare_c_var ty result_name;
-    fields
-    |> List.iter (fun (name, value) ->
-      insert_stmt
-        (S_Assign
-           { assignee =
-               P_Field
-                 { obj =
-                     (if !boxed_structs
-                      then P_Deref (E_Copy (P_Ident result_name))
-                      else P_Ident result_name)
-                 ; field = name
-                 }
-           ; value
-           }));
-    E_Copy (P_Ident result_name)
+    let rec all_fields_pure (fields : (string * C_ast.expr) list)
+      : C_ast.field_initializer list option
+      =
+      match fields with
+      | [] -> Some []
+      | (name, E_Pure value) :: rest ->
+        let* rest = all_fields_pure rest in
+        Some (({ name; value } : C_ast.field_initializer) :: rest)
+      | _ -> None
+    in
+    match all_fields_pure fields with
+    | Some fields -> E_Pure (Pure_Compound { ty; fields })
+    | None ->
+      let result_name = gen_name "compound" in
+      let_c_var ty result_name None;
+      fields
+      |> List.iter (fun (name, value) ->
+        insert_stmt
+          (S_Assign
+             { assignee =
+                 P_Field
+                   { obj =
+                       (if !boxed_structs
+                        then P_Deref (Pure_Copy (P_Ident result_name))
+                        else P_Ident result_name)
+                   ; field = name
+                   }
+             ; value
+             }));
+      E_Pure (Pure_Copy (P_Ident result_name))
 
   and compound_literal (kast_ty : ty) (fields : (string * C_ast.expr) list) : C_ast.expr =
-    let result_name = gen_name "compound" in
-    declare_var kast_ty result_name ~drop:false;
-    if !boxed_structs
-    then malloc_typed_ptr ~boxed:!boxed_structs kast_ty (P_Ident result_name);
-    fields
-    |> List.iter (fun (name, value) ->
-      insert_stmt
-        (S_Assign
-           { assignee =
-               P_Field
-                 { obj =
-                     (if !boxed_structs
-                      then P_Deref (E_Copy (P_Ident result_name))
-                      else P_Ident result_name)
-                 ; field = name
-                 }
-           ; value
-           }));
-    E_Copy (P_Ident result_name)
+    c_compound_literal (transpile_ty kast_ty) fields
 
   and with_new_scope : 'a. (unit -> 'a) -> 'a =
     fun f ->
@@ -332,12 +336,13 @@ module Impl = struct
     with
     | effect GetCurrentBlock, k -> Effect.continue k block
 
-  and declare_binding (binding : binding) (value : C_ast.expr) : unit =
+  and let_binding (binding : binding) (value : C_ast.expr) : unit =
     match Effect.perform GetBindingModuleMap |> Id.Map.find_opt binding.id with
     | Some _ -> insert_stmt (S_Assign { assignee = lookup_binding binding; value })
     | None ->
       let ident = binding_name binding in
-      let_var binding.ty ident value
+      insert_stmt (S_Comment (make_string "let %s" (binding_name binding)));
+      let_var binding.ty ident (Some value)
 
   and ident_place (name : string) : C_ast.place_expr = get_actual_place (P_Ident name)
 
@@ -379,7 +384,10 @@ module Impl = struct
             let_var
               expr.data.signature.ty
               var
-              (value |> Option.unwrap_or_else (fun () -> C_ast.E_Unit));
+              (Some
+                 (match value with
+                  | None -> E_Pure Pure_Unit
+                  | Some value -> value));
             P_Ident var
           | _ -> transpile_place_expr expr)
        | Types.PE_Field { obj; field; field_span = _ } ->
@@ -390,21 +398,23 @@ module Impl = struct
            | Types.Expr _ -> failwith __LOC__
          in
          let obj = transpile_place_expr obj in
-         P_Field { obj = (if !boxed_structs then P_Deref (E_Copy obj) else obj); field }
+         P_Field
+           { obj = (if !boxed_structs then P_Deref (Pure_Copy obj) else obj); field }
        | Types.PE_Deref expr ->
          (match expr.data.signature.ty |> Ty.await_inferred with
           | T_Box boxed_ty ->
             P_Deref
-              (E_Apply
-                 { f =
-                     E_Copy
-                       (P_Ident ("Box_" ^ ty_to_string (transpile_ty boxed_ty) ^ "_deref"))
-                 ; args = [ E_AddrOf (transpile_place_expr expr) ]
-                 })
-          | _ -> P_Deref (E_Copy (transpile_place_expr expr)))
+              (Pure_Native
+                 [ N_Raw "Box_"
+                 ; N_Raw (ty_to_string (transpile_ty boxed_ty))
+                 ; N_Raw "_deref("
+                 ; N_Interpolated (Pure_AddrOf (transpile_place_expr expr))
+                 ; N_Raw ")"
+                 ])
+          | _ -> P_Deref (Pure_Copy (transpile_place_expr expr)))
        | Types.PE_Temp expr ->
          let var = gen_name "temp" in
-         let_var expr.data.signature.ty var (transpile_expr expr);
+         let_var expr.data.signature.ty var (Some (transpile_expr expr));
          P_Ident var
        | Types.PE_Error -> fail "transpiling error place expr")
 
@@ -495,13 +505,14 @@ module Impl = struct
               (S_Assign
                  { assignee =
                      P_Deref
-                       (E_Cast { value = E_Copy (P_Ident "result"); target = T_Ptr ty })
+                       (Pure_Cast
+                          { value = Pure_Copy (P_Ident "result"); target = T_Ptr ty })
                  ; value =
                      E_Apply
-                       { f = E_Copy (P_Ident claim_name)
+                       { f = Pure_Copy (P_Ident claim_name)
                        ; args =
-                           [ E_Cast
-                               { value = E_Copy (P_Ident "place"); target = T_Ptr ty }
+                           [ Pure_Cast
+                               { value = Pure_Copy (P_Ident "place"); target = T_Ptr ty }
                            ]
                        }
                  }))
@@ -523,155 +534,151 @@ module Impl = struct
             | None -> fail "can't generate_claim_impl for not inferred"
             | Some ty -> ty
           in
-          let copy : C_ast.expr = E_Copy (P_Deref (E_Copy (P_Ident arg_name))) in
-          let result =
-            match ty with
-            | Types.T_Unit -> copy
-            | Types.T_Bool -> copy
-            | Types.T_Int32 -> copy
-            | Types.T_UInt32 -> copy
-            | Types.T_Int64 -> copy
-            | Types.T_UInt64 -> copy
-            | Types.T_Float32 -> copy
-            | Types.T_Float64 -> copy
-            | Types.T_StringView -> copy
-            | Types.T_String ->
-              E_Apply
-                { f = E_Native [ N_Raw "String_claim" ]
-                ; args = [ E_Copy (P_Ident arg_name) ]
-                }
-            | Types.T_Char -> copy
-            | Types.T_Box boxed ->
-              E_Apply
-                { f =
-                    E_Native
-                      [ N_Raw "Box_"
-                      ; N_Raw (ty_to_string (transpile_ty boxed))
-                      ; N_Raw "_claim"
-                      ]
-                ; args = [ E_Copy (P_Ident arg_name) ]
-                }
-            | Types.T_Ref _ -> copy
-            | Types.T_Variant variant ->
-              (match variant.variants |> Row.await_inferred_to_list with
-               | [] -> copy
-               | variants ->
-                 let var = gen_name "claimed" in
-                 declare_var ty_ty var ~drop:false;
-                 insert_stmt
-                   (S_Switch
-                      { value =
-                          E_Copy
-                            (P_Field
-                               { obj = P_Deref (E_Copy (P_Ident arg_name))
-                               ; field = "tag"
-                               })
-                      ; cases =
-                          variants
-                          |> List.map
-                               (fun
-                                   ((label, data) : Label.t * Types.ty_variant_data)
-                                    : C_ast.switch_case
-                                  ->
-                                  let tag =
-                                    C_ast.E_Copy (P_Ident (variant_tag_name ty_ty label))
-                                  in
-                                  { value = tag
-                                  ; body =
-                                      new_block (fun () ->
-                                        insert_stmt
-                                          (S_Assign
-                                             { assignee =
-                                                 P_Field
-                                                   { obj = P_Ident var; field = "tag" }
-                                             ; value = tag
-                                             });
-                                        match data.data with
-                                        | None -> ()
-                                        | Some data ->
-                                          insert_stmt
-                                            (S_Assign
-                                               { assignee =
-                                                   P_Field
+          let copy : C_ast.expr =
+            E_Pure (Pure_Copy (P_Deref (Pure_Copy (P_Ident arg_name))))
+          in
+          with_return (fun { return } ->
+            let result =
+              match ty with
+              | Types.T_Unit -> copy
+              | Types.T_Bool -> copy
+              | Types.T_Int32 -> copy
+              | Types.T_UInt32 -> copy
+              | Types.T_Int64 -> copy
+              | Types.T_UInt64 -> copy
+              | Types.T_Float32 -> copy
+              | Types.T_Float64 -> copy
+              | Types.T_StringView -> copy
+              | Types.T_String ->
+                E_Apply
+                  { f = Pure_Native [ N_Raw "String_claim" ]
+                  ; args = [ Pure_Copy (P_Ident arg_name) ]
+                  }
+              | Types.T_Char -> copy
+              | Types.T_Box boxed ->
+                E_Apply
+                  { f =
+                      Pure_Native
+                        [ N_Raw "Box_"
+                        ; N_Raw (ty_to_string (transpile_ty boxed))
+                        ; N_Raw "_claim"
+                        ]
+                  ; args = [ Pure_Copy (P_Ident arg_name) ]
+                  }
+              | Types.T_Ref _ -> copy
+              | Types.T_Variant variant ->
+                (match variant.variants |> Row.await_inferred_to_list with
+                 | [] -> copy
+                 | variants ->
+                   insert_stmt
+                     (S_Switch
+                        { value =
+                            E_Pure
+                              (Pure_Copy
+                                 (P_Field
+                                    { obj = P_Deref (Pure_Copy (P_Ident arg_name))
+                                    ; field = "tag"
+                                    }))
+                        ; cases =
+                            variants
+                            |> List.map
+                                 (fun
+                                     ((label, data) : Label.t * Types.ty_variant_data)
+                                      : C_ast.switch_case
+                                    ->
+                                    let tag =
+                                      C_ast.Pure_Copy
+                                        (P_Ident (variant_tag_name ty_ty label))
+                                    in
+                                    { value = tag
+                                    ; body =
+                                        new_block (fun () ->
+                                          let fields : (string * C_ast.expr) list =
+                                            [ "tag", E_Pure tag ]
+                                          in
+                                          let fields =
+                                            match data.data with
+                                            | None -> fields
+                                            | Some data ->
+                                              let data_value =
+                                                claim_c
+                                                  (P_Field
                                                      { obj =
                                                          P_Field
-                                                           { obj = P_Ident var
+                                                           { obj =
+                                                               P_Deref
+                                                                 (Pure_Copy
+                                                                    (P_Ident arg_name))
                                                            ; field = "data"
                                                            }
                                                      ; field =
                                                          make_correct_ident
                                                            (Label.get_name label)
-                                                     }
-                                               ; value =
-                                                   claim_c
-                                                     (P_Field
-                                                        { obj =
-                                                            P_Field
-                                                              { obj =
-                                                                  P_Deref
-                                                                    (E_Copy
-                                                                       (P_Ident arg_name))
-                                                              ; field = "data"
-                                                              }
-                                                        ; field =
-                                                            make_correct_ident
-                                                              (Label.get_name label)
-                                                        })
-                                                     data
-                                               }))
-                                  })
-                      ; default = None
-                      });
-                 E_Copy (P_Ident var))
-            | Types.T_Tuple tuple ->
-              compound_literal
-                ty_ty
-                (tuple.tuple
-                 |> Tuple.to_seq
-                 |> List.of_seq
-                 |> List.map
-                      (fun
-                          ((member, field) : Tuple.member * Types.ty_tuple_field)
-                           : (string * C_ast.expr)
-                         ->
-                         ( member_name member
-                         , E_Apply
-                             { f = E_Copy (P_Ident (generate_claim field.ty))
-                             ; args =
-                                 [ E_AddrOf
-                                     (P_Field
-                                        { obj = P_Deref (E_Copy (P_Ident arg_name))
-                                        ; field = member_name member
-                                        })
-                                 ]
-                             } )))
-            | Types.T_List _ ->
-              E_Apply
-                { f =
-                    E_Native [ N_Raw (ty_to_string (transpile_ty ty_ty)); N_Raw "_claim" ]
-                ; args = [ E_Copy (P_Ident arg_name) ]
-                }
-            | Types.T_Ty -> copy
-            | Types.T_Fn { is_closure; _ } ->
-              if is_closure |> Inference.await_inferred_simple
-              then
+                                                     })
+                                                  data
+                                              in
+                                              fields
+                                              @ [ ( "data." ^ Label.get_name label
+                                                  , data_value )
+                                                ]
+                                          in
+                                          insert_stmt
+                                            (S_Return (compound_literal ty_ty fields)))
+                                    })
+                        ; default = None
+                        });
+                   return ())
+              | Types.T_Tuple tuple ->
+                compound_literal
+                  ty_ty
+                  (tuple.tuple
+                   |> Tuple.to_seq
+                   |> List.of_seq
+                   |> List.map
+                        (fun
+                            ((member, field) : Tuple.member * Types.ty_tuple_field)
+                             : (string * C_ast.expr)
+                           ->
+                           ( member_name member
+                           , E_Apply
+                               { f = Pure_Copy (P_Ident (generate_claim field.ty))
+                               ; args =
+                                   [ Pure_AddrOf
+                                       (P_Field
+                                          { obj = P_Deref (Pure_Copy (P_Ident arg_name))
+                                          ; field = member_name member
+                                          })
+                                   ]
+                               } )))
+              | Types.T_List _ ->
                 E_Apply
-                  { f = E_Copy (P_Ident (ty_to_string (transpile_ty ty_ty) ^ "_claim"))
-                  ; args = [ E_Copy (P_Ident arg_name) ]
+                  { f =
+                      Pure_Native
+                        [ N_Raw (ty_to_string (transpile_ty ty_ty)); N_Raw "_claim" ]
+                  ; args = [ Pure_Copy (P_Ident arg_name) ]
                   }
-              else copy
-            | Types.T_Generic _ -> copy
-            | Types.T_Ast -> copy
-            | Types.T_UnwindToken _ -> copy
-            | Types.T_Target -> copy
-            | Types.T_ContextTy -> copy
-            | Types.T_ImplicitContext -> copy
-            | Types.T_CompilerScope -> copy
-            | Types.T_Opaque _ -> copy
-            | Types.T_Blocked _ -> copy
-            | Types.T_Error -> copy
-          in
-          insert_stmt (S_Return result))
+              | Types.T_Ty -> copy
+              | Types.T_Fn { is_closure; _ } ->
+                if is_closure |> Inference.await_inferred_simple
+                then
+                  E_Apply
+                    { f =
+                        Pure_Copy (P_Ident (ty_to_string (transpile_ty ty_ty) ^ "_claim"))
+                    ; args = [ Pure_Copy (P_Ident arg_name) ]
+                    }
+                else copy
+              | Types.T_Generic _ -> copy
+              | Types.T_Ast -> copy
+              | Types.T_UnwindToken _ -> copy
+              | Types.T_Target -> copy
+              | Types.T_ContextTy -> copy
+              | Types.T_ImplicitContext -> copy
+              | Types.T_CompilerScope -> copy
+              | Types.T_Opaque _ -> copy
+              | Types.T_Blocked _ -> copy
+              | Types.T_Error -> copy
+            in
+            insert_stmt (S_Return result)))
     }
 
   and generate_dbg_write (ty : ty) : string =
@@ -737,10 +744,11 @@ module Impl = struct
             insert_stmt
               (S_Expr
                  (E_Apply
-                    { f = E_Copy (P_Ident dbg_write_name)
+                    { f = Pure_Copy (P_Ident dbg_write_name)
                     ; args =
-                        [ E_Cast { value = E_Copy (P_Ident "value"); target = T_Ptr ty }
-                        ; E_Copy (P_Ident "fmt")
+                        [ Pure_Cast
+                            { value = Pure_Copy (P_Ident "value"); target = T_Ptr ty }
+                        ; Pure_Copy (P_Ident "fmt")
                         ]
                     })))
       }
@@ -766,7 +774,7 @@ module Impl = struct
             | None -> fail "can't generate_dbg_write_impl for not inferred"
             | Some ty -> ty
           in
-          let printf (f : string) (args : C_ast.expr list) =
+          let printf (f : string) (args : C_ast.pure_expr list) =
             insert_stmt
               (S_Native
                  ([ C_ast.N_Raw "Kast_Formatter_printf(fmt, "
@@ -787,13 +795,15 @@ module Impl = struct
           let dec_indent () =
             insert_stmt (S_Native [ N_Raw "Kast_Formatter_dec_indent(fmt)" ])
           in
-          let printf_primitive f = printf f [ E_Copy (P_Deref (E_Copy (P_Ident var))) ] in
+          let printf_primitive f =
+            printf f [ Pure_Copy (P_Deref (Pure_Copy (P_Ident var))) ]
+          in
           match ty with
           | Types.T_Unit -> printf "()" []
           | Types.T_Bool ->
             insert_stmt
               (S_If
-                 { cond = E_Copy (P_Ident var)
+                 { cond = E_Pure (Pure_Copy (P_Ident var))
                  ; then_case = new_block (fun () -> printf "true" [])
                  ; else_case = Some (new_block (fun () -> printf "false" []))
                  })
@@ -807,44 +817,44 @@ module Impl = struct
             insert_stmt
               (S_Expr
                  (E_Apply
-                    { f = E_Native [ N_Raw "StringView_dbg_write" ]
-                    ; args = [ E_Copy (P_Ident var); E_Copy (P_Ident fmt_var) ]
+                    { f = Pure_Native [ N_Raw "StringView_dbg_write" ]
+                    ; args = [ Pure_Copy (P_Ident var); Pure_Copy (P_Ident fmt_var) ]
                     }))
           | Types.T_String ->
             insert_stmt
               (S_Expr
                  (E_Apply
-                    { f = E_Native [ N_Raw "String_dbg_write" ]
-                    ; args = [ E_Copy (P_Ident var); E_Copy (P_Ident fmt_var) ]
+                    { f = Pure_Native [ N_Raw "String_dbg_write" ]
+                    ; args = [ Pure_Copy (P_Ident var); Pure_Copy (P_Ident fmt_var) ]
                     }))
           | Types.T_Char ->
             insert_stmt
               (S_Expr
                  (E_Apply
-                    { f = E_Native [ N_Raw "Char_dbg_write" ]
-                    ; args = [ E_Copy (P_Ident var); E_Copy (P_Ident fmt_var) ]
+                    { f = Pure_Native [ N_Raw "Char_dbg_write" ]
+                    ; args = [ Pure_Copy (P_Ident var); Pure_Copy (P_Ident fmt_var) ]
                     }))
           | Types.T_Box boxed ->
             insert_stmt
               (S_Expr
                  (E_Apply
                     { f =
-                        E_Native
+                        Pure_Native
                           [ N_Raw "Box_"
                           ; N_Raw (ty_to_string (transpile_ty boxed))
                           ; N_Raw "_dbg_write"
                           ]
-                    ; args = [ E_Copy (P_Ident var); E_Copy (P_Ident fmt_var) ]
+                    ; args = [ Pure_Copy (P_Ident var); Pure_Copy (P_Ident fmt_var) ]
                     }))
           | Types.T_Ref { mut; referenced } ->
             printf (if IsMutable.await_inferred mut then "&mut " else "&") [];
             insert_stmt
               (S_Expr
                  (E_Apply
-                    { f = E_Copy (P_Ident (generate_dbg_write referenced))
+                    { f = Pure_Copy (P_Ident (generate_dbg_write referenced))
                     ; args =
-                        [ E_Copy (P_Deref (E_Copy (P_Ident var)))
-                        ; E_Copy (P_Ident fmt_var)
+                        [ Pure_Copy (P_Deref (Pure_Copy (P_Ident var)))
+                        ; Pure_Copy (P_Ident fmt_var)
                         ]
                     }))
           | Types.T_Variant variant ->
@@ -854,8 +864,10 @@ module Impl = struct
                insert_stmt
                  (S_Switch
                     { value =
-                        E_Copy
-                          (P_Field { obj = P_Deref (E_Copy (P_Ident var)); field = "tag" })
+                        E_Pure
+                          (Pure_Copy
+                             (P_Field
+                                { obj = P_Deref (Pure_Copy (P_Ident var)); field = "tag" }))
                     ; cases =
                         variants
                         |> List.map
@@ -863,7 +875,8 @@ module Impl = struct
                                  ((label, data) : Label.t * Types.ty_variant_data)
                                   : C_ast.switch_case
                                 ->
-                                { value = E_Copy (P_Ident (variant_tag_name ty_ty label))
+                                { value =
+                                    Pure_Copy (P_Ident (variant_tag_name ty_ty label))
                                 ; body =
                                     new_block (fun () ->
                                       printf (make_string ":%a" Label.print label) [];
@@ -875,16 +888,16 @@ module Impl = struct
                                           (S_Expr
                                              (E_Apply
                                                 { f =
-                                                    E_Copy
+                                                    Pure_Copy
                                                       (P_Ident (generate_dbg_write data))
                                                 ; args =
-                                                    [ E_AddrOf
+                                                    [ Pure_AddrOf
                                                         (P_Field
                                                            { obj =
                                                                P_Field
                                                                  { obj =
                                                                      P_Deref
-                                                                       (E_Copy
+                                                                       (Pure_Copy
                                                                           (P_Ident var))
                                                                  ; field = "data"
                                                                  }
@@ -892,7 +905,7 @@ module Impl = struct
                                                                make_correct_ident
                                                                  (Label.get_name label)
                                                            })
-                                                    ; E_Copy (P_Ident "fmt")
+                                                    ; Pure_Copy (P_Ident "fmt")
                                                     ]
                                                 })))
                                 })
@@ -910,14 +923,14 @@ module Impl = struct
               insert_stmt
                 (S_Expr
                    (E_Apply
-                      { f = E_Copy (P_Ident (generate_dbg_write field.ty))
+                      { f = Pure_Copy (P_Ident (generate_dbg_write field.ty))
                       ; args =
-                          [ E_AddrOf
+                          [ Pure_AddrOf
                               (P_Field
-                                 { obj = P_Deref (E_Copy (P_Ident var))
+                                 { obj = P_Deref (Pure_Copy (P_Ident var))
                                  ; field = member_name member
                                  })
-                          ; E_Copy (P_Ident fmt_var)
+                          ; Pure_Copy (P_Ident fmt_var)
                           ]
                       }));
               printf "," [];
@@ -929,9 +942,9 @@ module Impl = struct
               (S_Expr
                  (E_Apply
                     { f =
-                        E_Copy
+                        Pure_Copy
                           (P_Ident (ty_to_string (transpile_ty ty_ty) ^ "_dbg_write"))
-                    ; args = [ E_Copy (P_Ident var); E_Copy (P_Ident fmt_var) ]
+                    ; args = [ Pure_Copy (P_Ident var); Pure_Copy (P_Ident fmt_var) ]
                     }))
           | Types.T_Ty -> printf "<ty>" []
           | Types.T_Fn { is_closure; _ } ->
@@ -1007,12 +1020,14 @@ module Impl = struct
             insert_stmt
               (S_Expr
                  (E_Apply
-                    { f = E_Copy (P_Ident drop_name)
+                    { f = Pure_Copy (P_Ident drop_name)
                     ; args =
-                        [ E_Copy
+                        [ Pure_Copy
                             (P_Deref
-                               (E_Cast
-                                  { value = E_Copy (P_Ident "value"); target = T_Ptr ty }))
+                               (Pure_Cast
+                                  { value = Pure_Copy (P_Ident "value")
+                                  ; target = T_Ptr ty
+                                  }))
                         ]
                     })))
       }
@@ -1047,8 +1062,8 @@ module Impl = struct
             insert_stmt
               (S_Expr
                  (E_Apply
-                    { f = E_Native [ N_Raw "String_drop" ]
-                    ; args = [ E_Copy (P_Ident var) ]
+                    { f = Pure_Native [ N_Raw "String_drop" ]
+                    ; args = [ Pure_Copy (P_Ident var) ]
                     }))
           | Types.T_Char -> ()
           | Types.T_Box boxed ->
@@ -1056,12 +1071,12 @@ module Impl = struct
               (S_Expr
                  (E_Apply
                     { f =
-                        E_Native
+                        Pure_Native
                           [ N_Raw "Box_"
                           ; N_Raw (ty_to_string (transpile_ty boxed))
                           ; N_Raw "_drop"
                           ]
-                    ; args = [ E_Copy (P_Ident var) ]
+                    ; args = [ Pure_Copy (P_Ident var) ]
                     }))
           | Types.T_Ref _ -> ()
           | Types.T_Variant variant ->
@@ -1070,7 +1085,8 @@ module Impl = struct
              | variants ->
                insert_stmt
                  (S_Switch
-                    { value = E_Copy (P_Field { obj = P_Ident var; field = "tag" })
+                    { value =
+                        E_Pure (Pure_Copy (P_Field { obj = P_Ident var; field = "tag" }))
                     ; cases =
                         variants
                         |> List.map
@@ -1078,7 +1094,8 @@ module Impl = struct
                                  ((label, data) : Label.t * Types.ty_variant_data)
                                   : C_ast.switch_case
                                 ->
-                                { value = E_Copy (P_Ident (variant_tag_name ty_ty label))
+                                { value =
+                                    Pure_Copy (P_Ident (variant_tag_name ty_ty label))
                                 ; body =
                                     new_block (fun () ->
                                       match data.data with
@@ -1088,9 +1105,10 @@ module Impl = struct
                                           (S_Expr
                                              (E_Apply
                                                 { f =
-                                                    E_Copy (P_Ident (generate_drop data))
+                                                    Pure_Copy
+                                                      (P_Ident (generate_drop data))
                                                 ; args =
-                                                    [ E_Copy
+                                                    [ Pure_Copy
                                                         (P_Field
                                                            { obj =
                                                                P_Field
@@ -1112,9 +1130,9 @@ module Impl = struct
               insert_stmt
                 (S_Expr
                    (E_Apply
-                      { f = E_Copy (P_Ident (generate_drop field.ty))
+                      { f = Pure_Copy (P_Ident (generate_drop field.ty))
                       ; args =
-                          [ E_Copy
+                          [ Pure_Copy
                               (P_Field { obj = P_Ident var; field = member_name member })
                           ]
                       })))
@@ -1122,8 +1140,9 @@ module Impl = struct
             insert_stmt
               (S_Expr
                  (E_Apply
-                    { f = E_Copy (P_Ident (ty_to_string (transpile_ty ty_ty) ^ "_drop"))
-                    ; args = [ E_Copy (P_Ident var) ]
+                    { f =
+                        Pure_Copy (P_Ident (ty_to_string (transpile_ty ty_ty) ^ "_drop"))
+                    ; args = [ Pure_Copy (P_Ident var) ]
                     }))
           | Types.T_Ty -> ()
           | Types.T_Fn { is_closure; _ } ->
@@ -1133,8 +1152,10 @@ module Impl = struct
               insert_stmt
                 (S_Expr
                    (E_Apply
-                      { f = E_Copy (P_Ident (ty_to_string (transpile_ty ty_ty) ^ "_drop"))
-                      ; args = [ E_Copy (P_Ident var) ]
+                      { f =
+                          Pure_Copy
+                            (P_Ident (ty_to_string (transpile_ty ty_ty) ^ "_drop"))
+                      ; args = [ Pure_Copy (P_Ident var) ]
                       }))
           | Types.T_Generic _ -> ()
           | Types.T_Ast -> ()
@@ -1240,12 +1261,8 @@ module Impl = struct
 
   and uninitialized (ty : C_ast.ty) : C_ast.expr =
     match ty with
-    | T_Unit -> E_Unit
-    | _ ->
-      let var = gen_name "uninitialized" in
-      insert_stmt (S_DeclareVar { name = var; ty });
-      insert_stmt (S_Native [ N_Raw ("memset(&" ^ var ^ ", 0, sizeof(" ^ var ^ "))") ]);
-      E_Copy (P_Ident var)
+    | T_Unit -> E_Pure Pure_Unit
+    | _ -> E_Pure (Pure_Compound { ty; fields = [] })
 
   and ty_repr (ty : ty) : ty =
     let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
@@ -1480,18 +1497,20 @@ module Impl = struct
     | Types.T_Blocked _ -> failwith __LOC__
     | Types.T_Error -> fail "transpiling error ty"
 
-  and does_match (pattern : pattern) (pure_place_expr : C_ast.place_expr) : C_ast.expr =
+  and does_match (pattern : pattern) (pure_place_expr : C_ast.place_expr)
+    : C_ast.pure_expr
+    =
     match pattern.shape with
-    | Types.P_Placeholder -> E_Literal (L_Bool true)
+    | Types.P_Placeholder -> Pure_Literal (L_Bool true)
     | Types.P_Ref { mut = _; referenced } ->
-      does_match referenced (P_Deref (E_Copy pure_place_expr))
-    | Types.P_Unit -> E_Literal (L_Bool true)
-    | Types.P_Binding _ -> E_Literal (L_Bool true)
+      does_match referenced (P_Deref (Pure_Copy pure_place_expr))
+    | Types.P_Unit -> Pure_Literal (L_Bool true)
+    | Types.P_Binding _ -> Pure_Literal (L_Bool true)
     | Types.P_Tuple { parts; _ } ->
       let unnamed_idx = ref 0 in
       let had_unpack = ref false in
       parts
-      |> List.map (fun (part : pattern Types.tuple_part_of) : C_ast.expr ->
+      |> List.map (fun (part : pattern Types.tuple_part_of) : C_ast.pure_expr ->
         match part with
         | Field { label; field; _ } ->
           let member =
@@ -1508,7 +1527,7 @@ module Impl = struct
             (P_Field
                { obj =
                    (if !boxed_structs
-                    then P_Deref (E_Copy pure_place_expr)
+                    then P_Deref (Pure_Copy pure_place_expr)
                     else pure_place_expr)
                ; field = member_name member
                })
@@ -1518,38 +1537,26 @@ module Impl = struct
            | P_Binding _ -> ()
            | _ -> failwith __LOC__);
           had_unpack := true;
-          E_Literal (L_Bool true))
-      |> List.fold_left (fun a b : C_ast.expr -> E_And (a, b)) (E_Literal (L_Bool true))
+          Pure_Literal (L_Bool true))
+      |> List.fold_left
+           (fun a b : C_ast.pure_expr -> Pure_And (a, b))
+           (Pure_Literal (L_Bool true))
     | Types.P_Variant { label_span = _; label; value } ->
-      let tag_matches : C_ast.expr =
-        E_Equal
-          ( E_Copy (P_Field { obj = pure_place_expr; field = "tag" })
-          , E_Copy (P_Ident (variant_tag_name pattern.data.signature.ty label)) )
+      let tag_matches : C_ast.pure_expr =
+        Pure_Equal
+          ( Pure_Copy (P_Field { obj = pure_place_expr; field = "tag" })
+          , Pure_Copy (P_Ident (variant_tag_name pattern.data.signature.ty label)) )
       in
       (match value with
        | Some value ->
-         let var = gen_name "matches" in
-         let_c_var (T_Raw { c = "bool"; is_primitive = true }) var tag_matches;
-         insert_stmt
-           (S_If
-              { cond = E_Copy (P_Ident var)
-              ; then_case =
-                  new_block (fun () ->
-                    insert_stmt
-                      (S_Assign
-                         { assignee = P_Ident var
-                         ; value =
-                             does_match
-                               value
-                               (P_Field
-                                  { obj =
-                                      P_Field { obj = pure_place_expr; field = "data" }
-                                  ; field = make_correct_ident (Label.get_name label)
-                                  })
-                         }))
-              ; else_case = None
-              });
-         E_Copy (P_Ident var)
+         Pure_And
+           ( tag_matches
+           , does_match
+               value
+               (P_Field
+                  { obj = P_Field { obj = pure_place_expr; field = "data" }
+                  ; field = make_correct_ident (Label.get_name label)
+                  }) )
        | None -> tag_matches)
     | Types.P_Error -> failwith __LOC__
 
@@ -1557,15 +1564,15 @@ module Impl = struct
     match pattern.shape with
     | Types.P_Placeholder -> ()
     | Types.P_Ref { mut = _; referenced } ->
-      pattern_match referenced (P_Deref (E_Copy pure_place_expr))
+      pattern_match referenced (P_Deref (Pure_Copy pure_place_expr))
     | Types.P_Unit -> ()
     | Types.P_Binding { bind_mode; binding } ->
       let value : C_ast.expr =
         match bind_mode with
         | Types.Claim -> claim_c pure_place_expr binding.ty
-        | Types.ByRef { mut = _ } -> E_AddrOf pure_place_expr
+        | Types.ByRef { mut = _ } -> E_Pure (Pure_AddrOf pure_place_expr)
       in
-      declare_binding binding value
+      let_binding binding value
     | Types.P_Tuple { parts; _ } ->
       let unnamed_idx = ref 0 in
       let had_unpack = ref false in
@@ -1587,7 +1594,7 @@ module Impl = struct
             (P_Field
                { obj =
                    (if !boxed_structs
-                    then P_Deref (E_Copy pure_place_expr)
+                    then P_Deref (Pure_Copy pure_place_expr)
                     else pure_place_expr)
                ; field = member_name member
                })
@@ -1709,11 +1716,11 @@ module Impl = struct
             ( binding.id
             , let field : C_ast.place_expr =
                 P_Field
-                  { obj = P_Deref (E_Copy (P_Ident typed_captured_arg_name))
+                  { obj = P_Deref (Pure_Copy (P_Ident typed_captured_arg_name))
                   ; field = binding_name binding
                   }
               in
-              if def.is_move then field else P_Deref (E_Copy field) ))
+              if def.is_move then field else P_Deref (Pure_Copy field) ))
           |> Id.Map.of_list )
     in
     let captured : current_captured =
@@ -1768,18 +1775,18 @@ module Impl = struct
           | Some other -> fail "unknown call convension %S" other
         in
         let body : C_ast.block =
-          let result_var = ref None in
+          let result_var : C_ast.pure_expr option ref = ref None in
           let block =
             new_block (fun () ->
-              let scope : scope = { ctx_place = P_Deref (E_Copy (P_Ident ctx_var)) } in
+              let scope : scope = { ctx_place = P_Deref (Pure_Copy (P_Ident ctx_var)) } in
               args_tuple_ty
               |> Tuple.iter (fun member (field : Types.ty_tuple_field) ->
                 defer (fun () ->
                   insert_stmt
                     (S_Expr
                        (E_Apply
-                          { f = E_Copy (P_Ident (generate_drop field.ty))
-                          ; args = [ E_Copy (P_Ident (member_name member)) ]
+                          { f = Pure_Copy (P_Ident (generate_drop field.ty))
+                          ; args = [ Pure_Copy (P_Ident (member_name member)) ]
                           }))));
               try
                 captured_bindings
@@ -1791,7 +1798,7 @@ module Impl = struct
                    let_c_var
                      (T_Ptr (T_Named captured_ty_name))
                      typed_captured_arg_name
-                     (E_Copy (P_Ident captured_arg_name))
+                     (Some (E_Pure (Pure_Copy (P_Ident captured_arg_name))))
                  | None -> ());
                 let arg_parts =
                   match def.args.pattern.shape with
@@ -1821,7 +1828,7 @@ module Impl = struct
                     in
                     let var = gen_name "packed" in
                     let var_ty = transpile_ty packed.data.signature.ty in
-                    declare_var packed.data.signature.ty var;
+                    let_var packed.data.signature.ty var None;
                     if !boxed_structs
                     then
                       malloc_typed_ptr ~boxed:true packed.data.signature.ty (P_Ident var);
@@ -1842,7 +1849,7 @@ module Impl = struct
                                  { obj = tuple_place var
                                  ; field = member_name packed_member
                                  }
-                           ; value = E_Copy (P_Ident (member_name member))
+                           ; value = E_Pure (Pure_Copy (P_Ident (member_name member)))
                            }));
                     pattern_match packed (P_Ident var));
                 unwind_ctx.cleanup_scope_without_unwind ();
@@ -1851,17 +1858,13 @@ module Impl = struct
                 | Some result ->
                   (match result_ty with
                    | T_Unit | T_Void -> insert_stmt (S_Expr result)
-                   | _ ->
-                     let var = gen_name "fn_result" in
-                     result_var := Some var;
-                     let_c_var result_ty var result)
+                   | _ -> result_var := Some (make_pure result_ty result "fn_result"))
               with
               | effect GetScope, k -> Effect.continue k scope)
           in
           block
           @ (!result_var
-             |> Option.map (fun result_var ->
-               C_ast.S_Return (E_Copy (P_Ident result_var)))
+             |> Option.map (fun result_expr -> C_ast.S_Return (E_Pure result_expr))
              |> Option.to_list)
         in
         let name = gen_name "fn" in
@@ -1904,9 +1907,10 @@ module Impl = struct
               insert_stmt
                 (S_Expr
                    (E_Apply
-                      { f = E_Copy (P_Ident (generate_drop field_ty))
+                      { f = Pure_Copy (P_Ident (generate_drop field_ty))
                       ; args =
-                          [ E_Copy (P_Field { obj = P_Ident "value"; field = field_name })
+                          [ Pure_Copy
+                              (P_Field { obj = P_Ident "value"; field = field_name })
                           ]
                       }))))
       ; comment = None
@@ -1924,11 +1928,11 @@ module Impl = struct
                     (fields
                      |> StringMap.mapi (fun field_name field_ty : C_ast.expr ->
                        E_Apply
-                         { f = E_Copy (P_Ident (generate_claim field_ty))
+                         { f = Pure_Copy (P_Ident (generate_claim field_ty))
                          ; args =
-                             [ E_AddrOf
+                             [ Pure_AddrOf
                                  (P_Field
-                                    { obj = P_Deref (E_Copy (P_Ident "place"))
+                                    { obj = P_Deref (Pure_Copy (P_Ident "place"))
                                     ; field = field_name
                                     })
                              ]
@@ -1942,21 +1946,23 @@ module Impl = struct
     fun () ->
       c_compound_literal
         (T_Raw { c = "TypeInfo"; is_primitive = false })
-        ([ "name", C_ast.E_Literal (L_String struct_name)
-         ; "alignment", C_ast.E_Native [ N_Raw "alignof("; N_Raw struct_name; N_Raw ")" ]
-         ; "size", E_Native [ N_Raw "sizeof("; N_Raw struct_name; N_Raw ")" ]
-         ; "stride", E_Native [ N_Raw "sizeof("; N_Raw struct_name; N_Raw ")" ]
-           (* ; "kind", E_Native { parts = [ N_Raw "TypeInfoKind_raw" ] } *)
-         ; "drop", E_Copy (P_Ident (drop_fn_name ^ "_type_erased"))
-         ; "claim", E_Copy (P_Ident (claim_fn_name ^ "_type_erased"))
-         ]
-         @
-         if !allocation_stats
-         then
-           [ ( "allocation_stats"
-             , C_ast.E_Native [ N_Raw "Kast_type_allocation_stats_new()" ] )
-           ]
-         else [])
+        (([ "name", C_ast.Pure_Literal (L_String struct_name)
+          ; ( "alignment"
+            , C_ast.Pure_Native [ N_Raw "alignof("; N_Raw struct_name; N_Raw ")" ] )
+          ; "size", Pure_Native [ N_Raw "sizeof("; N_Raw struct_name; N_Raw ")" ]
+          ; "stride", Pure_Native [ N_Raw "sizeof("; N_Raw struct_name; N_Raw ")" ]
+            (* ; "kind", E_Native { parts = [ N_Raw "TypeInfoKind_raw" ] } *)
+          ; "drop", Pure_Copy (P_Ident (drop_fn_name ^ "_type_erased"))
+          ; "claim", Pure_Copy (P_Ident (claim_fn_name ^ "_type_erased"))
+          ]
+          @
+          if !allocation_stats
+          then
+            [ ( "allocation_stats"
+              , C_ast.Pure_Native [ N_Raw "Kast_type_allocation_stats_new()" ] )
+            ]
+          else [])
+         |> List.map (fun (name, expr) -> name, C_ast.E_Pure expr))
 
   and make_correct_ident (name : string) : string =
     let result = ref "" in
@@ -1982,6 +1988,7 @@ module Impl = struct
   and transpile_place (place : place) : C_ast.place_expr =
     transpile_value (Interpreter.read_place ~span place)
 
+  (* TODO should be pure_expr? *)
   and transpile_value (value : value) : C_ast.place_expr =
     let ctx = Effect.perform GetCtx in
     let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
@@ -2036,26 +2043,13 @@ module Impl = struct
                   if is_closure && f.captured_ty_name |> Option.is_none
                   then
                     Some
-                      (E_Block
-                         (new_block (fun () ->
-                            let var = gen_name "fn_as_closure" in
-                            insert_stmt
-                              (S_DeclareVar
-                                 { name = var; ty = transpile_ty (Value.ty_of value) });
-                            insert_stmt
-                              (S_Assign
-                                 { assignee =
-                                     P_Field { obj = P_Ident var; field = "captured" }
-                                 ; value = E_Native [ N_Raw "NULL" ]
-                                 });
-                            insert_stmt
-                              (S_Assign
-                                 { assignee = P_Field { obj = P_Ident var; field = "f" }
-                                 ; value = E_Copy (P_Ident f.name)
-                                 });
-                            insert_stmt (S_Expr (E_Copy (P_Ident var))))))
-                  else Some (E_Copy (P_Ident f.name))
-                | V_Generic _ when true -> Some E_Unit
+                      (compound_literal
+                         (Value.ty_of value)
+                         [ "captured", E_Pure (Pure_Native [ N_Raw "NULL" ])
+                         ; "f", E_Pure (Pure_Copy (P_Ident f.name))
+                         ])
+                  else Some (E_Pure (Pure_Copy (P_Ident f.name)))
+                | V_Generic _ when true -> Some (E_Pure Pure_Unit)
                 | V_Generic { fn = { def; captured; _ }; _ } ->
                   (* TODO memoize generics *)
                   let f =
@@ -2065,7 +2059,7 @@ module Impl = struct
                       ~captured:(Some captured)
                       def
                   in
-                  Some (E_Copy (P_Ident f.name))
+                  Some (E_Pure (Pure_Copy (P_Ident f.name)))
                 | _ -> Some (transpile_value_shape shape))
            in
            match value_expr with
@@ -2096,23 +2090,23 @@ module Impl = struct
 
   and transpile_value_shape (shape : Types.value_shape) : C_ast.expr =
     match shape with
-    | V_Unit -> E_Unit
-    | V_Bool x -> E_Literal (L_Bool x)
-    | V_Int32 x | V_UInt32 x -> E_Literal (L_Int32 x)
-    | V_Int64 x | V_UInt64 x -> E_Literal (L_Int64 x)
-    | V_Float64 x | V_Float32 x -> E_Literal (L_Float64 x)
-    | V_Char c -> E_Literal (L_Int32 (Int32.of_int (Uchar.to_int c)))
+    | V_Unit -> E_Pure Pure_Unit
+    | V_Bool x -> E_Pure (Pure_Literal (L_Bool x))
+    | V_Int32 x | V_UInt32 x -> E_Pure (Pure_Literal (L_Int32 x))
+    | V_Int64 x | V_UInt64 x -> E_Pure (Pure_Literal (L_Int64 x))
+    | V_Float64 x | V_Float32 x -> E_Pure (Pure_Literal (L_Float64 x))
+    | V_Char c -> E_Pure (Pure_Literal (L_Int32 (Int32.of_int (Uchar.to_int c))))
     | V_Box _ -> failwith __LOC__
     | V_Ref _ -> failwith __LOC__
     | V_String s ->
       E_Apply
-        { f = E_Native [ N_Raw "String_from_C_StringView" ]
-        ; args = [ E_Literal (L_String s) ]
+        { f = Pure_Native [ N_Raw "String_from_C_StringView" ]
+        ; args = [ Pure_Literal (L_String s) ]
         }
     | V_StringView s ->
       E_Apply
-        { f = E_Native [ N_Raw "StringView_from_C_StringView" ]
-        ; args = [ E_Literal (L_String s) ]
+        { f = Pure_Native [ N_Raw "StringView_from_C_StringView" ]
+        ; args = [ Pure_Literal (L_String s) ]
         }
     | V_Tuple { ty = _; tuple } ->
       let fields =
@@ -2124,8 +2118,9 @@ module Impl = struct
                   : (string * C_ast.expr)
                 ->
                 ( member_name member
-                , C_ast.E_Copy
-                    (transpile_value (field.place |> Interpreter.read_place ~span)) ))
+                , E_Pure
+                    (C_ast.Pure_Copy
+                       (transpile_value (field.place |> Interpreter.read_place ~span))) ))
         |> List.of_seq
       in
       compound_literal (Value.Shape.ty_of shape) fields
@@ -2138,12 +2133,13 @@ module Impl = struct
            let_var
              kast_ty
              var
-             (E_Native
-                [ N_Raw (ty_to_string ty)
-                ; N_Raw "_new(&"
-                ; N_Raw (type_info_name_for element_ty)
-                ; N_Raw ")"
-                ])
+             (Some
+                (E_Native
+                   [ N_Raw (ty_to_string ty)
+                   ; N_Raw "_new(&"
+                   ; N_Raw (type_info_name_for element_ty)
+                   ; N_Raw ")"
+                   ]))
              ~drop:false;
            elements
            |> Dynarray.iter (fun element ->
@@ -2151,36 +2147,29 @@ module Impl = struct
                (S_Native
                   [ N_Raw (ty_to_string ty)
                   ; N_Raw "_push_back("
-                  ; N_Interpolated (E_AddrOf (P_Ident var))
+                  ; N_Interpolated (Pure_AddrOf (P_Ident var))
                   ; N_Raw ", "
-                  ; N_Interpolated (E_Copy (transpile_place element))
+                  ; N_Interpolated (Pure_Copy (transpile_place element))
                   ; N_Raw ")"
                   ]));
-           insert_stmt (S_Expr (E_Copy (P_Ident var)))))
+           insert_stmt (S_Expr (E_Pure (Pure_Copy (P_Ident var))))))
     | V_Variant { label; data; ty = _ } ->
-      E_Block
-        (new_block (fun () ->
-           let ty = Value.Shape.ty_of shape in
-           let var = gen_name "variant" in
-           insert_stmt (S_DeclareVar { name = var; ty = transpile_ty ty });
-           insert_stmt
-             (S_Assign
-                { assignee = P_Field { obj = P_Ident var; field = "tag" }
-                ; value = E_Copy (P_Ident (variant_tag_name ty label))
-                });
-           (match data with
-            | None -> ()
-            | Some data ->
-              insert_stmt
-                (S_Assign
-                   { assignee =
-                       P_Field
-                         { obj = P_Field { obj = P_Ident var; field = "data" }
-                         ; field = make_correct_ident (Label.get_name label)
-                         }
-                   ; value = E_Copy (transpile_place data)
-                   }));
-           insert_stmt (S_Expr (E_Copy (P_Ident var)))))
+      let ty = Value.Shape.ty_of shape in
+      let fields : (string * C_ast.pure_expr) list =
+        [ "tag", Pure_Copy (P_Ident (variant_tag_name ty label)) ]
+      in
+      let fields =
+        match data with
+        | None -> fields
+        | Some data ->
+          fields
+          @ [ ( "data." ^ make_correct_ident (Label.get_name label)
+              , Pure_Copy (transpile_place data) )
+            ]
+      in
+      compound_literal
+        (Value.Shape.ty_of shape)
+        (fields |> List.map (fun (name, expr) -> name, C_ast.E_Pure expr))
     | V_Ty ty -> E_Native [ N_Raw "&"; N_Raw (type_info_name_for ty) ]
     | V_Fn _ | V_Generic _ -> fail "unreachable, we should never compile fns as consts"
     | V_NativeFn f -> fail "transpiling native fn %S at %s" f.name __LOC__
@@ -2189,9 +2178,9 @@ module Impl = struct
     | V_Target _ -> failwith __LOC__
     | V_ContextTy _ ->
       (* TODO maybe? *)
-      E_Unit
+      E_Pure Pure_Unit
     | V_ImplicitContext _ -> failwith __LOC__
-    | V_CompilerScope _ -> E_Unit
+    | V_CompilerScope _ -> E_Pure Pure_Unit
     | V_Opaque _ -> failwith __LOC__
     | V_Blocked _ -> failwith __LOC__
     | V_Error -> failwith __LOC__
@@ -2229,7 +2218,7 @@ module Impl = struct
           in
           let var = gen_name "packed" in
           let var_ty = transpile_ty packed.data.signature.ty in
-          declare_var packed.data.signature.ty var;
+          let_var packed.data.signature.ty var None;
           if !boxed_structs
           then malloc_typed_ptr ~boxed:true packed.data.signature.ty (P_Ident var);
           packed_ty.tuple
@@ -2247,11 +2236,12 @@ module Impl = struct
                  { assignee =
                      P_Field { obj = tuple_place var; field = member_name member }
                  ; value =
-                     E_Copy
-                       (P_Field
-                          { obj = P_Deref (E_Copy pure_place_expr)
-                          ; field = member_name original_member
-                          })
+                     E_Pure
+                       (Pure_Copy
+                          (P_Field
+                             { obj = P_Deref (Pure_Copy pure_place_expr)
+                             ; field = member_name original_member
+                             }))
                  }));
           assign packed (P_Ident var))
     | Types.A_Place place -> assign_to_place place pure_place_expr
@@ -2262,8 +2252,9 @@ module Impl = struct
     let ty = place.data.signature.ty in
     let place = transpile_place_expr place in
     let value = claim_c value ty in
-    insert_drop ty (E_Copy place);
-    insert_stmt (S_Assign { assignee = place; value })
+    let value = make_pure (transpile_ty ty) value "value" in
+    insert_drop ty (E_Pure (Pure_Copy place));
+    insert_stmt (S_Assign { assignee = place; value = E_Pure value })
 
   and call_fn ~(args_is_tuple : bool) (f_expr : expr) (arg : expr) : C_ast.expr option =
     let f_ty =
@@ -2273,10 +2264,10 @@ module Impl = struct
       | _ -> fail "Expected fn, got %a" Ty.print f_expr.data.signature.ty
     in
     let f = transpile_expr f_expr in
-    let args =
+    let args : C_ast.pure_expr list =
       if args_is_tuple
       then (
-        let args : C_ast.expr tuple ref = ref Tuple.empty in
+        let args : C_ast.pure_expr tuple ref = ref Tuple.empty in
         (match arg.shape with
          | E_Constant { value; _ } ->
            let value_tuple =
@@ -2295,17 +2286,16 @@ module Impl = struct
              := !args
                 |> Tuple.add
                      name
-                     (C_ast.E_Copy
+                     (C_ast.Pure_Copy
                         (transpile_value (Interpreter.read_place ~span field.place))))
          | E_Tuple { parts; _ } ->
            parts
            |> List.iter (function
              | (Field { label; field : expr; _ } : _ Types.tuple_part_of) ->
                let name = label |> Option.map Label.get_name in
-               let var = gen_name "arg" in
-               let_var field.data.signature.ty var (transpile_expr field);
-               args
-               := !args |> Tuple.add name (claim_c (P_Ident var) field.data.signature.ty)
+               let arg = transpile_expr field in
+               let arg = make_pure (transpile_ty field.data.signature.ty) arg "arg" in
+               args := !args |> Tuple.add name arg
              | Unpack packed ->
                let packed_ty =
                  packed.data.signature.ty
@@ -2314,18 +2304,21 @@ module Impl = struct
                  |> Option.unwrap
                in
                let var = gen_name "packed" in
-               let_var packed.data.signature.ty var (transpile_expr packed);
+               let_var
+                 packed.data.signature.ty
+                 var
+                 (Some (transpile_expr packed))
+                 ~drop:false;
                packed_ty.tuple
-               |> Tuple.iter (fun member (field : Types.ty_tuple_field) ->
+               |> Tuple.iter (fun member (_field : Types.ty_tuple_field) ->
                  args
                  := !args
                     |> Tuple.add
                          (match member with
                           | Index _ -> None
                           | Name name -> Some name)
-                         (claim_c
-                            (P_Field { obj = tuple_place var; field = member_name member })
-                            field.ty)))
+                         (C_ast.Pure_Copy
+                            (P_Field { obj = tuple_place var; field = member_name member }))))
          | _ -> fail "f args must be tuple");
         let args_ty =
           arg.data.signature.ty
@@ -2337,23 +2330,25 @@ module Impl = struct
         |> Tuple.to_seq
         |> Seq.map
              (fun
-                 ((member, _arg_ty) : Tuple.member * Types.ty_tuple_field) : C_ast.expr ->
-                !args |> Tuple.get member)
+                 ((member, _arg_ty) : Tuple.member * Types.ty_tuple_field)
+                  : C_ast.pure_expr
+                -> !args |> Tuple.get member)
         |> List.of_seq)
-      else [ transpile_expr arg ]
+      else [ make_pure (transpile_ty arg.data.signature.ty) (transpile_expr arg) "arg" ]
     in
     let f, args =
       if f_ty.is_closure |> Inference.await_inferred_simple
       then (
         let f_name = gen_name "f" in
-        let_var f_expr.data.signature.ty f_name f;
-        ( C_ast.E_Copy (P_Field { obj = P_Ident f_name; field = "f" })
-        , [ C_ast.E_Copy (P_Field { obj = P_Ident f_name; field = "captured" }) ] @ args ))
-      else f, args
+        let_var f_expr.data.signature.ty f_name (Some f);
+        ( C_ast.Pure_Copy (P_Field { obj = P_Ident f_name; field = "f" })
+        , [ C_ast.Pure_Copy (P_Field { obj = P_Ident f_name; field = "captured" }) ]
+          @ args ))
+      else make_pure (transpile_ty f_expr.data.signature.ty) f "f", args
     in
     let args =
       match f_ty.call_convention |> Inference.await_inferred_simple with
-      | None -> [ C_ast.E_AddrOf (Effect.perform GetScope).ctx_place ] @ args
+      | None -> [ C_ast.Pure_AddrOf (Effect.perform GetScope).ctx_place ] @ args
       | Some "C" -> args
       | Some other -> fail "unknown conv %S" other
     in
@@ -2362,7 +2357,7 @@ module Impl = struct
     let apply_expr : C_ast.expr = E_Apply { f; args } in
     (match result_ty with
      | T_Unit | T_Void -> insert_stmt (S_Expr apply_expr)
-     | _ -> let_var f_ty.result result_var apply_expr);
+     | _ -> let_var f_ty.result result_var (Some apply_expr));
     insert_stmt
       (S_If
          { cond = E_Native [ N_Raw "are_we_unwinding()" ]
@@ -2470,12 +2465,8 @@ module Impl = struct
     claim_c c_place place.data.signature.ty
 
   and claim_c (c_place : C_ast.place_expr) (ty : ty) : C_ast.expr =
-    let var = gen_name "claimed" in
-    let_c_var
-      (transpile_ty ty)
-      var
-      (E_Apply { f = E_Copy (P_Ident (generate_claim ty)); args = [ E_AddrOf c_place ] });
-    E_Copy (P_Ident var)
+    E_Apply
+      { f = Pure_Copy (P_Ident (generate_claim ty)); args = [ Pure_AddrOf c_place ] }
 
   and execute_expr (expr : expr) : unit =
     match eval_expr expr with
@@ -2495,11 +2486,11 @@ module Impl = struct
         None
       | _ ->
         (match eval_expr expr with
+         | None -> None
          | Some result ->
            let var = gen_name "scope_result" in
-           let_var expr.data.signature.ty var result ~drop:false;
-           Some (C_ast.E_Copy (P_Ident var))
-         | None -> None))
+           let_var expr.data.signature.ty var (Some result) ~drop:false;
+           Some (C_ast.E_Pure (Pure_Copy (P_Ident var)))))
 
   and eval_expr (expr : expr) : C_ast.expr option =
     Log.trace (fun log ->
@@ -2510,8 +2501,10 @@ module Impl = struct
     Inference.Var.setup_default_if_needed expr.data.signature.ty.var;
     try
       match expr.shape with
-      | Types.E_Constant { id = _; value } -> Some (E_Copy (transpile_value value))
-      | Types.E_Ref { mut = _; place } -> Some (E_AddrOf (transpile_place_expr place))
+      | Types.E_Constant { id = _; value } ->
+        Some (E_Pure (Pure_Copy (transpile_value value)))
+      | Types.E_Ref { mut = _; place } ->
+        Some (E_Pure (Pure_AddrOf (transpile_place_expr place)))
       | Types.E_Claim place -> Some (claim place)
       | Types.E_Then { list } ->
         List.fold_left
@@ -2536,7 +2529,11 @@ module Impl = struct
           in
           let result_var = gen_name "closure" in
           insert_stmt
-            (S_DeclareVar { name = result_var; ty = transpile_ty expr.data.signature.ty });
+            (S_DeclareVar
+               { name = result_var
+               ; ty = transpile_ty expr.data.signature.ty
+               ; value = None
+               });
           let captured_arg : C_ast.expr =
             match transpiled_fn.captured_ty_name with
             | None -> E_Native [ N_Raw "NULL" ]
@@ -2547,9 +2544,11 @@ module Impl = struct
               let_c_var
                 (T_Ptr (T_Named captured_ty_name))
                 captured_var_name
-                (E_Native [ N_Raw "malloc(sizeof("; N_Raw captured_ty_name; N_Raw "))" ]);
+                (Some
+                   (E_Native
+                      [ N_Raw "malloc(sizeof("; N_Raw captured_ty_name; N_Raw "))" ]));
               let captured_place : C_ast.place_expr =
-                P_Deref (E_Copy (P_Ident captured_var_name))
+                P_Deref (Pure_Copy (P_Ident captured_var_name))
               in
               transpiled_fn.captured
               |> Id.Map.iter (fun _id (binding : binding) ->
@@ -2560,17 +2559,18 @@ module Impl = struct
                      ; value =
                          (if transpiled_fn.is_move
                           then claim_c (lookup_binding binding) binding.ty
-                          else E_AddrOf (lookup_binding binding))
+                          else E_Pure (Pure_AddrOf (lookup_binding binding)))
                      }));
               insert_stmt
                 (S_Assign
                    { assignee =
                        P_Field { obj = P_Ident result_var; field = "captured_TypeInfo" }
-                   ; value = E_AddrOf (P_Ident (captured_ty_name ^ "_TypeInfo"))
+                   ; value =
+                       E_Pure (Pure_AddrOf (P_Ident (captured_ty_name ^ "_TypeInfo")))
                    });
               if gc
-              then E_Copy (P_Ident captured_var_name)
-              else E_AddrOf (P_Ident captured_var_name)
+              then E_Pure (Pure_Copy (P_Ident captured_var_name))
+              else E_Pure (Pure_AddrOf (P_Ident captured_var_name))
           in
           insert_stmt
             (S_Assign
@@ -2580,14 +2580,14 @@ module Impl = struct
           insert_stmt
             (S_Assign
                { assignee = P_Field { obj = P_Ident result_var; field = "f" }
-               ; value = E_Copy (P_Ident transpiled_fn.name)
+               ; value = E_Pure (Pure_Copy (P_Ident transpiled_fn.name))
                });
-          Some (E_Copy (P_Ident result_var)))
+          Some (E_Pure (Pure_Copy (P_Ident result_var))))
         else (
           let transpiled_fn =
             transpile_fn ~call_convention ~is_closure ~captured:None def
           in
-          Some (E_Copy (P_Ident transpiled_fn.name)))
+          Some (E_Pure (Pure_Copy (P_Ident transpiled_fn.name))))
       | Types.E_Generic { def; _ } ->
         (* TODO memoization? *)
         failwith __LOC__
@@ -2595,7 +2595,7 @@ module Impl = struct
       | Types.E_Tuple { guaranteed_anonymous = _; parts } ->
         let var_name = gen_name "tuple" in
         let var_ty = transpile_ty expr.data.signature.ty in
-        insert_stmt (S_DeclareVar { name = var_name; ty = var_ty });
+        insert_stmt (S_DeclareVar { name = var_name; ty = var_ty; value = None });
         if !boxed_structs
         then malloc_typed_ptr ~boxed:true expr.data.signature.ty (P_Ident var_name);
         let unnamed_idx = ref 0 in
@@ -2625,7 +2625,7 @@ module Impl = struct
               |> Option.unwrap
             in
             let packed_name = gen_name "packed" in
-            let_var packed.data.signature.ty packed_name (transpile_expr packed);
+            let_var packed.data.signature.ty packed_name (Some (transpile_expr packed));
             packed_ty.tuple
             |> Tuple.iter (fun member (field : Types.ty_tuple_field) ->
               let assignee_member =
@@ -2644,25 +2644,31 @@ module Impl = struct
                          ; field = member_name assignee_member
                          }
                    ; value =
-                       E_Copy
-                         (P_Field
-                            { obj = tuple_place packed_name; field = member_name member })
+                       E_Pure
+                         (Pure_Copy
+                            (P_Field
+                               { obj = tuple_place packed_name
+                               ; field = member_name member
+                               }))
                    })));
-        Some (E_Copy (P_Ident var_name))
+        Some (E_Pure (Pure_Copy (P_Ident var_name)))
       | Types.E_Variant { label; value; _ } ->
         let value =
           match value with
           | Some value -> transpile_expr value
-          | None -> E_Unit
+          | None -> E_Pure Pure_Unit
         in
         Some
           (let var = gen_name "variant" in
            insert_stmt
-             (S_DeclareVar { name = var; ty = transpile_ty expr.data.signature.ty });
+             (S_DeclareVar
+                { name = var; ty = transpile_ty expr.data.signature.ty; value = None });
            insert_stmt
              (S_Assign
                 { assignee = P_Field { obj = P_Ident var; field = "tag" }
-                ; value = E_Copy (P_Ident (variant_tag_name expr.data.signature.ty label))
+                ; value =
+                    E_Pure
+                      (Pure_Copy (P_Ident (variant_tag_name expr.data.signature.ty label)))
                 });
            insert_stmt
              (S_Assign
@@ -2673,16 +2679,16 @@ module Impl = struct
                       }
                 ; value
                 });
-           E_Copy (P_Ident var))
+           E_Pure (Pure_Copy (P_Ident var)))
       | Types.E_Apply { f; arg } -> call_fn ~args_is_tuple:true f arg
       | Types.E_InstantiateGeneric _ ->
         let value = Interpreter.eval interpreter expr in
-        Some (E_Copy (transpile_value value))
+        Some (E_Pure (Pure_Copy (transpile_value value)))
       | Types.E_Assign { assignee; value } ->
         assign assignee (transpile_place_expr value);
         None
       | Types.E_Ty _ -> failwith __LOC__
-      | Types.E_Newtype _ -> Some E_Unit
+      | Types.E_Newtype _ -> Some (E_Pure Pure_Unit)
       | Types.E_Native { parts; _ } ->
         with_return (fun { return } : C_ast.expr option ->
           (match parts with
@@ -2704,7 +2710,12 @@ module Impl = struct
               | Raw s -> N_Raw s
               | TyExpr e ->
                 N_Raw (Interpreter.eval_ty interpreter e |> transpile_ty |> ty_to_string)
-              | Expr e -> N_Interpolated (transpile_expr e))
+              | Expr e ->
+                N_Interpolated
+                  (make_pure
+                     (transpile_ty e.data.signature.ty)
+                     (transpile_expr e)
+                     "interpolated"))
           in
           Some (E_Native parts))
       | Types.E_Module { def; bindings } ->
@@ -2716,12 +2727,12 @@ module Impl = struct
         let binding_module_map = !binding_module_map in
         (try
            let var_ty = transpile_ty expr.data.signature.ty in
-           declare_var expr.data.signature.ty var ~drop:false;
+           let_var expr.data.signature.ty var None ~drop:false;
            let module_place : C_ast.place_expr = ident_place var in
            if !boxed_structs
            then malloc_typed_ptr ~boxed:true expr.data.signature.ty module_place;
            execute_expr def;
-           Some (E_Copy module_place)
+           Some (E_Pure (Pure_Copy module_place))
          with
          | effect GetBindingModuleMap, k -> Effect.continue k binding_module_map)
       | Types.E_UseDotStar { bindings; used } ->
@@ -2735,7 +2746,7 @@ module Impl = struct
         (*   let_var *)
         (*     (transpile_ty binding.ty) *)
         (*     (binding_name binding) *)
-        (*     (E_Copy (P_Field { obj = used; field = binding.name.name }))); *)
+        (*     (Pure_Copy (P_Field { obj = used; field = binding.name.name }))); *)
         None
       | Types.E_If { cond; then_case; else_case } ->
         let cond = transpile_expr cond in
@@ -2751,55 +2762,64 @@ module Impl = struct
               (S_Assign { assignee = P_Ident var; value = transpile_expr else_case }))
         in
         insert_stmt
-          (S_DeclareVar { name = var; ty = transpile_ty expr.data.signature.ty });
+          (S_DeclareVar
+             { name = var; ty = transpile_ty expr.data.signature.ty; value = None });
         insert_stmt (S_If { cond; then_case; else_case = Some else_case });
-        Some (E_Copy (P_Ident var))
+        Some (E_Pure (Pure_Copy (P_Ident var)))
       | Types.E_And { lhs; rhs } ->
         let result = gen_name "and_result" in
-        let_c_var (T_Raw { c = "Bool"; is_primitive = true }) result (transpile_expr lhs);
+        let_c_var
+          (T_Raw { c = "Bool"; is_primitive = true })
+          result
+          (Some (transpile_expr lhs));
         insert_stmt
           (S_If
-             { cond = E_Copy (P_Ident result)
+             { cond = E_Pure (Pure_Copy (P_Ident result))
              ; then_case =
                  new_block (fun () ->
                    insert_stmt
                      (S_Assign { assignee = P_Ident result; value = transpile_expr rhs }))
              ; else_case = None
              });
-        Some (E_Copy (P_Ident result))
+        Some (E_Pure (Pure_Copy (P_Ident result)))
       | Types.E_Or { lhs; rhs } ->
         let result = gen_name "or_result" in
-        let_c_var (T_Raw { c = "Bool"; is_primitive = true }) result (transpile_expr lhs);
+        let_c_var
+          (T_Raw { c = "Bool"; is_primitive = true })
+          result
+          (Some (transpile_expr lhs));
         insert_stmt
           (S_If
-             { cond = E_Not (E_Copy (P_Ident result))
+             { cond = E_Pure (Pure_Not (Pure_Copy (P_Ident result)))
              ; then_case =
                  new_block (fun () ->
                    insert_stmt
                      (S_Assign { assignee = P_Ident result; value = transpile_expr rhs }))
              ; else_case = None
              });
-        Some (E_Copy (P_Ident result))
+        Some (E_Pure (Pure_Copy (P_Ident result)))
       | Types.E_Match { value; branches } ->
         let value_var = gen_name "matched" in
         (* TODO panic(not exhaustive) *)
         let_c_var
           (T_Ptr (transpile_ty value.data.signature.ty))
           value_var
-          (E_AddrOf (transpile_place_expr value));
+          (Some (E_Pure (Pure_AddrOf (transpile_place_expr value))));
         let result_var = gen_name "match_result" in
         let end_of_match_label = gen_name "end_of_match" in
         insert_stmt
-          (S_DeclareVar { name = result_var; ty = transpile_ty expr.data.signature.ty });
+          (S_DeclareVar
+             { name = result_var; ty = transpile_ty expr.data.signature.ty; value = None });
         branches
         |> List.iter (fun ({ pattern; body } : Types.expr_match_branch) ->
           insert_stmt
             (S_If
-               { cond = does_match pattern (P_Deref (E_Copy (P_Ident value_var)))
+               { cond =
+                   E_Pure (does_match pattern (P_Deref (Pure_Copy (P_Ident value_var))))
                ; then_case =
                    new_block
                      (fun () ->
-                        pattern_match pattern (P_Deref (E_Copy (P_Ident value_var)));
+                        pattern_match pattern (P_Deref (Pure_Copy (P_Ident value_var)));
                         insert_stmt
                           (S_Assign
                              { assignee = P_Ident result_var
@@ -2811,7 +2831,7 @@ module Impl = struct
                }));
         insert_stmt (S_Native [ N_Raw "Kast_match_non_exhaustive()" ]);
         insert_stmt (S_GotoLabel end_of_match_label);
-        Some (E_Copy (P_Ident result_var))
+        Some (E_Pure (Pure_Copy (P_Ident result_var)))
       | Types.E_QuoteAst _ -> failwith __LOC__
       | Types.E_Loop { body } ->
         insert_stmt (S_For { body = new_block (fun () -> execute_expr body) });
@@ -2824,14 +2844,15 @@ module Impl = struct
         let_var
           token_ty
           token_var
-          (compound_literal
-             token_ty
-             [ "raw", C_ast.E_Native [ N_Raw "RawUnwindToken_new()" ] ]);
+          (Some
+             (compound_literal
+                token_ty
+                [ "raw", C_ast.E_Native [ N_Raw "RawUnwindToken_new()" ] ]));
         let token_ref_var = gen_name "unwindable_token_ref" in
         let_c_var
           (T_Ptr (transpile_ty token_ty))
           token_ref_var
-          (E_AddrOf (P_Ident token_var));
+          (Some (E_Pure (Pure_AddrOf (P_Ident token_var))));
         pattern_match token (P_Ident token_ref_var);
         let result_place : C_ast.place_expr =
           P_Field { obj = tuple_place token_var; field = "value" }
@@ -2855,9 +2876,11 @@ module Impl = struct
           (S_If
              { cond =
                  E_Apply
-                   { f = E_Native [ N_Raw "are_we_unwinding_with" ]
+                   { f = Pure_Native [ N_Raw "are_we_unwinding_with" ]
                    ; args =
-                       [ E_Copy (P_Field { obj = tuple_place token_var; field = "raw" }) ]
+                       [ Pure_Copy
+                           (P_Field { obj = tuple_place token_var; field = "raw" })
+                       ]
                    }
              ; then_case =
                  new_block (fun () ->
@@ -2874,24 +2897,24 @@ module Impl = struct
         (*   } *)
       | Types.E_Unwind { token; value } ->
         let token_var = gen_name "token" in
-        let_var token.data.signature.ty token_var (transpile_expr token);
+        let_var token.data.signature.ty token_var (Some (transpile_expr token));
         (* token->value = value *)
         insert_stmt
           (S_Assign
              { assignee =
                  P_Field
-                   { obj = P_Deref (E_Copy (tuple_place token_var)); field = "value" }
+                   { obj = P_Deref (Pure_Copy (tuple_place token_var)); field = "value" }
              ; value = transpile_expr value
              });
         (* currently_unwinding = token->raw *)
         insert_stmt
           (S_Expr
              (E_Apply
-                { f = E_Native [ N_Raw "start_unwinding" ]
+                { f = Pure_Native [ N_Raw "start_unwinding" ]
                 ; args =
-                    [ E_Copy
+                    [ Pure_Copy
                         (P_Field
-                           { obj = P_Deref (E_Copy (tuple_place token_var))
+                           { obj = P_Deref (Pure_Copy (tuple_place token_var))
                            ; field = "raw"
                            })
                     ]
@@ -2902,25 +2925,27 @@ module Impl = struct
         let value = transpile_expr value in
         let old_var = gen_name "old_ctx" in
         let ctx_place = current_context context_ty in
-        let_var context_ty.ty old_var (E_Copy ctx_place) ~drop:false;
+        let_var context_ty.ty old_var (Some (E_Pure (Pure_Copy ctx_place))) ~drop:false;
         insert_stmt (S_Assign { assignee = ctx_place; value });
         defer (fun () ->
-          insert_drop context_ty.ty (E_Copy ctx_place);
+          insert_drop context_ty.ty (E_Pure (Pure_Copy ctx_place));
           insert_stmt
-            (S_Assign { assignee = ctx_place; value = E_Copy (P_Ident old_var) }));
+            (S_Assign
+               { assignee = ctx_place; value = E_Pure (Pure_Copy (P_Ident old_var)) }));
         None
       | Types.E_LetRefContext new_ref ->
         let new_ctx_var = gen_name "ctx" in
         let_c_var
           (T_Raw { c = "Context*"; is_primitive = false })
           new_ctx_var
-          (transpile_expr new_ref);
-        (Effect.perform GetScope).ctx_place <- P_Deref (E_Copy (P_Ident new_ctx_var));
+          (Some (transpile_expr new_ref));
+        (Effect.perform GetScope).ctx_place <- P_Deref (Pure_Copy (P_Ident new_ctx_var));
         None
       | Types.E_ImplCast _ -> None
       | Types.E_Cast _ ->
         let value = Interpreter.eval interpreter expr in
-        Some (E_Copy (transpile_value value))
+        (* TODO same as const *)
+        Some (E_Pure (Pure_Copy (transpile_value value)))
       | Types.E_TargetDependent target_dependent ->
         let branch =
           Kast_interpreter.find_target_dependent_branch
@@ -2941,128 +2966,6 @@ module Impl = struct
 
   let postprocess () =
     let ctx = Effect.perform GetCtx in
-    let statics_set =
-      ctx.statics
-      |> Dynarray.to_list
-      |> List.map (fun (static : C_ast.static) -> static.name)
-      |> StringSet.of_list
-    in
-    let postprocess_fn (name : string) (fn : C_ast.fn_def) : C_ast.fn_def =
-      let new_body =
-        match !gc_mode with
-        | EscapeAnalyze when false ->
-          let escaping_idents = ref StringSet.empty in
-          let analyzed = ref false in
-          let rec walk_block (block : C_ast.block) : C_ast.block =
-            new_block (fun () ->
-              block |> List.iter (fun stmt -> insert_stmt (walk_stmt stmt)))
-          and walk_native_expr (parts : C_ast.native_expr) : C_ast.native_expr =
-            parts
-            |> List.map (fun (part : C_ast.native_expr_part) : C_ast.native_expr_part ->
-              match part with
-              | N_Interpolated e -> N_Interpolated (walk_expr e)
-              | N_Raw s -> N_Raw s)
-          and walk_place_expr ~(escaping : bool) (place : C_ast.place_expr)
-            : C_ast.place_expr
-            =
-            match place with
-            | C_ast.P_Ident ident ->
-              if !analyzed
-              then (
-                let ident_does_escape = !escaping_idents |> StringSet.contains ident in
-                if ident_does_escape
-                then P_Deref (E_Copy (P_Ident ident))
-                else P_Ident ident)
-              else (
-                if escaping && not (statics_set |> StringSet.contains ident)
-                then escaping_idents := !escaping_idents |> StringSet.add ident;
-                P_Ident ident)
-            | C_ast.P_Native e -> P_Native (walk_native_expr e)
-            | C_ast.P_Field { obj; field : string } ->
-              P_Field { obj = walk_place_expr ~escaping obj; field }
-            | C_ast.P_Deref ptr -> P_Deref (walk_expr ptr)
-            | C_ast.P_Temp e -> P_Temp (walk_expr e)
-          and walk_expr (expr : C_ast.expr) : C_ast.expr =
-            match expr with
-            | E_Unit -> E_Unit
-            | E_Literal literal -> E_Literal literal
-            | E_Native e -> E_Native (walk_native_expr e)
-            | E_Copy place -> E_Copy (walk_place_expr ~escaping:false place)
-            | E_Cast { value; target : C_ast.ty } ->
-              E_Cast { value = walk_expr value; target }
-            | E_AddrOf place -> E_AddrOf (walk_place_expr ~escaping:true place)
-            | E_Not e -> E_Not (walk_expr e)
-            | E_And (a, b) -> E_And (walk_expr a, walk_expr b)
-            | E_Or (a, b) -> E_Or (walk_expr a, walk_expr b)
-            | E_Equal (a, b) -> E_Equal (walk_expr a, walk_expr b)
-            | E_Apply { f; args } ->
-              E_Apply { f = walk_expr f; args = args |> List.map walk_expr }
-            | E_Block b -> E_Block (walk_block b)
-          and walk_stmt (stmt : C_ast.stmt) : C_ast.stmt =
-            match stmt with
-            | S_Native e -> S_Native (walk_native_expr e)
-            | S_Comment c -> S_Comment c
-            | S_DeclareVar { name; ty } ->
-              if !analyzed
-              then
-                if !escaping_idents |> StringSet.contains name
-                then (
-                  insert_stmt (S_DeclareVar { name; ty = T_Ptr ty });
-                  let type_info = (Effect.perform GetCtx).type_infos |> CTyMap.find ty in
-                  insert_stmt
-                    (S_Assign
-                       { assignee = P_Ident name
-                       ; value =
-                           E_Native
-                             [ N_Raw ("Kast_allocate(&" ^ type_info.type_info_name ^ ")")
-                             ]
-                       });
-                  S_Comment (make_string "%s is potentially escaping, so its gc'd" name))
-                else S_DeclareVar { name; ty }
-              else S_DeclareVar { name; ty }
-            | S_Expr e -> S_Expr (walk_expr e)
-            | S_If { cond; then_case; else_case } ->
-              let cond = walk_expr cond in
-              let then_case = walk_block then_case in
-              let else_case = else_case |> Option.map walk_block in
-              S_If { cond; then_case; else_case }
-            | S_Switch { value; cases; default } ->
-              let value = walk_expr value in
-              let cases =
-                cases
-                |> List.map
-                     (fun ({ value; body } : C_ast.switch_case) : C_ast.switch_case ->
-                        let value = walk_expr value in
-                        let body = walk_block body in
-                        { value; body })
-              in
-              let default = default |> Option.map walk_block in
-              S_Switch { value; cases; default }
-            | S_Assign { assignee; value } ->
-              S_Assign
-                { assignee = walk_place_expr ~escaping:false assignee
-                ; value = walk_expr value
-                }
-            | S_Goto { label } -> S_Goto { label }
-            | S_GotoLabel label -> S_GotoLabel label
-            | S_For { body } -> S_For { body = walk_block body }
-            | S_Return e -> S_Return (walk_expr e)
-            | S_ReturnVoid -> S_ReturnVoid
-          in
-          let _ = walk_block fn.body in
-          Log.trace (fun log ->
-            log
-              "escaped from %S: %a"
-              name
-              (List.print String.print)
-              (StringSet.to_list !escaping_idents));
-          analyzed := true;
-          walk_block fn.body
-        | _ -> fn.body
-      in
-      { fn with body = new_body }
-    in
-    let ctx = Effect.perform GetCtx in
     (* let fns = program.fns |> StringMap.mapi postprocess_fn in *)
     ctx.type_infos
     |> CTyMap.iter (fun (ty : C_ast.ty) (type_info : type_info) ->
@@ -3080,21 +2983,23 @@ module Impl = struct
       | _ ->
         c_compound_literal
           (T_Raw { c = "TypeInfo"; is_primitive = false })
-          ([ "name", C_ast.E_Literal (L_String name)
-           ; "alignment", C_ast.E_Native [ N_Raw "alignof("; N_Raw name; N_Raw ")" ]
-           ; "size", E_Native [ N_Raw "sizeof("; N_Raw name; N_Raw ")" ]
-           ; "stride", E_Native [ N_Raw "sizeof("; N_Raw name; N_Raw ")" ]
-           ; "dbg_write", E_Copy (P_Ident (generate_dbg_write kast_ty ^ "_type_erased"))
-           ; "drop", E_Copy (P_Ident (generate_drop kast_ty ^ "_type_erased"))
-           ; "claim", E_Copy (P_Ident (generate_claim kast_ty ^ "_type_erased"))
-           ]
-           @
-           if !allocation_stats
-           then
-             [ ( "allocation_stats"
-               , C_ast.E_Native [ N_Raw "Kast_type_allocation_stats_new()" ] )
-             ]
-           else [])
+          (([ "name", C_ast.Pure_Literal (L_String name)
+            ; "alignment", C_ast.Pure_Native [ N_Raw "alignof("; N_Raw name; N_Raw ")" ]
+            ; "size", Pure_Native [ N_Raw "sizeof("; N_Raw name; N_Raw ")" ]
+            ; "stride", Pure_Native [ N_Raw "sizeof("; N_Raw name; N_Raw ")" ]
+            ; ( "dbg_write"
+              , Pure_Copy (P_Ident (generate_dbg_write kast_ty ^ "_type_erased")) )
+            ; "drop", Pure_Copy (P_Ident (generate_drop kast_ty ^ "_type_erased"))
+            ; "claim", Pure_Copy (P_Ident (generate_claim kast_ty ^ "_type_erased"))
+            ]
+            @
+            if !allocation_stats
+            then
+              [ ( "allocation_stats"
+                , C_ast.Pure_Native [ N_Raw "Kast_type_allocation_stats_new()" ] )
+              ]
+            else [])
+           |> List.map (fun (name, expr) -> name, C_ast.E_Pure expr))
     and construct_ty_type_info (kast_ty : ty) (ty : C_ast.ty) =
       let ctx = Effect.perform GetCtx in
       let raw (raw_ty : string) : C_ast.expr =
@@ -3103,21 +3008,24 @@ module Impl = struct
         else
           c_compound_literal
             (T_Raw { c = "TypeInfo"; is_primitive = false })
-            ([ "name", C_ast.E_Literal (L_String (make_string "%a" Ty.print kast_ty))
-             ; "alignment", C_ast.E_Native [ N_Raw "alignof("; N_Raw raw_ty; N_Raw ")" ]
-             ; "size", E_Native [ N_Raw "sizeof("; N_Raw raw_ty; N_Raw ")" ]
-             ; "stride", E_Native [ N_Raw "sizeof("; N_Raw raw_ty; N_Raw ")" ]
-             ; "dbg_write", E_Copy (P_Ident (generate_dbg_write kast_ty ^ "_type_erased"))
-             ; "drop", E_Copy (P_Ident (generate_drop kast_ty ^ "_type_erased"))
-             ; "claim", E_Copy (P_Ident (generate_claim kast_ty ^ "_type_erased"))
-             ]
-             @
-             if !allocation_stats
-             then
-               [ ( "allocation_stats"
-                 , C_ast.E_Native [ N_Raw "Kast_type_allocation_stats_new()" ] )
-               ]
-             else [])
+            (([ "name", C_ast.Pure_Literal (L_String (make_string "%a" Ty.print kast_ty))
+              ; ( "alignment"
+                , C_ast.Pure_Native [ N_Raw "alignof("; N_Raw raw_ty; N_Raw ")" ] )
+              ; "size", Pure_Native [ N_Raw "sizeof("; N_Raw raw_ty; N_Raw ")" ]
+              ; "stride", Pure_Native [ N_Raw "sizeof("; N_Raw raw_ty; N_Raw ")" ]
+              ; ( "dbg_write"
+                , Pure_Copy (P_Ident (generate_dbg_write kast_ty ^ "_type_erased")) )
+              ; "drop", Pure_Copy (P_Ident (generate_drop kast_ty ^ "_type_erased"))
+              ; "claim", Pure_Copy (P_Ident (generate_claim kast_ty ^ "_type_erased"))
+              ]
+              @
+              if !allocation_stats
+              then
+                [ ( "allocation_stats"
+                  , C_ast.Pure_Native [ N_Raw "Kast_type_allocation_stats_new()" ] )
+                ]
+              else [])
+             |> List.map (fun (name, expr) -> name, C_ast.E_Pure expr))
       in
       match ty with
       | T_Unit -> raw "Unit"
@@ -3257,7 +3165,9 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
   let context_ty_def : C_ast.ty_def option ref = ref None in
   let unwind_ctx : unwind_ctx =
     { insert_unwind =
-        (fun () -> Impl.insert_stmt (S_Return (E_Literal (L_Int32 (Int32.of_int (-1))))))
+        (fun () ->
+          Impl.insert_stmt
+            (S_Return (E_Pure (Pure_Literal (L_Int32 (Int32.of_int (-1)))))))
     ; cleanup_scope_without_unwind = (fun () -> ())
     }
   in
@@ -3273,13 +3183,15 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
           Impl.new_block
             (fun () ->
                Impl.insert_stmt (S_Native [ N_Raw "Kast_init(argc, argv)" ]);
-               Impl.declare_c_var (T_Named "Context") ctx_var;
+               Impl.let_c_var (T_Named "Context") ctx_var None;
                Impl.insert_stmt
-                 (S_Expr (E_Apply { f = E_Copy (P_Ident "KAST_init_statics"); args = [] }));
+                 (S_Expr
+                    (E_Apply { f = Pure_Copy (P_Ident "KAST_init_statics"); args = [] }));
                Impl.execute_expr expr;
                unwind_ctx.cleanup_scope_without_unwind ())
             ~after_cleanup:(fun () ->
-              Impl.insert_stmt (S_Return (E_Literal (L_Int32 (Int32.of_int 0)))))
+              Impl.insert_stmt
+                (S_Return (E_Pure (Pure_Literal (L_Int32 (Int32.of_int 0))))))
       ; comment = None
       }
     in

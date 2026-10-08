@@ -1,3 +1,11 @@
-let x :: Int32 = 69;
-@native ''printf("usual printf: %d\\n", \(x))'';
-println!("\(x)");
+let x = 123;
+let x = &x;
+
+let f = (
+    let f = () => x;
+    f
+);
+
+f();
+f();
+

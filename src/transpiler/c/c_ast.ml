@@ -9,23 +9,36 @@ type literal =
   | L_Char of char
   | L_String of string
 
-and expr =
-  | E_Unit
-  | E_Literal of literal
-  | E_Native of native_expr
-  | E_Copy of place_expr
-  | E_Cast of
-      { value : expr
+and field_initializer =
+  { name : string
+  ; value : pure_expr
+  }
+
+and pure_expr =
+  | Pure_Native of native_expr
+  | Pure_Unit
+  | Pure_AddrOf of place_expr
+  | Pure_Copy of place_expr
+  | Pure_Literal of literal
+  | Pure_Not of pure_expr
+  | Pure_Equal of pure_expr * pure_expr
+  | Pure_And of pure_expr * pure_expr
+  | Pure_Or of pure_expr * pure_expr
+  | Pure_Cast of
+      { value : pure_expr
       ; target : ty
       }
-  | E_AddrOf of place_expr
-  | E_Not of expr
-  | E_And of expr * expr
-  | E_Or of expr * expr
-  | E_Equal of expr * expr
+  | Pure_Compound of
+      { ty : ty
+      ; fields : field_initializer list
+      }
+
+and expr =
+  | E_Pure of pure_expr
+  | E_Native of native_expr
   | E_Apply of
-      { f : expr
-      ; args : expr list
+      { f : pure_expr
+      ; args : pure_expr list
       }
   | E_Block of block
 
@@ -35,6 +48,7 @@ and stmt =
   | S_DeclareVar of
       { name : string
       ; ty : ty
+      ; value : expr option
       }
   | S_Expr of expr
   | S_If of
@@ -58,7 +72,7 @@ and stmt =
   | S_ReturnVoid
 
 and switch_case =
-  { value : expr
+  { value : pure_expr
   ; body : block
   }
 
@@ -74,14 +88,13 @@ and place_expr =
       { obj : place_expr
       ; field : string
       }
-  | P_Deref of expr
-  | P_Temp of expr
+  | P_Deref of pure_expr
 
 and native_expr = native_expr_part list
 
 and native_expr_part =
   | N_Raw of string
-  | N_Interpolated of expr
+  | N_Interpolated of pure_expr
 
 and ty_def_shape =
   | TD_Enum of StringSet.t
@@ -187,13 +200,18 @@ module Print = struct
   let rec need_surround_place_expr (place : place_expr) : bool =
     match place with
     | P_Ident _ -> false
-    | P_Temp expr -> need_surround_expr expr
+    | _ -> true
+
+  and need_surround_pure_expr (expr : pure_expr) : bool =
+    match expr with
+    | Pure_Copy expr -> need_surround_place_expr expr
+    | Pure_Literal _ -> false
     | _ -> true
 
   and need_surround_expr (expr : expr) : bool =
     match expr with
-    | E_Copy expr -> need_surround_place_expr expr
-    | E_Literal _ -> false
+    | E_Pure expr -> need_surround_pure_expr expr
+    | E_Block _ -> true
     | _ -> true
   ;;
 
@@ -238,8 +256,7 @@ module Print = struct
         write field
       | P_Deref expr ->
         write "*";
-        print_expr expr
-      | P_Temp expr -> print_expr expr)
+        print_pure_expr expr)
 
   and print_stmt (stmt : stmt) : unit =
     match stmt with
@@ -248,10 +265,15 @@ module Print = struct
       write "/* ";
       write s;
       write " */"
-    | S_DeclareVar { name; ty } ->
+    | S_DeclareVar { name; ty; value } ->
       print_ty ty;
       write " ";
-      write name
+      write name;
+      (match value with
+       | None -> ()
+       | Some value ->
+         write " = ";
+         print_expr value)
     | S_Expr expr -> print_expr expr
     | S_Switch { value; cases; default } ->
       write "switch (";
@@ -259,9 +281,9 @@ module Print = struct
       write ") {";
       writeln ();
       cases
-      |> List.iter (fun case ->
+      |> List.iter (fun (case : switch_case) ->
         write "case ";
-        print_expr case.value;
+        print_pure_expr case.value;
         write ": ";
         print_block case.body;
         writeln ();
@@ -306,17 +328,18 @@ module Print = struct
     parts
     |> List.iter (function
       | N_Raw s -> write s
-      | N_Interpolated expr -> print_expr expr)
+      | N_Interpolated expr -> print_pure_expr expr)
 
-  and print_expr (expr : expr) : unit =
-    let surround = need_surround_expr expr in
+  and print_pure_expr (expr : pure_expr) : unit =
+    let surround = need_surround_pure_expr expr in
     maybe_surround surround (fun () ->
       match expr with
-      | E_Unit -> write "(Unit){}"
-      | E_Not e ->
+      | Pure_Unit -> write "(Unit){}"
+      | Pure_Native native -> print_native native
+      | Pure_Not e ->
         write "!";
-        print_expr e
-      | E_Literal lit ->
+        print_pure_expr e
+      | Pure_Literal lit ->
         write
           (match lit with
            | L_Bool x -> Bool.to_string x
@@ -325,35 +348,57 @@ module Print = struct
            | L_Float64 x -> Float.to_string x
            | L_Char x -> make_string "%C" x
            | L_String s -> make_string "%a" String.print_debug s)
-      | E_And (a, b) ->
-        print_expr a;
+      | Pure_And (a, b) ->
+        print_pure_expr a;
         write " && ";
-        print_expr b
-      | E_Or (a, b) ->
-        print_expr a;
+        print_pure_expr b
+      | Pure_Or (a, b) ->
+        print_pure_expr a;
         write " || ";
-        print_expr b
-      | E_Equal (a, b) ->
-        print_expr a;
+        print_pure_expr b
+      | Pure_Equal (a, b) ->
+        print_pure_expr a;
         write " == ";
-        print_expr b
-      | E_Copy place -> print_place_expr place
-      | E_AddrOf place ->
+        print_pure_expr b
+      | Pure_Copy place -> print_place_expr place
+      | Pure_AddrOf place ->
         write "&";
         print_place_expr place
-      | E_Native native -> print_native native
-      | E_Cast { value; target } ->
+      | Pure_Cast { value; target } ->
         write "(";
         print_ty target;
         write ")";
-        print_expr value
+        print_pure_expr value
+      | Pure_Compound { ty; fields } ->
+        write "(";
+        print_ty ty;
+        write ") {";
+        inc_indentation ();
+        fields
+        |> List.iteri (fun i (field : field_initializer) ->
+          if i = 0 then writeln ();
+          write ".";
+          write field.name;
+          write " = ";
+          print_pure_expr field.value;
+          write ",";
+          writeln ());
+        dec_indentation ();
+        write "}")
+
+  and print_expr (expr : expr) : unit =
+    let surround = need_surround_expr expr in
+    maybe_surround surround (fun () ->
+      match expr with
+      | E_Pure expr -> print_pure_expr expr
+      | E_Native native -> print_native native
       | E_Apply { f; args } ->
-        print_expr f;
+        print_pure_expr f;
         write "(";
         args
         |> List.iteri (fun i arg ->
           if i <> 0 then write ", ";
-          print_expr arg);
+          print_pure_expr arg);
         write ")"
       | E_Block block -> print_block block)
 
