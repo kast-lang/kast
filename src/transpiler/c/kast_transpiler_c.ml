@@ -447,16 +447,7 @@ module Impl = struct
   and generate_claim (ty : ty) : string =
     let c_ty = transpile_ty ty in
     let ctx = Effect.perform GetCtx in
-    let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
-    Inference.Var.setup_default_if_needed ty.var;
-    let ty =
-      Interpreter.Substitute_bindings.sub_ty
-        ~span
-        ~state:(Interpreter.sub_here interpreter)
-        ty
-    in
-    Inference.Var.setup_default_if_needed ty.var;
-    ty |> Ty.await_inferred |> ignore;
+    let ty = mono_ty ty in
     match ty.var |> Inference.Var.inferred_opt with
     | Some (T_Blocked _value) -> failwith __LOC__
     | _ ->
@@ -683,17 +674,8 @@ module Impl = struct
 
   and generate_dbg_write (ty : ty) : string =
     let ctx = Effect.perform GetCtx in
-    let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
     let c_ty = transpile_ty ty in
-    Inference.Var.setup_default_if_needed ty.var;
-    let ty =
-      Interpreter.Substitute_bindings.sub_ty
-        ~span
-        ~state:(Interpreter.sub_here interpreter)
-        ty
-    in
-    Inference.Var.setup_default_if_needed ty.var;
-    ty |> Ty.await_inferred |> ignore;
+    let ty = mono_ty ty in
     match ty.var |> Inference.Var.inferred_opt with
     | Some (T_Blocked _value) -> failwith __LOC__
     | _ ->
@@ -965,17 +947,8 @@ module Impl = struct
 
   and generate_drop (ty : ty) : string =
     let ctx = Effect.perform GetCtx in
-    let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
     let c_ty = transpile_ty ty in
-    Inference.Var.setup_default_if_needed ty.var;
-    let ty =
-      Interpreter.Substitute_bindings.sub_ty
-        ~span
-        ~state:(Interpreter.sub_here interpreter)
-        ty
-    in
-    Inference.Var.setup_default_if_needed ty.var;
-    ty |> Ty.await_inferred |> ignore;
+    let ty = mono_ty ty in
     match ty.var |> Inference.Var.inferred_opt with
     | Some (T_Blocked _value) -> failwith __LOC__
     | _ ->
@@ -1171,16 +1144,7 @@ module Impl = struct
 
   and transpile_ty (ty : ty) : C_ast.ty =
     let ctx = Effect.perform GetCtx in
-    let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
-    Inference.Var.setup_default_if_needed ty.var;
-    let ty =
-      Interpreter.Substitute_bindings.sub_ty
-        ~span
-        ~state:(Interpreter.sub_here interpreter)
-        ty
-    in
-    Inference.Var.setup_default_if_needed ty.var;
-    ty |> Ty.await_inferred |> ignore;
+    let ty = mono_ty ty in
     match ty.var |> Inference.Var.inferred_opt with
     | None -> fail "transpiling not inferred type %a" Ty.print ty
     | Some (T_Blocked value) -> T_Ptr T_Void
@@ -1264,16 +1228,35 @@ module Impl = struct
     | T_Unit -> E_Pure Pure_Unit
     | _ -> E_Pure (Pure_Compound { ty; fields = [] })
 
-  and ty_repr (ty : ty) : ty =
-    let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
-    Inference.Var.setup_default_if_needed ty.var;
-    let ty =
-      Interpreter.Substitute_bindings.sub_ty
-        ~span
-        ~state:(Interpreter.sub_here interpreter)
-        ty
-    in
-    ty |> Ty.await_inferred |> ty_shape_repr
+  and mono_value (value : value) : value =
+    profile "mono_value" (fun () ->
+      let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
+      Inference.Var.setup_default_if_needed value.var;
+      let value =
+        Interpreter.monomorphized_value
+          ~span
+          ~state:interpreter
+          (Inference.Var.recurse_id value.var)
+          value
+      in
+      Inference.Var.setup_default_if_needed value.var;
+      value)
+
+  and mono_ty (ty : ty) : ty =
+    profile "mono_ty" (fun () ->
+      let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
+      Inference.Var.setup_default_if_needed ty.var;
+      let ty =
+        Interpreter.monomorphized_ty
+          ~span
+          ~state:interpreter
+          (Inference.Var.recurse_id ty.var)
+          ty
+      in
+      Inference.Var.setup_default_if_needed ty.var;
+      ty)
+
+  and ty_repr (ty : ty) : ty = ty |> mono_ty |> Ty.await_inferred |> ty_shape_repr
 
   and ty_shape_repr (ty : Types.ty_shape) : ty =
     let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
@@ -1991,15 +1974,7 @@ module Impl = struct
   (* TODO should be pure_expr? *)
   and transpile_value (value : value) : C_ast.place_expr =
     let ctx = Effect.perform GetCtx in
-    let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
-    Inference.Var.setup_default_if_needed value.var;
-    let value =
-      Interpreter.Substitute_bindings.sub_value
-        ~span
-        ~state:(Interpreter.sub_here interpreter)
-        value
-    in
-    Value.await_inferred value |> ignore;
+    let value = mono_value value in
     match value.var |> Inference.Var.inferred_opt with
     | Some (V_Blocked value) -> failwith __LOC__
     | _ ->

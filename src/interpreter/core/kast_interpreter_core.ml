@@ -555,7 +555,7 @@ and sub_here : state -> Types.sub_state = fun state -> state
 and eval_place : state -> Types.place_expr -> evaled_place_expr =
   fun state expr ->
   try
-    let result_ty = monomorphized_ty ~state expr.data in
+    let result_ty = monomorphized_ir_data_ty ~state expr.data in
     let span = expr.data.span in
     Log.trace (fun log -> log "evaluating place at %a" Span.print span);
     let result =
@@ -616,7 +616,7 @@ and eval_place : state -> Types.place_expr -> evaled_place_expr =
                    |> Ty.inferred ~span
                }
            | Place (~mut:obj_mut, obj) ->
-             let result_ty = monomorphized_ty ~state expr.data in
+             let result_ty = monomorphized_ir_data_ty ~state expr.data in
              get_field ~state ~result_ty ~span ~obj_mut (obj |> read_place ~span) member))
     in
     Log.trace (fun log -> log "evaled place at %a" Span.print span);
@@ -636,15 +636,17 @@ and monomorphized_value ~span ~(state : state) id value : value =
     Hashtbl.add state.monomorphization_state.value id result;
     result
 
-and monomorphized_ty ~state (data : ir_data) : ty =
-  match Hashtbl.find_opt state.monomorphization_state.ty data.id with
+and monomorphized_ty ~span ~(state : state) id ty : ty =
+  match Hashtbl.find_opt state.monomorphization_state.ty id with
   | Some ty -> ty
   | None ->
-    let span = data.span in
-    let ty = Substitute_bindings.sub_ty ~span ~state:(sub_here state) data.signature.ty in
+    let ty = Substitute_bindings.sub_ty ~span ~state:(sub_here state) ty in
     Log.trace (fun log -> log "monomorphized ty at %a = %a" Span.print span Ty.print ty);
-    Hashtbl.add state.monomorphization_state.ty data.id ty;
+    Hashtbl.add state.monomorphization_state.ty id ty;
     ty
+
+and monomorphized_ir_data_ty ~state (data : ir_data) : ty =
+  monomorphized_ty ~span:data.span ~state data.id data.signature.ty
 
 and eval_expr_ref : state -> expr -> Types.expr_ref -> value =
   fun state expr { mut; place } ->
@@ -663,7 +665,7 @@ and eval_expr_claim : state -> expr -> Types.place_expr -> value =
   let span = expr.data.span in
   match eval_place state place with
   | RefBlocked blocked ->
-    let ty = monomorphized_ty ~state expr.data in
+    let ty = monomorphized_ir_data_ty ~state expr.data in
     V_Blocked { shape = BV_ClaimRef blocked; ty } |> Value.inferred ~span
   | Place (~mut:_, place) -> place |> claim ~span
 
@@ -722,7 +724,7 @@ and eval_expr_tuple : state -> expr -> Types.expr_tuple -> value =
   let span = expr.data.span in
   (*  TODO dont panic - get rid of Option.get *)
   let ty =
-    monomorphized_ty ~state expr.data
+    monomorphized_ir_data_ty ~state expr.data
     |> Ty.await_inferred
     |> Ty.Shape.expect_tuple
     |> Option.get
@@ -781,7 +783,7 @@ and eval_expr_variant : state -> expr -> Types.expr_variant -> value =
   let span = expr.data.span in
   (*  TODO dont panic - get rid of Option.get *)
   let ty =
-    (monomorphized_ty ~state expr.data).var
+    (monomorphized_ir_data_ty ~state expr.data).var
     |> Kast_inference_base.Var.inferred_opt
     |> Option.get
     |> Ty.Shape.expect_variant
@@ -834,7 +836,7 @@ and eval_expr_instantiategeneric
   let span = expr.data.span in
   let generic = eval state generic in
   let arg = eval state arg in
-  let result_ty = monomorphized_ty ~state expr.data in
+  let result_ty = monomorphized_ir_data_ty ~state expr.data in
   instantiate ~result_ty span state generic arg
 
 and eval_expr_native : state -> expr -> Types.expr_native -> value =
@@ -851,7 +853,7 @@ and eval_expr_native : state -> expr -> Types.expr_native -> value =
       let span = expr.data.span in
       match StringMap.find_opt native_expr state.natives.by_name with
       | Some f ->
-        let ty = monomorphized_ty ~state expr.data in
+        let ty = monomorphized_ir_data_ty ~state expr.data in
         f ty
       | None ->
         Error.error expr.data.span "no native %a" String.print_debug native_expr;
@@ -882,7 +884,7 @@ and eval_expr_module : state -> expr -> Types.expr_module -> value =
   in
   (*  TODO dont panic - get rid of Option.get *)
   let ty =
-    (monomorphized_ty ~state expr.data).var
+    (monomorphized_ir_data_ty ~state expr.data).var
     |> Kast_inference_base.Var.inferred_opt
     |> Option.get
     |> Ty.Shape.expect_tuple
@@ -996,7 +998,7 @@ and eval_expr_unwindable : state -> expr -> Types.expr_unwindable -> value =
   fun state _expr { token = token_pattern; body } ->
   let id = Id.gen () in
   let token : Types.value_unwind_token =
-    { id; result_ty = monomorphized_ty ~state body.data }
+    { id; result_ty = monomorphized_ir_data_ty ~state body.data }
   in
   let token : value =
     V_UnwindToken token |> Value.inferred ~span:token_pattern.data.span
