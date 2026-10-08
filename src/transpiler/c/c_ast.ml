@@ -2,60 +2,60 @@ open Std
 open Kast_util
 
 type literal =
-  | Bool of bool
-  | Int32 of int32
-  | Int64 of int64
-  | Float64 of float
-  | Char of char
-  | String of string
+  | L_Bool of bool
+  | L_Int32 of int32
+  | L_Int64 of int64
+  | L_Float64 of float
+  | L_Char of char
+  | L_String of string
 
 and expr =
-  | Unit
-  | Literal of literal
+  | E_Unit
+  | E_Literal of literal
   | E_Native of native_expr
-  | Claim of place_expr
-  | Cast of
+  | E_Copy of place_expr
+  | E_Cast of
       { value : expr
       ; target : ty
       }
-  | AddrOf of place_expr
-  | Not of expr
-  | And of expr * expr
-  | Or of expr * expr
-  | Equal of expr * expr
-  | Apply of
+  | E_AddrOf of place_expr
+  | E_Not of expr
+  | E_And of expr * expr
+  | E_Or of expr * expr
+  | E_Equal of expr * expr
+  | E_Apply of
       { f : expr
       ; args : expr list
       }
-  | Block of block
+  | E_Block of block
 
 and stmt =
   | S_Native of native_expr
-  | Comment of string
-  | DeclareVar of
+  | S_Comment of string
+  | S_DeclareVar of
       { name : string
       ; ty : ty
       }
-  | Expr of expr
-  | If of
+  | S_Expr of expr
+  | S_If of
       { cond : expr
       ; then_case : block
       ; else_case : block option
       }
-  | Switch of
+  | S_Switch of
       { value : expr
       ; cases : switch_case list
       ; default : block option
       }
-  | Assign of
+  | S_Assign of
       { assignee : place_expr
       ; value : expr
       }
-  | Goto of { label : string }
-  | GotoLabel of string
-  | For of { body : block }
-  | Return of expr
-  | ReturnVoid
+  | S_Goto of { label : string }
+  | S_GotoLabel of string
+  | S_For of { body : block }
+  | S_Return of expr
+  | S_ReturnVoid
 
 and switch_case =
   { value : expr
@@ -68,37 +68,37 @@ and field =
   }
 
 and place_expr =
-  | Ident of string
+  | P_Ident of string
   | P_Native of native_expr
-  | Field of
+  | P_Field of
       { obj : place_expr
       ; field : string
       }
-  | Deref of expr
-  | Temp of expr
+  | P_Deref of expr
+  | P_Temp of expr
 
-and native_expr = { parts : native_expr_part list }
+and native_expr = native_expr_part list
 
 and native_expr_part =
-  | Raw of string
-  | Interpolated of expr
+  | N_Raw of string
+  | N_Interpolated of expr
 
 and ty_def_shape =
-  | Enum of StringSet.t
-  | Struct of ty StringMap.t
-  | Union of ty StringMap.t
-  | Fn of
+  | TD_Enum of StringSet.t
+  | TD_Struct of ty StringMap.t
+  | TD_Union of ty StringMap.t
+  | TD_Fn of
       { args : ty list
       ; result_ty : ty
       }
-  | Alias of ty
-  | DEF_Raw of
+  | TD_Alias of ty
+  | TD_Raw of
       { def : string
       ; impl : string option
       ; need_declared : ty list
       ; need_completed : ty list
       }
-  | RuntimeDefined of { is_primitive : bool }
+  | TD_RuntimeDefined of { is_primitive : bool }
 
 and ty_def =
   { shape : ty_def_shape
@@ -111,9 +111,9 @@ and ty =
       { c : string
       ; is_primitive : bool
       }
-  | Named of string
-  | Ptr of ty
-  | Void
+  | T_Named of string
+  | T_Ptr of ty
+  | T_Void
 
 and block = stmt list
 
@@ -186,14 +186,14 @@ module Print = struct
 
   let rec need_surround_place_expr (place : place_expr) : bool =
     match place with
-    | Ident _ -> false
-    | Temp expr -> need_surround_expr expr
+    | P_Ident _ -> false
+    | P_Temp expr -> need_surround_expr expr
     | _ -> true
 
   and need_surround_expr (expr : expr) : bool =
     match expr with
-    | Claim expr -> need_surround_place_expr expr
-    | Literal _ -> false
+    | E_Copy expr -> need_surround_place_expr expr
+    | E_Literal _ -> false
     | _ -> true
   ;;
 
@@ -215,11 +215,11 @@ module Print = struct
     match ty with
     | T_Unit -> write "Unit"
     | T_Raw { c; is_primitive = _ } -> write c
-    | Named name -> write name
-    | Ptr referenced ->
+    | T_Named name -> write name
+    | T_Ptr referenced ->
       print_ty referenced;
       write "*"
-    | Void -> write "void"
+    | T_Void -> write "void"
 
   and maybe_surround surround f =
     if surround then write "(";
@@ -230,30 +230,30 @@ module Print = struct
     let surround = need_surround_place_expr expr in
     maybe_surround surround (fun () ->
       match expr with
-      | Ident name -> write name
+      | P_Ident name -> write name
       | P_Native native -> print_native native
-      | Field { obj; field } ->
+      | P_Field { obj; field } ->
         print_place_expr obj;
         write ".";
         write field
-      | Deref expr ->
+      | P_Deref expr ->
         write "*";
         print_expr expr
-      | Temp expr -> print_expr expr)
+      | P_Temp expr -> print_expr expr)
 
   and print_stmt (stmt : stmt) : unit =
     match stmt with
     | S_Native native -> print_native native
-    | Comment s ->
+    | S_Comment s ->
       write "/* ";
       write s;
       write " */"
-    | DeclareVar { name; ty } ->
+    | S_DeclareVar { name; ty } ->
       print_ty ty;
       write " ";
       write name
-    | Expr expr -> print_expr expr
-    | Switch { value; cases; default } ->
+    | S_Expr expr -> print_expr expr
+    | S_Switch { value; cases; default } ->
       write "switch (";
       print_expr value;
       write ") {";
@@ -273,7 +273,7 @@ module Print = struct
          write "default: ";
          print_block block);
       write "}"
-    | If { cond; then_case; else_case } ->
+    | S_If { cond; then_case; else_case } ->
       write "if (";
       print_expr cond;
       write ") ";
@@ -283,71 +283,71 @@ module Print = struct
          write " else ";
          print_block else_case
        | None -> ())
-    | Assign { assignee; value } ->
+    | S_Assign { assignee; value } ->
       print_place_expr assignee;
       write " = ";
       print_expr value
-    | Goto { label } ->
+    | S_Goto { label } ->
       write "goto ";
       write label
-    | GotoLabel label ->
+    | S_GotoLabel label ->
       write label;
       write ":";
       write "0;"
-    | For { body } ->
+    | S_For { body } ->
       write "for(;;) ";
       print_block body
-    | Return value ->
+    | S_Return value ->
       write "return ";
       print_expr value
-    | ReturnVoid -> write "return"
+    | S_ReturnVoid -> write "return"
 
-  and print_native ({ parts } : native_expr) : unit =
+  and print_native (parts : native_expr) : unit =
     parts
     |> List.iter (function
-      | Raw s -> write s
-      | Interpolated expr -> print_expr expr)
+      | N_Raw s -> write s
+      | N_Interpolated expr -> print_expr expr)
 
   and print_expr (expr : expr) : unit =
     let surround = need_surround_expr expr in
     maybe_surround surround (fun () ->
       match expr with
-      | Unit -> write "(Unit){}"
-      | Not e ->
+      | E_Unit -> write "(Unit){}"
+      | E_Not e ->
         write "!";
         print_expr e
-      | Literal lit ->
+      | E_Literal lit ->
         write
           (match lit with
-           | Bool x -> Bool.to_string x
-           | Int32 x -> Int32.to_string x
-           | Int64 x -> Int64.to_string x
-           | Float64 x -> Float.to_string x
-           | Char x -> make_string "%C" x
-           | String s -> make_string "%a" String.print_debug s)
-      | And (a, b) ->
+           | L_Bool x -> Bool.to_string x
+           | L_Int32 x -> Int32.to_string x
+           | L_Int64 x -> Int64.to_string x
+           | L_Float64 x -> Float.to_string x
+           | L_Char x -> make_string "%C" x
+           | L_String s -> make_string "%a" String.print_debug s)
+      | E_And (a, b) ->
         print_expr a;
         write " && ";
         print_expr b
-      | Or (a, b) ->
+      | E_Or (a, b) ->
         print_expr a;
         write " || ";
         print_expr b
-      | Equal (a, b) ->
+      | E_Equal (a, b) ->
         print_expr a;
         write " == ";
         print_expr b
-      | Claim place -> print_place_expr place
-      | AddrOf place ->
+      | E_Copy place -> print_place_expr place
+      | E_AddrOf place ->
         write "&";
         print_place_expr place
       | E_Native native -> print_native native
-      | Cast { value; target } ->
+      | E_Cast { value; target } ->
         write "(";
         print_ty target;
         write ")";
         print_expr value
-      | Apply { f; args } ->
+      | E_Apply { f; args } ->
         print_expr f;
         write "(";
         args
@@ -355,7 +355,7 @@ module Print = struct
           if i <> 0 then write ", ";
           print_expr arg);
         write ")"
-      | Block block -> print_block block)
+      | E_Block block -> print_block block)
 
   and print_fn_sig ~(end_with_semicolon : bool) (name : string) (def : fn_def) =
     write_comment def.comment;
@@ -389,7 +389,7 @@ module Print = struct
     |> List.iter (fun stmt ->
       print_stmt stmt;
       (match stmt with
-       | GotoLabel _ | Comment _ -> ()
+       | S_GotoLabel _ | S_Comment _ -> ()
        | _ -> write ";");
       writeln ());
     dec_indentation ();
@@ -409,13 +409,13 @@ module Print = struct
     |> StringMap.iter (fun name def ->
       let shape_name =
         match def.shape with
-        | Enum _ -> Some "enum"
-        | Struct _ -> Some "struct"
-        | Union _ -> Some "union"
-        | Fn _ -> None
-        | Alias _ -> None
-        | DEF_Raw _ -> None
-        | RuntimeDefined _ -> None
+        | TD_Enum _ -> Some "enum"
+        | TD_Struct _ -> Some "struct"
+        | TD_Union _ -> Some "union"
+        | TD_Fn _ -> None
+        | TD_Alias _ -> None
+        | TD_Raw _ -> None
+        | TD_RuntimeDefined _ -> None
       in
       match shape_name with
       | Some shape_name ->
@@ -441,8 +441,8 @@ module Print = struct
           |> Option.unwrap_or_else (fun () -> fail "type %S is not in program" name)
         in
         (match def.shape with
-         | RuntimeDefined _ -> ()
-         | DEF_Raw { def = _; impl = _; need_declared; need_completed } ->
+         | TD_RuntimeDefined _ -> ()
+         | TD_Raw { def = _; impl = _; need_declared; need_completed } ->
            need_declared |> List.iter ensure_type_declared;
            need_completed |> List.iter ensure_type_completed;
            write "/*";
@@ -455,24 +455,24 @@ module Print = struct
              write "\nneed_completed ";
              print_ty dep);
            write " */\n"
-         | Fn { args; result_ty } ->
+         | TD_Fn { args; result_ty } ->
            args |> List.iter ensure_type_declared;
            result_ty |> ensure_type_declared
-         | Enum _ -> ()
-         | Struct fields ->
+         | TD_Enum _ -> ()
+         | TD_Struct fields ->
            fields |> StringMap.iter (fun _ field_ty -> ensure_type_completed field_ty)
-         | Union variants ->
+         | TD_Union variants ->
            variants
            |> StringMap.iter (fun _ variant_ty -> ensure_type_completed variant_ty)
-         | Alias ty -> ensure_type_declared ty);
+         | TD_Alias ty -> ensure_type_declared ty);
         write_comment def.comment;
         (match def.shape with
-         | RuntimeDefined _ -> ()
-         | DEF_Raw { def; _ } ->
+         | TD_RuntimeDefined _ -> ()
+         | TD_Raw { def; _ } ->
            write def;
            write ";";
            writeln ()
-         | Fn { args; result_ty } ->
+         | TD_Fn { args; result_ty } ->
            write "typedef ";
            print_ty result_ty;
            write " (*";
@@ -484,7 +484,7 @@ module Print = struct
              print_ty arg);
            write ");";
            writeln ()
-         | Enum variants ->
+         | TD_Enum variants ->
            write "enum ";
            write name;
            write " {";
@@ -498,7 +498,7 @@ module Print = struct
            dec_indentation ();
            write "};";
            writeln ()
-         | Struct fields ->
+         | TD_Struct fields ->
            write "struct ";
            write name;
            write " {";
@@ -514,7 +514,7 @@ module Print = struct
            dec_indentation ();
            write "};";
            writeln ()
-         | Union variants ->
+         | TD_Union variants ->
            write "union ";
            write name;
            write " {";
@@ -530,7 +530,7 @@ module Print = struct
            dec_indentation ();
            write "};";
            writeln ()
-         | Alias ty ->
+         | TD_Alias ty ->
            write "typedef ";
            print_ty ty;
            write " ";
@@ -542,26 +542,27 @@ module Print = struct
       match ty with
       | T_Unit -> ()
       | T_Raw _ -> ensure_type_completed ty
-      | Named name ->
+      | T_Named name ->
         (match program.types |> StringMap.find_opt name with
          | None -> fail "type doesnt exist: %s" name
-         | Some { shape = Fn _ | Alias _ | DEF_Raw _; _ } -> ensure_typedef_completed name
+         | Some { shape = TD_Fn _ | TD_Alias _ | TD_Raw _; _ } ->
+           ensure_typedef_completed name
          | _ -> ())
-      | Ptr pointee -> ensure_type_declared pointee
-      | Void -> ()
+      | T_Ptr pointee -> ensure_type_declared pointee
+      | T_Void -> ()
     and ensure_type_completed (ty : ty) : unit =
       match ty with
       | T_Unit -> ()
       | T_Raw _ -> ()
-      | Named name -> ensure_typedef_completed name
-      | Ptr pointee -> ensure_type_declared pointee
-      | Void -> ()
+      | T_Named name -> ensure_typedef_completed name
+      | T_Ptr pointee -> ensure_type_declared pointee
+      | T_Void -> ()
     in
     program.types |> StringMap.iter (fun name _def -> ensure_typedef_completed name);
     program.types
     |> StringMap.iter (fun _name def ->
       match def.shape with
-      | DEF_Raw { impl = Some impl; _ } ->
+      | TD_Raw { impl = Some impl; _ } ->
         write impl;
         write ";";
         writeln ()
