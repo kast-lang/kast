@@ -63,22 +63,11 @@ module Args = struct
     | "--js-ref-vars" :: value :: rest ->
       Kast_transpiler_javascript.ref_vars_enabled := bool_of_string value;
       parse rest
-    | "--c-boxed-structs" :: value :: rest ->
-      Kast_transpiler_c.boxed_structs := bool_of_string value;
-      parse rest
     | "--allocation-stats" :: value :: rest ->
       Kast_transpiler_c.allocation_stats := bool_of_string value;
       parse rest
     | "--c-debug" :: value :: rest ->
       Kast_transpiler_c.debug := bool_of_string value;
-      parse rest
-    | "--gc-mode" :: value :: rest ->
-      (Kast_transpiler_c.gc_mode
-       := match value with
-          | "escape-analyze" -> EscapeAnalyze
-          | "runtime-borrow-checker" -> RuntimeBorrowChecker
-          | "disabled" -> Disabled
-          | other -> fail "unrecognized gc mode: %S" other);
       parse rest
     | "--async" :: value :: rest ->
       (Kast_transpiler_javascript.async_fns
@@ -156,11 +145,6 @@ let run : Args.t -> unit =
             if !Kast_transpiler_c.debug then out "#define KAST_DEBUG\n";
             if !Kast_transpiler_c.allocation_stats
             then out "#define KAST_ALLOCATION_STATS\n";
-            if
-              match !Kast_transpiler_c.gc_mode with
-              | EscapeAnalyze -> true
-              | RuntimeBorrowChecker | Disabled -> false
-            then out "#define USE_GC\n";
             Kast_transpiler_c.C_ast.Print.print_program transpiled
           with
           | effect Kast_transpiler_c.C_ast.Print.GetOutput, k -> Effect.continue k out)
