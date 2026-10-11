@@ -2800,6 +2800,12 @@ module Impl = struct
         let _ = LazyNamed.force ty.dbg_write in
         let _ : _ -> _ = LazyNamed.force ty.drop in
         let _ : _ -> _ = LazyNamed.force ty.claim in
+        ());
+    ctx.captured_types
+    |> ValueMap.iter (fun _ ty ->
+      match ty with
+      | Inprogress -> failwith __LOC__
+      | Completed ty ->
         Dynarray.add_last
           ctx.statics
           { ty = T_Raw { c = "TypeInfo"; is_primitive = false }
