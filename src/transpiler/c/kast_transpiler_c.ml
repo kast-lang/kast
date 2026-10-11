@@ -31,15 +31,33 @@ type transpiled_ty_shape =
       ; def : unit -> C_ast.ty_def
       }
 
+module LazyNamed = struct
+  type 'a t =
+    { value : 'a Lazy.t
+    ; name : string
+    }
+
+  let make name f =
+    { name
+    ; value =
+        lazy
+          (try f () with
+           | e ->
+             eprintln "while forcing lazy %S" name;
+             raise e)
+    }
+  ;;
+
+  let force l = Lazy.force l.value
+end
+
 type transpiled_ty =
   { kast_ty : ty
   ; c_ty : C_ast.ty
   ; type_info_name : string
-  ; claim : C_ast.place_expr -> C_ast.expr
-  ; claim_name : string
-  ; drop : C_ast.pure_expr -> unit
-  ; drop_name : string
-  ; dbg_write_name : string
+  ; claim : (C_ast.place_expr -> C_ast.expr) LazyNamed.t
+  ; drop : (C_ast.pure_expr -> unit) LazyNamed.t
+  ; dbg_write : string LazyNamed.t
   }
 
 type 'a progress =
@@ -60,6 +78,7 @@ type ctx =
   ; runtime_defined_list_types : string StringMap.t
   ; runtime_defined_box_types : string StringMap.t
   ; init_statics : block
+  ; queued_work : (unit -> unit) Queue.t
   }
 
 type current_captured =
@@ -161,6 +180,10 @@ let c_keywords =
 module Impl = struct
   let rec _unused () = ()
 
+  and queue_work (f : unit -> unit) =
+    let ctx = Effect.perform GetCtx in
+    Queue.add f ctx.queued_work
+
   and binding_name (binding : binding) : string =
     make_correct_ident (make_string "%s_%a" binding.name.name Id.print binding.id)
 
@@ -216,7 +239,7 @@ module Impl = struct
 
   and insert_drop (kast_ty : ty) (value : C_ast.expr) : unit =
     let ty = transpile_ty kast_ty in
-    ty.drop (make_pure ty.c_ty value "to_drop")
+    LazyNamed.force ty.drop (make_pure ty.c_ty value "to_drop")
 
   and let_var
         ?(drop : bool = true)
@@ -544,7 +567,8 @@ module Impl = struct
                              : (string * C_ast.expr)
                            ->
                            ( member_name member
-                           , (transpile_ty field.ty).claim
+                           , LazyNamed.force
+                               (transpile_ty field.ty).claim
                                (P_Field
                                   { obj = P_Deref (Pure_Copy (P_Ident arg_name))
                                   ; field = member_name member
@@ -709,7 +733,7 @@ module Impl = struct
             insert_stmt
               (S_Expr
                  (E_Apply
-                    { f = Pure_Copy (P_Ident (transpile_ty referenced).dbg_write_name)
+                    { f = Pure_Copy (P_Ident (transpile_ty referenced).dbg_write.name)
                     ; args =
                         [ Pure_Copy (P_Deref (Pure_Copy (P_Ident var)))
                         ; Pure_Copy (P_Ident fmt_var)
@@ -748,8 +772,8 @@ module Impl = struct
                                                 { f =
                                                     Pure_Copy
                                                       (P_Ident
-                                                         (transpile_ty data)
-                                                           .dbg_write_name)
+                                                         (LazyNamed.force
+                                                            (transpile_ty data).dbg_write))
                                                 ; args =
                                                     [ Pure_AddrOf
                                                         (P_Field
@@ -783,7 +807,9 @@ module Impl = struct
               insert_stmt
                 (S_Expr
                    (E_Apply
-                      { f = Pure_Copy (P_Ident (transpile_ty field.ty).dbg_write_name)
+                      { f =
+                          Pure_Copy
+                            (P_Ident (LazyNamed.force (transpile_ty field.ty).dbg_write))
                       ; args =
                           [ Pure_AddrOf
                               (P_Field
@@ -918,7 +944,8 @@ module Impl = struct
                                       match data.data with
                                       | None -> ()
                                       | Some data ->
-                                        (transpile_ty data).drop
+                                        LazyNamed.force
+                                          (transpile_ty data).drop
                                           (Pure_Copy
                                              (P_Field
                                                 { obj =
@@ -936,7 +963,8 @@ module Impl = struct
           | Types.T_Tuple tuple ->
             tuple.tuple
             |> Tuple.iter (fun member (field : Types.ty_tuple_field) ->
-              (transpile_ty field.ty).drop
+              LazyNamed.force
+                (transpile_ty field.ty).drop
                 (Pure_Copy (P_Field { obj = P_Ident var; field = member_name member })))
           | Types.T_List _ ->
             insert_stmt
@@ -976,76 +1004,69 @@ module Impl = struct
     | Some (T_Blocked _) -> failwith __LOC__
     | Some ty_shape ->
       let ty_as_value = V_Ty ty |> Value.inferred ~span in
-      let prepend_list = Dynarray.create () in
-      let prepend f = Dynarray.add_last prepend_list f in
-      let result : transpiled_ty =
-        match ctx.captured_types |> ValueMap.find_opt ty_as_value with
-        | Some Inprogress -> fail "recursive type %a" Ty.print ty
-        | Some (Completed ty) -> ty
-        | None ->
-          (try
-             ctx.captured_types
-             <- ctx.captured_types |> ValueMap.add ty_as_value Inprogress;
-             let c_ty =
-               match transpile_ty_shape ty_shape with
-               | Alias t -> t
-               | T_Named { name; def } ->
-                 prepend (fun () ->
-                   let def = def () in
-                   ctx.types <- ctx.types |> StringMap.add name def);
-                 T_Named name
-             in
-             let c_ty_as_str = ty_to_string c_ty in
-             let claim_name = gen_name (make_string "%s_claim" c_ty_as_str) in
-             let drop_name = gen_name (make_string "%s_drop" c_ty_as_str) in
-             let result : transpiled_ty =
-               { kast_ty = ty
-               ; c_ty
-               ; type_info_name = make_string "%s_TypeInfo" (ty_to_string c_ty)
-               ; claim_name
-               ; claim =
-                   (prepend (fun () ->
-                      let claim_impl = generate_claim_impl ty c_ty in
-                      add_claim_impl_with_type_erased claim_name c_ty claim_impl);
+      (match ctx.captured_types |> ValueMap.find_opt ty_as_value with
+       | Some Inprogress -> fail "recursive type %a" Ty.print ty
+       | Some (Completed ty) -> ty
+       | None ->
+         (try
+            ctx.captured_types
+            <- ctx.captured_types |> ValueMap.add ty_as_value Inprogress;
+            let c_ty =
+              match transpile_ty_shape ty_shape with
+              | Alias t -> t
+              | T_Named { name; def } ->
+                queue_work (fun () ->
+                  let def =
+                    try def () with
+                    | e ->
+                      eprintln "while calculating def of %S (%a)" name Ty.print ty;
+                      raise e
+                  in
+                  ctx.types <- ctx.types |> StringMap.add name def);
+                T_Named name
+            in
+            let c_ty_as_str = ty_to_string c_ty in
+            let gen_lazy_named (type a) suffix f : a LazyNamed.t =
+              let name = gen_name (make_string "%s_%s" c_ty_as_str suffix) in
+              LazyNamed.make name (fun () -> f name)
+            in
+            let result : transpiled_ty =
+              { kast_ty = ty
+              ; c_ty
+              ; type_info_name = make_string "%s_TypeInfo" (ty_to_string c_ty)
+              ; claim =
+                  gen_lazy_named "claim" (fun claim_name ->
+                    let claim_impl = generate_claim_impl ty c_ty in
+                    add_claim_impl_with_type_erased claim_name c_ty claim_impl;
                     fun (place : C_ast.place_expr) : C_ast.expr ->
                       E_Apply
                         { f = Pure_Copy (P_Ident claim_name)
                         ; args = [ Pure_AddrOf place ]
                         })
-               ; drop_name
-               ; drop =
-                   (prepend (fun () ->
-                      let drop_impl = generate_drop_impl ty c_ty in
-                      add_drop_impl_with_type_erased drop_name c_ty drop_impl);
+              ; drop =
+                  gen_lazy_named "drop" (fun drop_name ->
+                    let drop_impl = generate_drop_impl ty c_ty in
+                    add_drop_impl_with_type_erased drop_name c_ty drop_impl;
                     fun (value : C_ast.pure_expr) ->
                       insert_stmt
                         (S_Expr
                            (E_Apply
                               { f = Pure_Copy (P_Ident drop_name); args = [ value ] })))
-               ; dbg_write_name =
-                   (let dbg_write_name =
-                      gen_name (make_string "%s_dbg_write" (ty_to_string c_ty))
-                    in
-                    prepend (fun () ->
-                      let dbg_write_impl = generate_dbg_write_impl ty c_ty in
-                      add_dbg_write_impl_with_type_erased
-                        dbg_write_name
-                        c_ty
-                        dbg_write_impl);
+              ; dbg_write =
+                  gen_lazy_named "dbg_write" (fun dbg_write_name ->
+                    let dbg_write_impl = generate_dbg_write_impl ty c_ty in
+                    add_dbg_write_impl_with_type_erased dbg_write_name c_ty dbg_write_impl;
                     dbg_write_name)
-               }
-             in
-             ctx.captured_types
-             <- ctx.captured_types |> ValueMap.add ty_as_value (Completed result);
-             result
-           with
-           | Cancel -> raise Cancel
-           | e ->
-             Log.error (fun log -> log "while transpiling ty %a" Ty.print ty);
-             raise e)
-      in
-      Dynarray.iter (fun f -> f ()) prepend_list;
-      result
+              }
+            in
+            ctx.captured_types
+            <- ctx.captured_types |> ValueMap.add ty_as_value (Completed result);
+            result
+          with
+          | Cancel -> raise Cancel
+          | e ->
+            Log.error (fun log -> log "while transpiling ty %a" Ty.print ty);
+            raise e))
 
   and variant_tag_ty (ty_name : string) (ty : Types.ty_variant) : C_ast.ty =
     let ctx = Effect.perform GetCtx in
@@ -1620,7 +1641,9 @@ module Impl = struct
               args_tuple_ty
               |> Tuple.iter (fun member (field : Types.ty_tuple_field) ->
                 defer (fun () ->
-                  (transpile_ty field.ty).drop (Pure_Copy (P_Ident (member_name member)))));
+                  LazyNamed.force
+                    (transpile_ty field.ty).drop
+                    (Pure_Copy (P_Ident (member_name member)))));
               try
                 captured_bindings
                 |> List.iter (fun (binding : binding) ->
@@ -1732,7 +1755,8 @@ module Impl = struct
           new_block (fun () ->
             fields
             |> StringMap.iter (fun field_name field_ty ->
-              (transpile_ty field_ty).drop
+              LazyNamed.force
+                (transpile_ty field_ty).drop
                 (Pure_Copy (P_Field { obj = P_Ident "value"; field = field_name }))))
       ; comment = None
       }
@@ -1748,7 +1772,8 @@ module Impl = struct
                     (T_Named struct_name)
                     (fields
                      |> StringMap.mapi (fun field_name field_ty : C_ast.expr ->
-                       (transpile_ty field_ty).claim
+                       LazyNamed.force
+                         (transpile_ty field_ty).claim
                          (P_Field
                             { obj = P_Deref (Pure_Copy (P_Ident "place"))
                             ; field = field_name
@@ -2268,7 +2293,7 @@ module Impl = struct
     claim_c c_place place.data.signature.ty
 
   and claim_c (c_place : C_ast.place_expr) (ty : ty) : C_ast.expr =
-    (transpile_ty ty).claim c_place
+    LazyNamed.force (transpile_ty ty).claim c_place
 
   and execute_expr (expr : expr) : unit =
     match eval_expr expr with
@@ -2772,12 +2797,18 @@ module Impl = struct
       match ty with
       | Inprogress -> failwith __LOC__
       | Completed ty ->
+        let _ = LazyNamed.force ty.dbg_write in
+        let _ : _ -> _ = LazyNamed.force ty.drop in
+        let _ : _ -> _ = LazyNamed.force ty.claim in
         Dynarray.add_last
           ctx.statics
           { ty = T_Raw { c = "TypeInfo"; is_primitive = false }
           ; name = ty.type_info_name
           ; comment = None
           });
+    while not (Queue.is_empty ctx.queued_work) do
+      (Queue.pop ctx.queued_work) ()
+    done;
     let rec construct_ty_def_type_info
               (ty : transpiled_ty)
               (name : string)
@@ -2793,9 +2824,9 @@ module Impl = struct
             ; "alignment", C_ast.Pure_Native [ N_Raw "alignof("; N_Raw name; N_Raw ")" ]
             ; "size", Pure_Native [ N_Raw "sizeof("; N_Raw name; N_Raw ")" ]
             ; "stride", Pure_Native [ N_Raw "sizeof("; N_Raw name; N_Raw ")" ]
-            ; "dbg_write", Pure_Copy (P_Ident (ty.dbg_write_name ^ "_type_erased"))
-            ; "drop", Pure_Copy (P_Ident (ty.drop_name ^ "_type_erased"))
-            ; "claim", Pure_Copy (P_Ident (ty.claim_name ^ "_type_erased"))
+            ; "dbg_write", Pure_Copy (P_Ident (ty.dbg_write.name ^ "_type_erased"))
+            ; "drop", Pure_Copy (P_Ident (ty.drop.name ^ "_type_erased"))
+            ; "claim", Pure_Copy (P_Ident (ty.claim.name ^ "_type_erased"))
             ]
             @
             if !allocation_stats
@@ -2819,9 +2850,9 @@ module Impl = struct
                 , C_ast.Pure_Native [ N_Raw "alignof("; N_Raw raw_ty; N_Raw ")" ] )
               ; "size", Pure_Native [ N_Raw "sizeof("; N_Raw raw_ty; N_Raw ")" ]
               ; "stride", Pure_Native [ N_Raw "sizeof("; N_Raw raw_ty; N_Raw ")" ]
-              ; "dbg_write", Pure_Copy (P_Ident (ty.dbg_write_name ^ "_type_erased"))
-              ; "drop", Pure_Copy (P_Ident (ty.drop_name ^ "_type_erased"))
-              ; "claim", Pure_Copy (P_Ident (ty.claim_name ^ "_type_erased"))
+              ; "dbg_write", Pure_Copy (P_Ident (ty.dbg_write.name ^ "_type_erased"))
+              ; "drop", Pure_Copy (P_Ident (ty.drop.name ^ "_type_erased"))
+              ; "claim", Pure_Copy (P_Ident (ty.claim.name ^ "_type_erased"))
               ]
               @
               if !allocation_stats
@@ -2943,6 +2974,7 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
     ; init_statics = { stmts = [] }
     ; includes = StringSet.empty
     ; contexts = Id.Map.empty
+    ; queued_work = Queue.create ()
     ; raw_type_infos = Dynarray.create ()
     ; runtime_defined_closure_types = !runtime_defined_closure_types
     ; runtime_defined_list_types = !runtime_defined_list_types

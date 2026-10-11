@@ -1,11 +1,7 @@
-let x = 123;
-let x = &x;
+module:
 
-let f = (
-    let f = () => x;
-    f
-);
+const Foo = newtype {
+    .field :: &Foo,
+};
 
-f();
-f();
-
+let foo :: &Foo = @native "haha";
