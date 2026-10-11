@@ -1344,6 +1344,36 @@ typedef struct Context Context;
         return list->buf[--list->length];                                      \
     }
 
+#define define_closure_type_C(name, Ret, ...)                                  \
+    typedef struct {                                                           \
+        void* captured;                                                        \
+        TypeInfo* captured_TypeInfo;                                           \
+        Ret (*f)(void*, ##__VA_ARGS__);                                        \
+    } name;                                                                    \
+                                                                               \
+    name name##_claim(name* place) {                                           \
+        if (place->captured == NULL) {                                         \
+            return *place;                                                     \
+        }                                                                      \
+        void* claimed_captured = Kast_allocate(place->captured_TypeInfo);      \
+        place->captured_TypeInfo->claim(place->captured, claimed_captured);    \
+        return (name) {                                                        \
+            .captured = claimed_captured,                                      \
+            .captured_TypeInfo = place->captured_TypeInfo,                     \
+            .f = place->f,                                                     \
+        };                                                                     \
+    }                                                                          \
+                                                                               \
+    void name##_drop(name closure) {                                           \
+        if (closure.captured == NULL) {                                        \
+            return;                                                            \
+        }                                                                      \
+        if (closure.captured_TypeInfo->drop != NULL) {                         \
+            closure.captured_TypeInfo->drop(closure.captured);                 \
+        }                                                                      \
+        Kast_free(closure.captured);                                           \
+    }
+
 #define define_closure_type(name, Ret, ...)                                    \
     typedef struct {                                                           \
         void* captured;                                                        \

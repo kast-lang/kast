@@ -1292,10 +1292,11 @@ module Impl = struct
       in
       let define_macro_args = ty_to_string result_ty :: (args |> List.map ty_to_string) in
       let args = if is_closure then [ C_ast.T_Ptr T_Void ] @ args else args in
-      let args =
+      let cc_suffix, args =
         match call_convention with
-        | None -> [ C_ast.T_Ptr (T_Raw { c = "Context"; is_primitive = false }) ] @ args
-        | Some "C" -> args
+        | None ->
+          "", [ C_ast.T_Ptr (T_Raw { c = "Context"; is_primitive = false }) ] @ args
+        | Some "C" -> "_C", args
         | _ -> fail "unknown call convention"
       in
       (match is_closure with
@@ -1308,6 +1309,7 @@ module Impl = struct
           | Some name -> runtime_defined name
           | None ->
             let name = List.fold_left (fun s n -> s ^ "_" ^ n) "Fn" define_macro_args in
+            let name = name ^ cc_suffix in
             let macro_arg =
               List.fold_left (fun s n -> s ^ ", " ^ n) name define_macro_args
             in
@@ -1316,7 +1318,7 @@ module Impl = struct
               ; def =
                   make_with (fun () ->
                     TD_Raw
-                      { def = make_string "define_closure_type(%s)" macro_arg
+                      { def = make_string "define_closure_type%s(%s)" cc_suffix macro_arg
                       ; impl = None
                       ; need_declared =
                           List.map (fun name : C_ast.ty -> T_Named name) define_macro_args
