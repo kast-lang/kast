@@ -2794,15 +2794,18 @@ module Impl = struct
   let postprocess () =
     let ctx = Effect.perform GetCtx in
     (* let fns = program.fns |> StringMap.mapi postprocess_fn in *)
-    ctx.captured_types
-    |> ValueMap.iter (fun _ ty ->
-      match ty with
-      | Inprogress -> failwith __LOC__
-      | Completed ty ->
-        let _ = LazyNamed.force ty.dbg_write in
-        let _ : _ -> _ = LazyNamed.force ty.drop in
-        let _ : _ -> _ = LazyNamed.force ty.claim in
-        ());
+    (* TODO this is dirty hack, need to figure out proper solution *)
+    for i = 1 to 10 do
+      ctx.captured_types
+      |> ValueMap.iter (fun _ ty ->
+        match ty with
+        | Inprogress -> failwith __LOC__
+        | Completed ty ->
+          let _ = LazyNamed.force ty.dbg_write in
+          let _ : _ -> _ = LazyNamed.force ty.drop in
+          let _ : _ -> _ = LazyNamed.force ty.claim in
+          ())
+    done;
     ctx.captured_types
     |> ValueMap.iter (fun _ ty ->
       match ty with
