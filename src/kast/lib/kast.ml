@@ -40,21 +40,24 @@ let handle_effects : stop_on_error:bool -> (unit -> unit) -> unit =
   | effect Kast_compiler.Effect.FileStartedProcessing _, k -> Effect.Deep.continue k ()
   | effect Kast_compiler.Effect.FindStd, k ->
     let stdlib_uri =
-      match Sys.getenv_opt "KAST_STD" with
-      | Some path ->
-        Log.trace (fun log -> log "Using KAST_STD env var = %a" String.print_debug path);
+      match Sys.getenv_opt "KAST_PATH" with
+      | Some kast_path ->
+        let path = kast_path ^ "/std" in
+        Log.trace (fun log ->
+          log "Using KAST_PATH env var = %a" String.print_debug kast_path);
         Uri.file path
       | None ->
-        (match [%getenv "KAST_STD"] with
+        (match [%getenv "KAST_PATH"] with
          | "" -> Uri.file "std"
-         | path ->
+         | kast_path ->
+           let path = kast_path ^ "/std" in
            let path = Uri.of_string path in
            let bin_path = Sys.executable_name in
            Log.trace (fun log ->
              log
-               "Using KAST_STD env var (comptime) = %a, bin path = %a"
-               Uri.print_full
-               path
+               "Using KAST_PATH env var (comptime) = %a, bin path = %a"
+               String.print_debug
+               kast_path
                String.print_debug
                bin_path);
            Uri.resolve "" (Uri.file bin_path) path)

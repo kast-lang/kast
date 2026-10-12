@@ -10,6 +10,6 @@
   kast_compiler
   kast_inference_completion)
  (preprocessor_deps
-  (env_var KAST_STD))
+  (env_var KAST_PATH))
  (preprocess
   (pps ppx_getenv)))

@@ -39,7 +39,7 @@ minikast path no-std="" *args:
 
 test-aoc *args:
     COMPILED_C=$(pwd)/target/compiled.c \
-        KAST_STD=$(pwd)/std \
+        KAST_PATH=$(pwd) \
         kast ${AOC:-~/projects/aoc2025/test.ks} {{args}}
 
 self-host:
@@ -53,7 +53,7 @@ run-js path *args:
     kast run --format prettier --target javascript {{path}} {{args}}
 
 build-c src="target/compiled.c":
-    ${CC:-gcc} ${CFLAGS} -o target/compiled.exe {{src}}
+    kast cc -o target/compiled.exe {{src}}
 
 test-c src="target/compiled.c":
     just build-c {{src}}
@@ -71,6 +71,9 @@ compile-tcp-client-server-c:
 
 run-c path:
     CFLAGS="-g -Wfatal-errors" CC=filcc kast run --target c {{path}}
+
+update-compile-flags:
+    kast cc --dump-compile-flags --nolink > compile_flags.txt
 
 bench *args:
     kast compile \

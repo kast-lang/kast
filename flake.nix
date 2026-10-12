@@ -98,9 +98,23 @@
           root = ./.;
           include = [ "package.json" "package-lock.json" ];
         };
+        c-deps = with pkgs; [
+          libbacktrace
+          libunwind
+        ];
       in
       {
         packages = rec {
+          c-runtime = pkgs.stdenv.mkDerivation {
+            name = "Kast-c-runtime";
+            src = ./c-runtime;
+            propagatedBuildInputs = c-deps;
+            installPhase = ''
+              mkdir -p $out/lib
+              cp libkast.a $out/lib/
+              cp -r include $out/include
+            '';
+          };
           default =
             let
               npmDeps = pkgs.importNpmLock.buildNodeModules {
@@ -113,7 +127,7 @@
               buildPhase = ''
                 ln -s ${npmDeps}/node_modules ./node_modules
                 ls -la ./node_modules
-                export KAST_STD="../lib/std"
+                export KAST_PATH="../lib"
                 ${oa.buildPhase}
               '';
               postFixup = ''
@@ -176,14 +190,9 @@
             valgrind
             prettier
             hyperfine
-            clang_22
-            boehmgc
-            libbacktrace
+            clang-tools
             tinycc
-          ]);
-          # Since I dont have cmake or whatever
-          CLANGD_FLAGS = "--query-driver=${pkgs.clang_22}/bin/clang*";
-          # CLANGD_FLAGS = "--query-driver=${inputs.filc.packages.${system}.filcc}/bin/clang*";
+          ] ++ c-deps);
           shellHook = ''
             echo 'Hello from Kast devshell'
             echo '  dont forget to run `just lsp-support` :)'
@@ -191,12 +200,12 @@
             # export OCAMLRUNPARAM="b,d=10"
             export OCAMLRUNPARAM="d=10"
             export DUNE_CONFIG__GLOBAL_LOCK=disabled
-            export KAST_STD=$(pwd)/std
+            export KAST_PATH=.
           '';
           CFLAGS = ''
             -Wfatal-errors
             -Wmissing-field-initializers
-            -O0
+            -O1
             -lbacktrace -lgc -g -rdynamic
             -fsanitize=address,undefined,leak
             -pthread

@@ -1,7 +1,7 @@
 (library
  (name kast_transpiler_c)
- (libraries kast_types kast_interpreter kast_inference_completion)
+ (libraries included_dir kast_types kast_interpreter kast_inference_completion)
  (preprocessor_deps
-  (file runtime.c))
+  (source_tree %{project_root}/c-runtime))
  (preprocess
   (pps ppx_include_dir ppx_deriving.eq ppx_deriving.ord)))

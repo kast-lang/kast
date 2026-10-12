@@ -11,6 +11,7 @@ module Command = struct
     | Run of Kast_interpreter_cli.Args.t
     | Repl of Kast_interpreter_cli.Args.t
     | Compile of Kast_compiler_cli.Args.t
+    | CC of Kast_cc.Args.t
     | Help
 
   type t = command
@@ -26,6 +27,7 @@ module Command = struct
     | "run" :: args -> Run (Kast_interpreter_cli.Args.parse args)
     | "compile" :: args -> Compile (Kast_compiler_cli.Args.parse_full args)
     | "repl" :: args -> Repl (Kast_interpreter_cli.Args.parse args)
+    | "cc" :: args -> CC (Kast_cc.Args.parse args)
     | args -> Run (Kast_interpreter_cli.Args.parse args)
   ;;
 end

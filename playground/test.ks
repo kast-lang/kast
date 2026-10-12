@@ -1,4 +1,5 @@
-for c in "hello" |> String.iter do (
-    if c == 'l' then break;
-    dbg.print(c);
+const f = () => (
+    @native "#include <non-exitent-header.h>"
 );
+
+f();

@@ -441,7 +441,6 @@ module Print = struct
     write "}"
 
   and print_program (program : program) =
-    write [%include_file "runtime.c"];
     writeln ();
     program.includes
     |> StringSet.iter (fun s ->

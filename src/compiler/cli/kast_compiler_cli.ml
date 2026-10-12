@@ -141,12 +141,7 @@ let run : Args.t -> unit =
        | C ->
          let transpiled = Kast_transpiler_c.transpile_expr compiler.interpreter expr in
          let out = fun s -> output_string out s in
-         (try
-            if !Kast_transpiler_c.debug then out "#define KAST_DEBUG\n";
-            if !Kast_transpiler_c.allocation_stats
-            then out "#define KAST_ALLOCATION_STATS\n";
-            Kast_transpiler_c.C_ast.Print.print_program transpiled
-          with
+         (try Kast_transpiler_c.C_ast.Print.print_program transpiled with
           | effect Kast_transpiler_c.C_ast.Print.GetOutput, k -> Effect.continue k out)
        | JavaScript ->
          let transpiled : Kast_transpiler_javascript.result =

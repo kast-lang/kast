@@ -1,8 +1,6 @@
-Documentation:
-  CommentFormat: Markdown
-
-# Index:
-#   Background: Skip
-
-# CompileFlags:
-#   Add: [-D_POSIX_C_SOURCE=200112L, -D__USE_XOPEN2K]
+CompileFlags:
+  Add: [
+    -isystem, ./c-runtime/include,
+    -Wall, -Wextra, -Wpedantic,
+    -DKAST_ALLOCATION_STATS, -DKAST_DEBUG
+  ]

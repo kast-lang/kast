@@ -1,0 +1,7 @@
+(library
+ (name kast_cc)
+ (libraries std kast_util included_dir)
+ (preprocessor_deps
+  (source_tree %{project_root}/c-runtime))
+ (preprocess
+  (pps ppx_include_dir ppx_deriving.eq ppx_deriving.ord)))

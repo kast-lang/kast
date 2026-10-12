@@ -98,27 +98,8 @@ let run ({ compiler; argv_except_program; enable_source_maps } as args : Args.t)
       | Some path -> path
       | None -> "target/compiled.exe"
     in
-    let cc =
-      match Sys.getenv_opt "CC" with
-      | Some cc -> cc
-      | None -> "cc"
-    in
     let cc_args = [ c_path; "-o"; exe_path ] in
-    let cc_args =
-      match Sys.getenv_opt "CFLAGS" with
-      | Some flags ->
-        (flags
-         |> String.split_on (fun c -> c = ' ' || c = '\n')
-         |> List.filter (fun s -> s <> ""))
-        @ cc_args
-      | None -> cc_args
-    in
-    if not !quiet
-    then
-      Log.info (fun log ->
-        log "Launching %s with args %a" cc (List.print String.print_maybe_escaped) cc_args);
-    let cc_exitcode = Sys.command (Filename.quote_command cc cc_args) in
-    if cc_exitcode <> 0 then fail "cc exited with exit code %d" cc_exitcode;
+    Kast_cc.run cc_args;
     let exe_args = [] in
     if not !quiet
     then

@@ -2925,41 +2925,50 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
   let runtime_defined_closure_types = ref StringListMap.empty in
   let runtime_defined_list_types = ref StringMap.empty in
   let runtime_defined_box_types = ref StringMap.empty in
-  let runtime_source = [%include_file "runtime.c"] in
-  runtime_source
-  |> String.split_on_char '\n'
-  |> List.iter (fun s ->
-    let check_defined_closure () =
-      let* s = s |> String.strip_prefix ~prefix:"define_closure_type(" in
-      let* s = s |> String.strip_suffix ~suffix:");" in
-      let args = s |> String.split_on_char ',' |> List.map String.trim in
-      match args with
-      | name :: args ->
-        Log.trace (fun log ->
-          log "Found defined closure type %a = %s" (List.print String.print) args name);
-        runtime_defined_closure_types
-        := !runtime_defined_closure_types |> StringListMap.add args name;
+  let process_c_runtime_file (source : string) =
+    source
+    |> String.split_on_char '\n'
+    |> List.iter (fun s ->
+      let check_defined_closure () =
+        let* s = s |> String.strip_prefix ~prefix:"define_closure_type(" in
+        let* s = s |> String.strip_suffix ~suffix:");" in
+        let args = s |> String.split_on_char ',' |> List.map String.trim in
+        match args with
+        | name :: args ->
+          Log.trace (fun log ->
+            log "Found defined closure type %a = %s" (List.print String.print) args name);
+          runtime_defined_closure_types
+          := !runtime_defined_closure_types |> StringListMap.add args name;
+          Some ()
+        | _ -> failwith __LOC__
+      in
+      let check_defined_list () =
+        let* s = s |> String.strip_prefix ~prefix:"define_ArrayList(" in
+        let* arg = s |> String.strip_suffix ~suffix:");" in
+        runtime_defined_list_types
+        := !runtime_defined_list_types |> StringMap.add arg ("ArrayList_" ^ arg);
         Some ()
-      | _ -> failwith __LOC__
-    in
-    let check_defined_list () =
-      let* s = s |> String.strip_prefix ~prefix:"define_ArrayList(" in
-      let* arg = s |> String.strip_suffix ~suffix:");" in
-      runtime_defined_list_types
-      := !runtime_defined_list_types |> StringMap.add arg ("ArrayList_" ^ arg);
-      Some ()
-    in
-    let check_defined_box () =
-      let* s = s |> String.strip_prefix ~prefix:"define_Box(" in
-      let* arg = s |> String.strip_suffix ~suffix:");" in
-      runtime_defined_list_types
-      := !runtime_defined_list_types |> StringMap.add arg ("Box_" ^ arg);
-      Some ()
-    in
-    let _ : unit option = check_defined_closure () in
-    let _ : unit option = check_defined_list () in
-    let _ : unit option = check_defined_box () in
-    ());
+      in
+      let check_defined_box () =
+        let* s = s |> String.strip_prefix ~prefix:"define_Box(" in
+        let* arg = s |> String.strip_suffix ~suffix:");" in
+        runtime_defined_list_types
+        := !runtime_defined_list_types |> StringMap.add arg ("Box_" ^ arg);
+        Some ()
+      in
+      let _ : unit option = check_defined_closure () in
+      let _ : unit option = check_defined_list () in
+      let _ : unit option = check_defined_box () in
+      ())
+  in
+  let rec walk_dir (dir : Included_dir.included_dir) =
+    dir.entries
+    |> StringMap.iter (fun _ entry ->
+      match entry with
+      | Included_dir.Dir dir -> walk_dir dir
+      | Included_dir.File file -> process_c_runtime_file file.contents)
+  in
+  walk_dir [%include_dir "%{project_root}/c-runtime"];
   let ctx : ctx =
     { target = { name = "c" }
     ; statics = Dynarray.create ()
@@ -2992,7 +3001,7 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
                   } ))))
     ; fns = StringMap.empty
     ; init_statics = { stmts = [] }
-    ; includes = StringSet.empty
+    ; includes = StringSet.of_list [ "Kast.h" ]
     ; contexts = Id.Map.empty
     ; queued_work = Queue.create ()
     ; raw_type_infos = Dynarray.create ()
@@ -3031,7 +3040,7 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
     let main : C_ast.fn_def =
       { args =
           [ { name = "argc"; ty = T_Raw { c = "int"; is_primitive = true } }
-          ; { name = "argv"; ty = T_Raw { c = "char**"; is_primitive = false } }
+          ; { name = "argv"; ty = T_Raw { c = "const char**"; is_primitive = false } }
           ]
       ; result_ty = T_Raw { c = "int"; is_primitive = true }
       ; body =
