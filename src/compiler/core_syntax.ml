@@ -2631,6 +2631,31 @@ let typeof : core_syntax =
   }
 ;;
 
+let unsafe_copy : core_syntax =
+  { name = "unsafe_copy"
+  ; handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        : a ->
+        let span = ast.data.span in
+        let expr = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
+        let expr () =
+          let expr = C.compile PlaceExpr expr in
+          E_UnsafeCopy expr |> init_expr span C.state
+        in
+        match kind with
+        | Expr -> expr ()
+        | PlaceExpr -> Compiler.temp_expr (module C) ast
+        | TyExpr -> (fun () -> TE_Expr (expr ())) |> init_ty_expr span C.state
+        | Pattern | Assignee ->
+          error span "unsafe_copy can't be pattern | assignee";
+          init_error span C.state kind)
+  }
+;;
+
 let auto_instantiate : core_syntax =
   { name = "auto_instantiate"
   ; handle =
@@ -2831,6 +2856,7 @@ let core =
   ; auto_instantiate
   ; context
   ; let_context
+  ; unsafe_copy
   ]
 ;;
 

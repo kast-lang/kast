@@ -119,6 +119,8 @@
 @syntax "core:by_ref_mut" 500 @wrap never = "ref" " " "mut" " " _;
 @syntax "opaque_type" 500 @wrap never = "@opaque_type";
 @syntax "opaque_type_with_arg" 500 @wrap never = "@opaque_type" " " native_name;
+@syntax "core:unsafe_copy" 500 @wrap never = "@unsafe_copy" " " _;
+@syntax "claim" 500 @wrap never = "@claim" " " _;
 @syntax "core:auto_instantiate" 500 @wrap never = "@auto_instantiate" " " _;
 @syntax "core:loop" 500 @wrap if_any = "@loop" " " "(" " "/"\n\t" _:any " "/"\\\n" ")";
 @syntax "core:scope" 1000 @wrap if_any = "(" ""/"\n\t" _:any ""/"\\\n" ")";

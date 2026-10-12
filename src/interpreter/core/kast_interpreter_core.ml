@@ -1234,6 +1234,7 @@ and eval : state -> expr -> value =
            match expr.shape with
            | E_Ref place -> eval_expr_ref state expr place
            | E_Claim place -> eval_expr_claim state expr place
+           | E_UnsafeCopy place -> eval_expr_claim state expr place
            | E_Constant { id; value } ->
              Log.trace (fun log -> log "const: before sub = %a" Value.print value);
              Log.trace (fun log -> log "const :: %a" Ty.print (Value.ty_of value));

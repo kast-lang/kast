@@ -183,4 +183,4 @@ impl syntax (@comptime_only thing) = `(
         | true => panic("comptime only")
     )
 );
-
+impl syntax (@claim value) = value;

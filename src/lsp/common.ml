@@ -73,6 +73,7 @@ let inner_compiled_with_handler
      (match compiled.shape with
       | E_Ref { mut = _; place } -> handler.handle PlaceExpr place
       | E_Claim place -> handler.handle PlaceExpr place
+      | E_UnsafeCopy place -> handler.handle PlaceExpr place
       | E_Constant _ -> ()
       | E_Then { list } -> list |> List.iter (handler.handle Expr)
       | E_Stmt { expr } -> handler.handle Expr expr

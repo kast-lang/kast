@@ -2335,6 +2335,7 @@ module Impl = struct
       | Types.E_Ref { mut = _; place } ->
         Some (E_Pure (Pure_AddrOf (transpile_place_expr place)))
       | Types.E_Claim place -> Some (claim place)
+      | Types.E_UnsafeCopy place -> Some (E_Pure (Pure_Copy (transpile_place_expr place)))
       | Types.E_Then { list } ->
         List.fold_left
           (fun acc e ->

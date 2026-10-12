@@ -333,6 +333,7 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
             <| T_Ref { mut = IsMutable.new_inferred ~span mut; referenced = place_ty }
         }
       | E_Claim place -> place.data.signature
+      | E_UnsafeCopy place -> place.data.signature
       | E_Then { list } ->
         let rec go (list : expr list) =
           match list with

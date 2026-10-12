@@ -302,6 +302,7 @@ module Impl = struct
       | E_Then _ -> "Then"
       | E_Ref _ -> "Ref"
       | E_Claim _ -> "Claim"
+      | E_UnsafeCopy _ -> "Copy"
       | E_Stmt _ -> "Stmt"
       | E_Scope _ -> "Scope"
       | E_Fn _ -> "Fn"
@@ -340,6 +341,12 @@ module Impl = struct
         fmt
         "@{<magenta>ref%s@} (@;<0 2>@[<v>place = %a,@]@ )"
         (if mut then " mut" else "")
+        (print_place_expr ~options)
+        place
+    | E_UnsafeCopy place ->
+      fprintf
+        fmt
+        "@{<magenta>unsafe_copy@} (@;<0 2>@[<v>place = %a,@]@ )"
         (print_place_expr ~options)
         place
     | E_Claim place ->

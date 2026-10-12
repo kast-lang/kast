@@ -1290,7 +1290,7 @@ module Impl = struct
       | E_Ref { mut; place } ->
         let place = transpile_place_expr place in
         place_to_js ~mut place
-      | E_Claim place ->
+      | E_UnsafeCopy place | E_Claim place ->
         let place = transpile_place_expr place in
         claim place
       | E_Then { list } ->

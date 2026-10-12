@@ -4,4 +4,4 @@ let f = @call "C" () => (
     let y = x;
 );
 
-@native "\(f)";
+@native "\(@unsafe_copy f)";
