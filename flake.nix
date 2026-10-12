@@ -78,7 +78,7 @@
         # The main package containing the executable
         mainScope = createScope (filter {
           root = ./.;
-          include = [ "dune-workspace" "dune-project" "std" "src" ];
+          include = [ "dune-workspace" "dune-project" "c-runtime" "std" "src" ];
         });
         main = mainScope.${package};
         # Packages from devPackagesQuery
