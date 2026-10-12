@@ -4,6 +4,7 @@
 #include "./claim.h"
 #include "./cli.h"
 #include "./closure.h"
+#include "./conv.h"
 #include "./dbg.h"
 #include "./fmt.h"
 #include "./io.h"
