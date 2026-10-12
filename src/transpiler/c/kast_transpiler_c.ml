@@ -2166,6 +2166,12 @@ module Impl = struct
       else
         [ make_pure (transpile_ty arg.data.signature.ty).c_ty (transpile_expr arg) "arg" ]
     in
+    let args =
+      match f_ty.call_convention |> Inference.await_inferred_simple with
+      | None -> [ C_ast.Pure_AddrOf (Effect.perform GetScope).ctx_place ] @ args
+      | Some "C" -> args
+      | Some other -> fail "unknown conv %S" other
+    in
     let f, args =
       if f_ty.is_closure |> Inference.await_inferred_simple
       then (
@@ -2175,12 +2181,6 @@ module Impl = struct
         , [ C_ast.Pure_Copy (P_Field { obj = P_Ident f_name; field = "captured" }) ]
           @ args ))
       else make_pure (transpile_ty f_expr.data.signature.ty).c_ty f "f", args
-    in
-    let args =
-      match f_ty.call_convention |> Inference.await_inferred_simple with
-      | None -> [ C_ast.Pure_AddrOf (Effect.perform GetScope).ctx_place ] @ args
-      | Some "C" -> args
-      | Some other -> fail "unknown conv %S" other
     in
     let result_var = gen_name "apply_result" in
     let result_ty = (transpile_ty f_ty.result).c_ty in
@@ -2402,11 +2402,14 @@ module Impl = struct
               then E_Pure (Pure_Copy (P_Ident captured_var_name))
               else E_Pure (Pure_AddrOf (P_Ident captured_var_name))
           in
-          insert_stmt
-            (S_Assign
-               { assignee = P_Field { obj = P_Ident result_var; field = "refcount" }
-               ; value = E_Native [ N_Raw "RefCounted_Unit_new(UNIT)" ]
-               });
+          (match transpiled_fn.captured_ty_name with
+           | None -> ()
+           | Some _ ->
+             insert_stmt
+               (S_Assign
+                  { assignee = P_Field { obj = P_Ident result_var; field = "refcount" }
+                  ; value = E_Native [ N_Raw "RefCounted_Unit_new(UNIT)" ]
+                  }));
           insert_stmt
             (S_Assign
                { assignee = P_Field { obj = P_Ident result_var; field = "captured" }
@@ -3019,8 +3022,7 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
   let unwind_ctx : unwind_ctx =
     { insert_unwind =
         (fun () ->
-          Impl.insert_stmt
-            (S_Return (E_Pure (Pure_Literal (L_Int32 (Int32.of_int (-1)))))))
+          Impl.insert_stmt (S_Native [ N_Raw "exit_with_error(\"Unwinded from main\")" ]))
     ; cleanup_scope_without_unwind = (fun () -> ())
     }
   in

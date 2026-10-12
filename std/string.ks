@@ -63,8 +63,7 @@ impl String as module = (
                 (@native "string.iter")(s, f)
             )
             | target.name == "c" => (
-                let @"impl" :: fn (&str, Char -> ()) -> () = @native "String_iter";
-                @"impl"(s, f)
+                @native "String_iter(\(&(@context)), \(s), \(f))"
             )
             | target.name == "javascript" => (
                 (@native "Kast.String.iter")(s, f)

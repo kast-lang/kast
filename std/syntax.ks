@@ -77,21 +77,19 @@ impl syntax (@context ty) = `(
     (@native "create_context_type")($ty)
 );
 impl syntax (loop ( body )) = `(
-    unwindable loop_block (
-        @eval with std.LoopBlock = loop_block;
+    unwindable (@no_hygiene _loop_block) (
         @loop (
-            unwindable loop_body (
-                @eval with std.LoopBody = loop_body;
+            unwindable (@no_hygiene _loop_body) (
                 $body
             );
         );
     );
 );
 impl syntax (break) = `(
-    unwind (@binding @current std.LoopBlock) ()
+    unwind (@no_hygiene _loop_block) ()
 );
 impl syntax (continue) = `(
-    unwind (@binding @current std.LoopBody) ()
+    unwind (@no_hygiene _loop_body) ()
 );
 impl syntax (let rec pattern = value) = `(
     let _mod = (
@@ -114,11 +112,9 @@ impl syntax (while value is pattern do body) = `(
     )
 );
 impl syntax (for pattern in iterable do body) = `(
-    unwindable loop_block (
-        @eval with std.LoopBlock = loop_block;
+    unwindable (@no_hygiene _loop_block) (
         $iterable.iter(
-            $pattern => unwindable loop_body (
-                @eval with std.LoopBody = loop_body;
+            $pattern => unwindable (@no_hygiene _loop_body) (
                 $body;
             )
         );

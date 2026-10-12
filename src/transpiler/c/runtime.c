@@ -1413,8 +1413,11 @@ define_RefCounted(Unit);
 define_closure_type(fn_Int32_Char_Unit, void, Int32, Char);
 define_closure_type(fn_Char_Unit, void, Char);
 
-#define call_closure(TODO_unwind, _f, ...)                                     \
-    (_f).f((_f).captured, ctx, __VA_ARGS__)
+#define call_closure(perform_unwind, closure, ...)                             \
+    (closure).f((closure).captured, ctx, ##__VA_ARGS__);                       \
+    if (are_we_unwinding()) {                                                  \
+        perform_unwind;                                                        \
+    }
 
 void TypeInfo_drop(TypeInfo* T, void* value) {
     if (T->drop != NULL) {
@@ -1497,7 +1500,7 @@ void String_iteri(Context* ctx, StringView s, fn_Int32_Char_Unit consumer) {
     while (iter < s.buf + s.length) {
         Int32 i = iter - s.buf;
         Char c = utf8_char_decode_step(&iter);
-        call_closure(return, consumer, i, c);
+        call_closure(break, consumer, i, c);
     }
     fn_Int32_Char_Unit_drop(consumer);
 }
@@ -1507,7 +1510,7 @@ void String_iteri_rev(Context* ctx, StringView s, fn_Int32_Char_Unit consumer) {
     while (iter > s.buf) {
         Char c = utf8_char_decode_step_rev(&iter);
         Int32 i = iter - s.buf;
-        call_closure(return, consumer, i, c);
+        call_closure(break, consumer, i, c);
     }
     fn_Int32_Char_Unit_drop(consumer);
 }
@@ -1516,7 +1519,7 @@ void String_iter(Context* ctx, StringView s, fn_Char_Unit consumer) {
     const char* iter = s.buf;
     while (iter < s.buf + s.length) {
         Char c = utf8_char_decode_step(&iter);
-        call_closure(return, consumer, c);
+        call_closure(break, consumer, c);
     }
     fn_Char_Unit_drop(consumer);
 }

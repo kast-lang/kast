@@ -56,7 +56,7 @@ build-c src="target/compiled.c":
     ${CC:-gcc} ${CFLAGS} -o target/compiled.exe {{src}}
 
 test-c src="target/compiled.c":
-    build-c {{src}}
+    just build-c {{src}}
     ./target/compiled.exe
 
 compile-tcp-client-server-c:

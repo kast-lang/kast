@@ -11,8 +11,8 @@ const impl_native = [T] (name :: &str, value :: T) -> () => (
 
 const UnwindToken = [T :: Type] ((@native "UnwindToken")(T) :: Type);
 const UnwindUnit = UnwindToken[type ()];
-const LoopBlock = @context UnwindUnit;
-const LoopBody = @context UnwindUnit;
+# const LoopBlock = @context UnwindUnit;
+# const LoopBody = @context UnwindUnit;
 # const ReturnBlock = @context newtype (
 #     .T :: Type,
 #     .token :: Any,

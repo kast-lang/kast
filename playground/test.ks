@@ -1,7 +1,4 @@
-let x = "hi";
-
-let f = @call "C" () => (
-    let y = x;
+for c in "hello" |> String.iter do (
+    if c == 'l' then break;
+    dbg.print(c);
 );
-
-@native "\(@unsafe_copy f)";
