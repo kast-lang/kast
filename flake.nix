@@ -124,15 +124,16 @@
             in
             main.overrideAttrs (oa: {
               nativeBuildInputs = [ pkgs.nodejs ];
+              propagatedBuildInputs = [ c-runtime ];
               buildPhase = ''
                 ln -s ${npmDeps}/node_modules ./node_modules
                 ls -la ./node_modules
-                export KAST_PATH="../lib"
+                export KAST_PATH=".."
                 ${oa.buildPhase}
               '';
               postFixup = ''
-                rm -rf $out/lib/ocaml
-                cp -r std $out/lib/std
+                rm -rf $out/lib
+                cp -r std $out/std
               '';
             });
           kast = default;
