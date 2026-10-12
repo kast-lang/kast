@@ -49,7 +49,7 @@
           });
           memtrace =
             let
-              src = builtins.fetchGit {
+              src = fetchGit {
                 url = "https://github.com/janestreet/memtrace";
                 rev = "c86e4fe3e8308e86f066d6c00e4dbc69003ec381";
               };
@@ -59,7 +59,7 @@
             }).memtrace;
           ppxlib =
             let
-              src = builtins.fetchGit {
+              src = fetchGit {
                 url = "https://github.com/NathanReb/ppxlib";
                 rev = "7fa47adcba0261acf6aa39736a9c7d80a70815c7";
               };
@@ -86,7 +86,7 @@
           (pkgs.lib.getAttrs (builtins.attrNames devPackagesQuery) devScope);
         memtrace_viewer =
           let
-            src = builtins.fetchGit {
+            src = fetchGit {
               url = "https://github.com/kuviman/memtrace_viewer";
               rev = "2fadaf8b3dfe4c8f9699ffc17e16052598f691d5";
             };
