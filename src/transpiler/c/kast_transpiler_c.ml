@@ -1319,7 +1319,8 @@ module Impl = struct
                   make_with (fun () ->
                     TD_Raw
                       { def = make_string "define_closure_type%s(%s)" cc_suffix macro_arg
-                      ; impl = None
+                      ; impl =
+                          Some (make_string "impl_closure_type%s(%s)" cc_suffix macro_arg)
                       ; need_declared =
                           List.map (fun name : C_ast.ty -> T_Named name) define_macro_args
                       ; need_completed = []
