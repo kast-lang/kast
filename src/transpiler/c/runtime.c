@@ -197,6 +197,8 @@ struct TypeInfo {
 typedef struct {
 } Unit;
 
+const Unit UNIT;
+
 typedef bool Bool;
 typedef char Byte;
 typedef int32_t Int32;
@@ -695,7 +697,7 @@ void Kast_free(const void* memory) {
 #endif
 }
 
-char* Kast_allocate_raw(size_t length) {
+void* Kast_allocate_raw(size_t length) {
     return Kast_allocate_array(&Byte_TypeInfo, length);
 }
 
@@ -1344,9 +1346,39 @@ typedef struct Context Context;
         return list->buf[--list->length];                                      \
     }
 
+#define define_RefCounted(T)                                                   \
+    typedef struct {                                                           \
+        size_t ref_count;                                                      \
+        T value;                                                               \
+    } RefCounted_##T;                                                          \
+    RefCounted_##T* RefCounted_##T##_new(T value) {                            \
+        RefCounted_##T* rc;                                                    \
+        rc = Kast_allocate_raw(sizeof(*rc));                                   \
+        *rc = (RefCounted_##T) {                                               \
+            .ref_count = 1,                                                    \
+            .value = value,                                                    \
+        };                                                                     \
+        return rc;                                                             \
+    }                                                                          \
+    RefCounted_##T* RefCounted_##T##_claim(RefCounted_##T* rc) {               \
+        rc->ref_count++;                                                       \
+        return rc;                                                             \
+    }                                                                          \
+    size_t RefCounted_##T##_drop(RefCounted_##T* rc) {                         \
+        rc->ref_count--;                                                       \
+        size_t left_refs = rc->ref_count;                                      \
+        if (left_refs == 0) {                                                  \
+            Kast_free(rc);                                                     \
+        }                                                                      \
+        return left_refs;                                                      \
+    }
+
+define_RefCounted(Unit);
+
 #define define_closure_type_C(name, Ret, ...)                                  \
     typedef struct {                                                           \
         void* captured;                                                        \
+        RefCounted_Unit* refcount;                                             \
         TypeInfo* captured_TypeInfo;                                           \
         Ret (*f)(void*, ##__VA_ARGS__);                                        \
     } name;                                                                    \
@@ -1355,10 +1387,9 @@ typedef struct Context Context;
         if (place->captured == NULL) {                                         \
             return *place;                                                     \
         }                                                                      \
-        void* claimed_captured = Kast_allocate(place->captured_TypeInfo);      \
-        place->captured_TypeInfo->claim(place->captured, claimed_captured);    \
         return (name) {                                                        \
-            .captured = claimed_captured,                                      \
+            .refcount = RefCounted_Unit_claim(place->refcount),                \
+            .captured = place->captured,                                       \
             .captured_TypeInfo = place->captured_TypeInfo,                     \
             .f = place->f,                                                     \
         };                                                                     \
@@ -1368,47 +1399,22 @@ typedef struct Context Context;
         if (closure.captured == NULL) {                                        \
             return;                                                            \
         }                                                                      \
-        if (closure.captured_TypeInfo->drop != NULL) {                         \
-            closure.captured_TypeInfo->drop(closure.captured);                 \
+        if (RefCounted_Unit_drop(closure.refcount) == 0) {                     \
+            if (closure.captured_TypeInfo->drop != NULL) {                     \
+                closure.captured_TypeInfo->drop(closure.captured);             \
+            }                                                                  \
+            Kast_free(closure.captured);                                       \
         }                                                                      \
-        Kast_free(closure.captured);                                           \
     }
 
 #define define_closure_type(name, Ret, ...)                                    \
-    typedef struct {                                                           \
-        void* captured;                                                        \
-        TypeInfo* captured_TypeInfo;                                           \
-        Ret (*f)(Context*, void*, ##__VA_ARGS__);                              \
-    } name;                                                                    \
-                                                                               \
-    name name##_claim(name* place) {                                           \
-        if (place->captured == NULL) {                                         \
-            return *place;                                                     \
-        }                                                                      \
-        void* claimed_captured = Kast_allocate(place->captured_TypeInfo);      \
-        place->captured_TypeInfo->claim(place->captured, claimed_captured);    \
-        return (name) {                                                        \
-            .captured = claimed_captured,                                      \
-            .captured_TypeInfo = place->captured_TypeInfo,                     \
-            .f = place->f,                                                     \
-        };                                                                     \
-    }                                                                          \
-                                                                               \
-    void name##_drop(name closure) {                                           \
-        if (closure.captured == NULL) {                                        \
-            return;                                                            \
-        }                                                                      \
-        if (closure.captured_TypeInfo->drop != NULL) {                         \
-            closure.captured_TypeInfo->drop(closure.captured);                 \
-        }                                                                      \
-        Kast_free(closure.captured);                                           \
-    }
+    define_closure_type_C(name, Ret, Context*, ##__VA_ARGS__)
 
 define_closure_type(fn_Int32_Char_Unit, void, Int32, Char);
 define_closure_type(fn_Char_Unit, void, Char);
 
 #define call_closure(TODO_unwind, _f, ...)                                     \
-    (_f).f(ctx, (_f).captured, __VA_ARGS__)
+    (_f).f((_f).captured, ctx, __VA_ARGS__)
 
 void TypeInfo_drop(TypeInfo* T, void* value) {
     if (T->drop != NULL) {

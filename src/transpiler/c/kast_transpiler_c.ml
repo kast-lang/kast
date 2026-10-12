@@ -1622,11 +1622,6 @@ module Impl = struct
                   -> { name = member_name member; ty = (transpile_ty field.ty).c_ty })
           |> List.of_seq
         in
-        let args =
-          if is_closure
-          then [ ({ name = captured_arg_name; ty = T_Ptr T_Void } : C_ast.fn_arg) ] @ args
-          else args
-        in
         let ctx_var = gen_name "ctx" in
         let args =
           match call_convention with
@@ -1634,6 +1629,11 @@ module Impl = struct
             [ ({ name = ctx_var; ty = T_Ptr (T_Named "Context") } : C_ast.fn_arg) ] @ args
           | Some "C" -> args
           | Some other -> fail "unknown call convension %S" other
+        in
+        let args =
+          if is_closure
+          then [ ({ name = captured_arg_name; ty = T_Ptr T_Void } : C_ast.fn_arg) ] @ args
+          else args
         in
         let body : C_ast.block =
           let result_var : C_ast.pure_expr option ref = ref None in
@@ -2401,6 +2401,11 @@ module Impl = struct
               then E_Pure (Pure_Copy (P_Ident captured_var_name))
               else E_Pure (Pure_AddrOf (P_Ident captured_var_name))
           in
+          insert_stmt
+            (S_Assign
+               { assignee = P_Field { obj = P_Ident result_var; field = "refcount" }
+               ; value = E_Native [ N_Raw "RefCounted_Unit_new(UNIT)" ]
+               });
           insert_stmt
             (S_Assign
                { assignee = P_Field { obj = P_Ident result_var; field = "captured" }

@@ -95,6 +95,7 @@ const get_or_init = [K, V] (
     match get_mut(map, &key) with (
         | :Some value => value
         | :None => (
+            # TODO dont move ownership (moves compare field techincally atm)
             let { .less, .equal, .greater } = split_inner_at_key(map^, &key);
             let mut equal = match equal with (
                 | :Empty => Treap.singleton({ .key, .value = init() })

@@ -5,3 +5,7 @@ const Drop = [Self] newtype {
 };
 
 const drop = [T] (value :: T) => ();
+
+const forget = [T] (value :: T) => (
+    # TODO
+);

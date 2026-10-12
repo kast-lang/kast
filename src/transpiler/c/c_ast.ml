@@ -334,7 +334,7 @@ module Print = struct
     let surround = need_surround_pure_expr expr in
     maybe_surround surround (fun () ->
       match expr with
-      | Pure_Unit -> write "(Unit){}"
+      | Pure_Unit -> write "UNIT"
       | Pure_Native native -> print_native native
       | Pure_Not e ->
         write "!";
