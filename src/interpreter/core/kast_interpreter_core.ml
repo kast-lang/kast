@@ -825,7 +825,11 @@ and eval_expr_assign : state -> expr -> Types.expr_assign -> value =
 
 and eval_expr_apply : state -> expr -> Types.expr_apply -> value =
   fun state expr { f; arg } ->
-  let f = eval state f in
+  let f =
+    match eval_place state f with
+    | Place (~mut:_, place) -> read_place ~span:expr.data.span place
+    | RefBlocked _ -> failwith __LOC__
+  in
   let arg = eval state arg in
   call expr.data.span state f arg
 
@@ -834,7 +838,11 @@ and eval_expr_instantiategeneric
   =
   fun state expr { generic; arg } ->
   let span = expr.data.span in
-  let generic = eval state generic in
+  let generic =
+    match eval_place state generic with
+    | Place (~mut:_, place) -> read_place ~span:expr.data.span place
+    | RefBlocked _ -> failwith __LOC__
+  in
   let arg = eval state arg in
   let result_ty = monomorphized_ir_data_ty ~state expr.data in
   instantiate ~result_ty span state generic arg

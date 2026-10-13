@@ -265,7 +265,9 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                  in
                  let expr =
                    E_Apply
-                     { f = const_shape impl |> init_expr span state
+                     { f =
+                         PE_Temp (const_shape impl |> init_expr span state)
+                         |> init_place_expr span state
                      ; arg = const_shape arg |> init_expr span state
                      }
                    |> init_expr span state

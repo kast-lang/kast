@@ -263,7 +263,7 @@ let apply : core_syntax =
         in
         match kind with
         | Expr ->
-          let f = C.compile Expr f in
+          let f = C.compile PlaceExpr f in
           let arg =
             tuple_impl
               ~guaranteed_anonymous:true
@@ -298,7 +298,7 @@ let instantiate_generic : core_syntax =
         in
         match kind with
         | Expr ->
-          let generic = C.compile Expr generic in
+          let generic = C.compile PlaceExpr generic in
           let arg =
             tuple_impl
               ~guaranteed_anonymous:true
@@ -2667,13 +2667,14 @@ let auto_instantiate : core_syntax =
         : a ->
         let span = ast.data.span in
         let expr = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
-        let expr () =
-          let expr = C.compile Expr expr in
+        let place_expr () =
+          let expr = C.compile PlaceExpr expr in
           auto_instantiate_generics span C.state expr
         in
+        let expr () = E_Claim (place_expr ()) |> init_expr span C.state in
         match kind with
         | Expr -> expr ()
-        | PlaceExpr -> Compiler.temp_expr (module C) ast
+        | PlaceExpr -> place_expr ()
         | TyExpr -> (fun () -> TE_Expr (expr ())) |> init_ty_expr span C.state
         | Pattern | Assignee ->
           error span "auto_instantiate can't be pattern | assignee";

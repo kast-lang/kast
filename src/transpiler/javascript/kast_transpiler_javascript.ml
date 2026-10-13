@@ -1081,14 +1081,14 @@ module Impl = struct
       ; span = None
       }
 
-  and call ~span (f : expr) (arg : expr) : no_effect_expr =
+  and call ~span (f : place_expr) (arg : expr) : no_effect_expr =
     let async =
       match !async_fns with
       | Always -> true
       | Never -> false
       | BasedOnInference -> fail "async inference got removed"
     in
-    let f = pure <| transpile_expr f in
+    let f = claim (transpile_place_expr f) in
     let unnamed_args = ref [] in
     let named_args = ref [] in
     (match arg.shape with
@@ -1165,7 +1165,7 @@ module Impl = struct
                         { shape =
                             JsAst.Call
                               { async
-                              ; f
+                              ; f = pure f
                               ; args =
                                   [ ({ shape = Var (Effect.perform GetScope).ctx_var
                                      ; span = None

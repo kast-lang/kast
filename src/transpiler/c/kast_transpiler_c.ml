@@ -2120,14 +2120,16 @@ module Impl = struct
     insert_drop ty (E_Pure (Pure_Copy place));
     insert_stmt (S_Assign { assignee = place; value = E_Pure value })
 
-  and call_fn ~(args_is_tuple : bool) (f_expr : expr) (arg : expr) : C_ast.expr option =
+  and call_fn ~(args_is_tuple : bool) (f_expr : Expr.Place.t) (arg : expr)
+    : C_ast.expr option
+    =
     let f_ty =
       match f_expr.data.signature.ty |> Ty.await_inferred with
       | T_Fn ty -> ty
       | T_Generic _ -> failwith __LOC__
       | _ -> fail "Expected fn, got %a" Ty.print f_expr.data.signature.ty
     in
-    let f = transpile_expr f_expr in
+    let f = transpile_place_expr f_expr in
     let args : C_ast.pure_expr list =
       if args_is_tuple
       then (
@@ -2211,13 +2213,10 @@ module Impl = struct
     in
     let f, args =
       if f_ty.is_closure |> Inference.await_inferred_simple
-      then (
-        let f_name = gen_name "f" in
-        let_var f_expr.data.signature.ty f_name (Some f);
-        ( C_ast.Pure_Copy (P_Field { obj = P_Ident f_name; field = "f" })
-        , [ C_ast.Pure_Copy (P_Field { obj = P_Ident f_name; field = "captured" }) ]
-          @ args ))
-      else make_pure (transpile_ty f_expr.data.signature.ty).c_ty f "f", args
+      then
+        ( C_ast.Pure_Copy (P_Field { obj = f; field = "f" })
+        , [ C_ast.Pure_Copy (P_Field { obj = f; field = "captured" }) ] @ args )
+      else C_ast.Pure_Copy f, args
     in
     let result_var = gen_name "apply_result" in
     let result_ty = (transpile_ty f_ty.result).c_ty in

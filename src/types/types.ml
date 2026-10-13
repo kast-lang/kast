@@ -302,12 +302,12 @@ module rec TypesImpl : sig
     }
 
   and expr_apply =
-    { f : expr
+    { f : place_expr
     ; arg : expr
     }
 
   and expr_instantiate_generic =
-    { generic : expr
+    { generic : place_expr
     ; arg : expr
     }
 
@@ -1076,12 +1076,12 @@ end = struct
     }
 
   and expr_apply =
-    { f : expr
+    { f : place_expr
     ; arg : expr
     }
 
   and expr_instantiate_generic =
-    { generic : expr
+    { generic : place_expr
     ; arg : expr
     }
 

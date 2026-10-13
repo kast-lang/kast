@@ -88,10 +88,10 @@ let inner_compiled_with_handler
       | E_Variant { label = _; label_span = _; value } ->
         value |> Option.iter (handler.handle Expr)
       | E_Apply { f; arg } ->
-        handler.handle Expr f;
+        handler.handle PlaceExpr f;
         handler.handle Expr arg
       | E_InstantiateGeneric { generic; arg } ->
-        handler.handle Expr generic;
+        handler.handle PlaceExpr generic;
         handler.handle Expr arg
       | E_Assign { assignee; value } ->
         handler.handle Assignee assignee;

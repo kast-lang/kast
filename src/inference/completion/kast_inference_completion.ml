@@ -308,10 +308,10 @@ module Impl = struct
     | E_Variant { label = _; label_span = _; value } ->
       complete_option complete_expr value
     | E_Apply { f; arg } ->
-      complete_expr f;
+      complete_place_expr f;
       complete_expr arg
     | E_InstantiateGeneric { generic; arg } ->
-      complete_expr generic;
+      complete_place_expr generic;
       complete_expr arg
     | E_Assign { assignee; value } ->
       complete_assignee_expr assignee;

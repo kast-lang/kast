@@ -409,15 +409,19 @@ module Impl = struct
     | E_Apply { f; arg } ->
       fprintf
         fmt
-        "@{<magenta>apply@} %a"
-        (Tuple.print (print_expr ~options))
-        (Tuple.make [] [ "f", f; "arg", arg ])
+        "@{<magenta>apply@} (@;<0 2>@[<v>f = %a,@]@;<0 2>@[<v>arg = %a@]@ )"
+        (print_place_expr ~options)
+        f
+        (print_expr ~options)
+        arg
     | E_InstantiateGeneric { generic; arg } ->
       fprintf
         fmt
-        "@{<magenta>instantiate_generic@} %a"
-        (Tuple.print (print_expr ~options))
-        (Tuple.make [] [ "generic", generic; "arg", arg ])
+        "@{<magenta>instantiate@} (@;<0 2>@[<v>f = %a,@]@;<0 2>@[<v>arg = %a@]@ )"
+        (print_place_expr ~options)
+        generic
+        (print_expr ~options)
+        arg
     | E_Assign { assignee; value } ->
       fprintf
         fmt

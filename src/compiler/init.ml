@@ -155,12 +155,14 @@ and expr_placeholder : span -> State.t -> expr =
     }
   |> init_expr span state
 
-and auto_instantiate_generics : span -> State.t -> expr -> expr =
+and auto_instantiate_generics : span -> State.t -> Expr.Place.t -> Expr.Place.t =
   fun span state expr ->
   match expr.data.signature.ty.var |> Inference.Var.inferred_opt with
   | Some (T_Generic _) ->
-    E_InstantiateGeneric { generic = expr; arg = expr_placeholder span state }
-    |> init_expr span state
+    PE_Temp
+      (E_InstantiateGeneric { generic = expr; arg = expr_placeholder span state }
+       |> init_expr span state)
+    |> init_place_expr span state
   | _ -> expr
 
 and field_ty ~span ~state ?(obj : Types.place_expr option) ~field_span (obj_ty : ty) field
