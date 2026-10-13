@@ -298,7 +298,6 @@ module Impl = struct
     fun fmt expr ->
     let name =
       match expr.shape with
-      | E_Constant _ -> "Constant"
       | E_Then _ -> "Then"
       | E_Ref _ -> "Ref"
       | E_Claim _ -> "Claim"
@@ -355,8 +354,6 @@ module Impl = struct
         "@{<magenta>claim@} (@;<0 2>@[<v>place = %a,@]@ )"
         (print_place_expr ~options)
         place
-    | E_Constant { id = _; value } ->
-      fprintf fmt "@{<magenta>const@} %a" print_value value
     | E_Then { list } ->
       fprintf
         fmt

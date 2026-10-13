@@ -16,7 +16,6 @@ type state = State.t
 
 module Cache = State.Cache
 
-let const_shape = Types.const_shape
 let get_data = Compiler.get_data
 
 let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
@@ -36,9 +35,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
              span);
          match ast.shape with
          | Ast.Empty ->
-           let expr () =
-             const_shape (V_Unit |> Value.inferred ~span) |> init_expr span state
-           in
+           let expr () = const_expr (V_Unit |> Value.inferred ~span) span state in
            let result : a =
              match kind with
              | Assignee -> A_Unit |> init_assignee span state
@@ -86,7 +83,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                   Error.error span "Interpolation is TODO";
                   V_Error
               in
-              const_shape (value |> Value.inferred ~span) |> init_expr span state)
+              const_expr (value |> Value.inferred ~span) span state)
          | Ast.Simple { token; _ } ->
            (match kind with
             | PlaceExpr ->
@@ -161,7 +158,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                    |> Inference.Value.expect_inferred_as
                         ~span
                         (actual_const |> Value.inferred ~span));
-                 const_shape const |> init_expr span state
+                 const_expr const span state
                | Token.Types.Comment _ | Token.Types.Punct _ | Token.Types.Eof ->
                  unreachable "!")
             | TyExpr ->
@@ -266,9 +263,9 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                  let expr =
                    E_Apply
                      { f =
-                         PE_Temp (const_shape impl |> init_expr span state)
+                         PE_Temp (const_expr impl span state)
                          |> init_place_expr span state
-                     ; arg = const_shape arg |> init_expr span state
+                     ; arg = const_expr arg span state
                      }
                    |> init_expr span state
                  in
@@ -290,8 +287,7 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
             | Some value -> compile state kind value
             | None ->
               (match kind with
-               | Expr ->
-                 const_shape (V_Unit |> Value.inferred ~span) |> init_expr span state
+               | Expr -> const_expr (V_Unit |> Value.inferred ~span) span state
                | _ ->
                  Error.error span "expected a value after syntax";
                  init_error span state kind))

@@ -2135,25 +2135,25 @@ module Impl = struct
       then (
         let args : C_ast.pure_expr tuple ref = ref Tuple.empty in
         (match arg.shape with
-         | E_Constant { value; _ } ->
-           let value_tuple =
-             value
-             |> Value.expect_tuple
-             |> Option.unwrap_or_else (fun () -> fail "f args must be tuple")
-           in
-           value_tuple.tuple
-           |> Tuple.iter (fun member (field : Types.value_tuple_field) ->
-             let name =
-               match member with
-               | Index _ -> None
-               | Name name -> Some name
-             in
-             args
-             := !args
-                |> Tuple.add
-                     name
-                     (C_ast.Pure_Copy
-                        (transpile_value (Interpreter.read_place ~span field.place))))
+         (* | E_Constant { value; _ } -> *)
+         (*   let value_tuple = *)
+         (*     value *)
+         (*     |> Value.expect_tuple *)
+         (*     |> Option.unwrap_or_else (fun () -> fail "f args must be tuple") *)
+         (*   in *)
+         (*   value_tuple.tuple *)
+         (*   |> Tuple.iter (fun member (field : Types.value_tuple_field) -> *)
+         (*     let name = *)
+         (*       match member with *)
+         (*       | Index _ -> None *)
+         (*       | Name name -> Some name *)
+         (*     in *)
+         (*     args *)
+         (*     := !args *)
+         (*        |> Tuple.add *)
+         (*             name *)
+         (*             (C_ast.Pure_Copy *)
+         (*                (transpile_value (Interpreter.read_place ~span field.place)))) *)
          | E_Tuple { parts; _ } ->
            parts
            |> List.iter (function
@@ -2366,8 +2366,6 @@ module Impl = struct
     Inference.Var.setup_default_if_needed expr.data.signature.ty.var;
     try
       match expr.shape with
-      | Types.E_Constant { id = _; value } ->
-        Some (E_Pure (Pure_Copy (transpile_value value)))
       | Types.E_Ref { mut = _; place } ->
         Some (E_Pure (Pure_AddrOf (transpile_place_expr place)))
       | Types.E_Claim place -> Some (claim place)

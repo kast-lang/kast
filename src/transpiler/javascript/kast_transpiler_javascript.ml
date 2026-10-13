@@ -1092,18 +1092,18 @@ module Impl = struct
     let unnamed_args = ref [] in
     let named_args = ref [] in
     (match arg.shape with
-     | E_Constant { id = _; value = arg } ->
-       (match arg |> Value.expect_tuple with
-        | Some { tuple; ty = _ } ->
-          let field_value (field : value_tuple_field) =
-            pure <| transpile_value (field.place |> Kast_interpreter.read_place ~span)
-          in
-          tuple.named
-          |> StringMap.iter (fun name field ->
-            let field : JsAst.obj_part = Field { name; value = field_value field } in
-            named_args := !named_args @ [ field ]);
-          unnamed_args := tuple.unnamed |> Array.to_list |> List.map field_value
-        | None -> fail "called not with tuple but %a?" Value.print arg)
+     (* | E_Constant { id = _; value = arg } -> *)
+     (*   (match arg |> Value.expect_tuple with *)
+     (*    | Some { tuple; ty = _ } -> *)
+     (*      let field_value (field : value_tuple_field) = *)
+     (*        pure <| transpile_value (field.place |> Kast_interpreter.read_place ~span) *)
+     (*      in *)
+     (*      tuple.named *)
+     (*      |> StringMap.iter (fun name field -> *)
+     (*        let field : JsAst.obj_part = Field { name; value = field_value field } in *)
+     (*        named_args := !named_args @ [ field ]); *)
+     (*      unnamed_args := tuple.unnamed |> Array.to_list |> List.map field_value *)
+     (*    | None -> fail "called not with tuple but %a?" Value.print arg) *)
      | E_Tuple { guaranteed_anonymous = _; parts } ->
        parts
        |> List.iter (fun part ->
@@ -1286,7 +1286,6 @@ module Impl = struct
       let span = Some expr.data.span in
       let ctx = Effect.perform GetCtx in
       match expr.shape with
-      | E_Constant { id = _; value } -> transpile_value value
       | E_Ref { mut; place } ->
         let place = transpile_place_expr place in
         place_to_js ~mut place

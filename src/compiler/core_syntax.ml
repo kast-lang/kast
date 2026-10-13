@@ -6,8 +6,6 @@ open Init
 open Error
 module Interpreter = Kast_interpreter
 
-let const_shape = Types.const_shape
-
 type 'a handle = (module Compiler.S) -> 'a compiled_kind -> Ast.t -> Ast.group -> 'a
 
 type core_syntax =
@@ -20,9 +18,8 @@ let rec create_placeholder : 'a. 'a compiled_kind -> Span.t -> State.t -> 'a =
   match kind with
   | Assignee -> A_Placeholder |> init_assignee span state
   | Pattern -> P_Placeholder |> init_pattern span state
-  | Expr -> expr_placeholder span state
-  | PlaceExpr ->
-    PE_Temp (create_placeholder Expr span state) |> Init.init_place_expr span state
+  | PlaceExpr -> expr_placeholder span state
+  | Expr -> E_Claim (create_placeholder PlaceExpr span state) |> init_expr span state
   | TyExpr ->
     (fun () -> TE_Expr (create_placeholder Expr span state)) |> init_ty_expr span state
 ;;
@@ -727,8 +724,7 @@ let generic : core_syntax =
           in
           let generic_ty = V_Ty generic_ty |> Value.inferred ~span in
           let expr =
-            const_shape generic_ty
-            |> init_expr span C.state
+            const_expr generic_ty span C.state
             |> Compiler.data_add Pattern args Expr
             |> Compiler.data_add TyExpr (result_expr, result_ty) Expr
           in
@@ -786,7 +782,7 @@ let unit : core_syntax =
         | PlaceExpr -> Compiler.temp_expr (module C) ast
         | Assignee -> A_Unit |> init_assignee span C.state
         | Pattern -> P_Unit |> init_pattern span C.state
-        | Expr -> const_shape (V_Unit |> Value.inferred ~span) |> init_expr span C.state
+        | Expr -> const_expr (V_Unit |> Value.inferred ~span) span C.state
         | TyExpr -> (fun () -> TE_Unit) |> init_ty_expr span C.state)
   }
 ;;
@@ -803,8 +799,7 @@ let type' : core_syntax =
         let span = ast.data.span in
         Tuple.assert_empty children;
         let const () =
-          const_shape (V_Ty (Ty.inferred ~span T_Ty) |> Value.inferred ~span)
-          |> init_expr span C.state
+          const_expr (V_Ty (Ty.inferred ~span T_Ty) |> Value.inferred ~span) span C.state
         in
         match kind with
         | PlaceExpr -> Compiler.temp_expr (module C) ast
@@ -832,8 +827,7 @@ let bool_impl name value : core_syntax =
         Tuple.assert_empty children;
         match kind with
         | PlaceExpr -> Compiler.temp_expr (module C) ast
-        | Expr ->
-          const_shape (V_Bool value |> Value.inferred ~span) |> init_expr span C.state
+        | Expr -> const_expr (V_Bool value |> Value.inferred ~span) span C.state
         | Assignee ->
           error span "%s can't be assignee" name;
           init_error span C.state kind
@@ -980,8 +974,7 @@ let import : core_syntax =
                 { data with included_file = Some uri })
             in
             let imported = Compiler.import ~span (module C) uri in
-            const_shape imported.value
-            |> init_expr span C.state
+            const_expr imported.value span C.state
             |> Compiler.data_add Expr (path_expr, path_value) Expr
           | Assignee ->
             error span "Can't assign to import";
@@ -1102,7 +1095,7 @@ let const_let
     E_Assign
       { assignee = A_Let pattern |> init_assignee pattern.data.span C.state
       ; value =
-          (let const = const_shape value |> init_expr span C.state in
+          (let const = const_expr value span C.state in
            PE_Temp const |> init_place_expr span C.state)
       }
     |> init_expr span C.state
@@ -1125,8 +1118,7 @@ let const_let
     if C.state.scopes.call_site.recursive
     then let_expr
     else
-      E_Constant { id = Id.gen (); value = V_Unit |> Value.inferred ~span }
-      |> init_expr span C.state
+      const_expr (V_Unit |> Value.inferred ~span) span C.state
       |> Compiler.data_add Pattern pattern Expr
   in
   Log.trace (fun log -> log "compiled const %a at %a" Value.print value Span.print span);
@@ -1500,8 +1492,7 @@ let use_dot_star : core_syntax =
                  let local : State.Scope.local = Const { place = field.place; binding } in
                  C.state |> Compiler.add_local ~only_compiler:true local)
            | _ -> error span "can't use .* %a" Value.print used);
-          E_UseDotStar
-            { used = const_shape used |> init_expr span C.state; bindings = !bindings }
+          E_UseDotStar { used = const_expr used span C.state; bindings = !bindings }
           |> init_expr span C.state
           |> Compiler.data_add Expr (used_expr, used) Expr
         | _ ->
@@ -1526,8 +1517,7 @@ let comptime : core_syntax =
         | Expr ->
           let expr = C.compile Expr expr in
           let value = eval_const ~async:true C.state expr in
-          const_shape value
-          |> init_expr span C.state
+          const_expr value span C.state
           |> Compiler.data_add Expr (expr, value) kind
           |> Compiler.set_evaled value kind
         | _ ->
@@ -1550,7 +1540,7 @@ let comptime_fork : core_syntax =
         match kind with
         | Expr ->
           let value_var = Value.inferred ~span V_Unit in
-          let comptime_expr = const_shape value_var |> init_expr span C.state in
+          let comptime_expr = const_expr value_var span C.state in
           State.Scope.fork (fun () ->
             let expr = C.compile Expr expr in
             let value = eval_const ~async:true C.state expr in
@@ -1692,8 +1682,7 @@ let impl_syntax : core_syntax =
              in
              let impl = Interpreter.eval C.state.interpreter impl_expr in
              Hashtbl.add C.state.custom_syntax_impls rule.id impl;
-             const_shape (V_Unit |> Value.inferred ~span)
-             |> init_expr span C.state
+             const_expr (V_Unit |> Value.inferred ~span) span C.state
              |> Compiler.data_add Expr (impl_expr, impl) kind
            | _ ->
              let name_value, name_expr =
@@ -1723,8 +1712,7 @@ let impl_syntax : core_syntax =
                  | None ->
                    Error.error span "Syntax rule not found: %a" String.print_debug name)
               | None -> Error.error name_expr.data.span "Name must be a string");
-             const_shape (V_Unit |> Value.inferred ~span)
-             |> init_expr span C.state
+             const_expr (V_Unit |> Value.inferred ~span) span C.state
              |> Compiler.data_add Expr (name_expr, name_value) kind
              |> Compiler.data_add Expr (impl_expr, impl) kind)
         | TyExpr ->
@@ -2172,8 +2160,10 @@ let __file__ : core_syntax =
         let span = ast.data.span in
         match kind with
         | Expr ->
-          const_shape (V_StringView (span.uri |> Uri.path) |> Value.inferred ~span)
-          |> init_expr span C.state
+          const_expr
+            (V_StringView (span.uri |> Uri.path) |> Value.inferred ~span)
+            span
+            C.state
         | _ ->
           error span "__FILE__ must be expr";
           init_error span C.state kind)
@@ -2193,8 +2183,7 @@ let current_compiler_scope : core_syntax =
         match kind with
         | Expr ->
           let scope = C.state.scopes |> State.Scopes.def_site in
-          const_shape (V_CompilerScope scope |> Value.inferred ~span)
-          |> init_expr span C.state
+          const_expr (V_CompilerScope scope |> Value.inferred ~span) span C.state
         | _ ->
           error span "current_compiler_scope must be expr";
           init_error span C.state kind)
@@ -2530,8 +2519,7 @@ let impl_as_module : core_syntax =
             Compiler.eval ~ty:(Ty.new_not_inferred ~scope ~span) (module C) impl
           in
           Inference.Value.expect_inferred_as ~span impl impl_temp;
-          const_shape (V_Unit |> Value.inferred ~span)
-          |> init_expr span C.state
+          const_expr (V_Unit |> Value.inferred ~span) span C.state
           |> Compiler.data_add Expr (value_expr, value) kind
           |> Compiler.data_add Expr (impl_expr, impl) kind
         | _ ->
@@ -2617,9 +2605,7 @@ let typeof : core_syntax =
         let expr () =
           let expr = C.compile Expr expr in
           let ty_value = V_Ty expr.data.signature.ty |> Value.inferred ~span in
-          const_shape ty_value
-          |> init_expr span C.state
-          |> Compiler.data_add Expr (expr, ty_value) Expr
+          const_expr ty_value span C.state |> Compiler.data_add Expr (expr, ty_value) Expr
         in
         match kind with
         | Expr -> expr ()
@@ -2698,9 +2684,10 @@ let context : core_syntax =
         | PlaceExpr -> place ()
         | TyExpr ->
           let const =
-            const_shape
+            const_expr
               (V_Ty (Ty.inferred ~span T_ImplicitContext) |> Value.inferred ~span)
-            |> init_expr span C.state
+              span
+              C.state
           in
           (fun () -> TE_Expr const) |> init_ty_expr span C.state
         | Pattern | Assignee ->

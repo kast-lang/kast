@@ -146,21 +146,26 @@ let tuple_sig
 
 let rec _unused () = ()
 
-and expr_placeholder : span -> State.t -> expr =
+and const_expr (value : value) (span : span) (state : State.t) : expr =
+  let place = Place.init ~mut:Mutable value in
+  E_Claim (PE_Const place |> init_place_expr span state) |> init_expr span state
+
+and expr_placeholder : span -> State.t -> Expr.Place.t =
   fun span state ->
   (* TODO maybe have E_Placeholder *)
-  E_Constant
-    { id = Id.gen ()
-    ; value = Value.new_not_inferred ~scope:(State.var_scope state) ~span
-    }
-  |> init_expr span state
+  let value = Value.new_not_inferred ~scope:(State.var_scope state) ~span in
+  let place = Place.init ~mut:Immutable value in
+  PE_Const place |> init_place_expr span state
 
 and auto_instantiate_generics : span -> State.t -> Expr.Place.t -> Expr.Place.t =
   fun span state expr ->
   match expr.data.signature.ty.var |> Inference.Var.inferred_opt with
   | Some (T_Generic _) ->
     PE_Temp
-      (E_InstantiateGeneric { generic = expr; arg = expr_placeholder span state }
+      (E_InstantiateGeneric
+         { generic = expr
+         ; arg = E_Claim (expr_placeholder span state) |> init_expr span state
+         }
        |> init_expr span state)
     |> init_place_expr span state
   | _ -> expr
@@ -320,9 +325,8 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
   let scope = State.var_scope state in
   try
     let overwrite_shape : Expr.Shape.t option ref = ref None in
-    let signature =
+    let signature : ir_signature =
       match shape with
-      | E_Constant { id = _; value } -> pure (Value.ty_of value)
       | E_Ref { mut; place } ->
         if mut
         then

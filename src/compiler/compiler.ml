@@ -399,15 +399,6 @@ let rec local_place_expr def_site_interpreter_scope span state (local : State.Sc
   | Binding binding -> PE_Binding binding |> Init.init_place_expr span state
 
 and local_expr def_site_interpreter_scope span state (local : State.Scope.local) =
-  match local_lookup def_site_interpreter_scope span local with
-  | Const { place; binding } ->
-    let value = Kast_interpreter.read_place ~span place in
-    let expr = E_Constant { id = Id.gen (); value } |> Init.init_expr span state in
-    (match binding with
-     | Some binding -> expr.data.evaled.binding <- Some binding
-     | None -> ());
-    expr
-  | Binding _ ->
-    E_Claim (local_place_expr def_site_interpreter_scope span state local)
-    |> Init.init_expr span state
+  E_Claim (local_place_expr def_site_interpreter_scope span state local)
+  |> Init.init_expr span state
 ;;

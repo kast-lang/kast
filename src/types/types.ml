@@ -462,13 +462,7 @@ module rec TypesImpl : sig
     ; place : place_expr
     }
 
-  and expr_constant =
-    { id : Id.t
-    ; value : value
-    }
-
   and expr_shape =
-    | E_Constant of expr_constant
     | E_Ref of expr_ref
     | E_Claim of place_expr
     | E_UnsafeCopy of place_expr
@@ -1236,13 +1230,7 @@ end = struct
     ; place : place_expr
     }
 
-  and expr_constant =
-    { id : Id.t (* TODO remove?? *)
-    ; value : value
-    }
-
   and expr_shape =
-    | E_Constant of expr_constant
     | E_Ref of expr_ref
     | E_Claim of place_expr
     | E_UnsafeCopy of place_expr
@@ -1681,5 +1669,3 @@ type sub_state = interpreter_state
 let init_monomorphization_state () : monomorphization_state =
   { native = Hashtbl.create 0; ty = Hashtbl.create 0; value = Hashtbl.create 0 }
 ;;
-
-let const_shape value : expr_shape = E_Constant { id = Id.gen (); value }

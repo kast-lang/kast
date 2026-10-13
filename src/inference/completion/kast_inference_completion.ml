@@ -290,7 +290,6 @@ module Impl = struct
 
   and complete_expr_shape (shape : expr_shape) =
     match shape with
-    | E_Constant { id = _; value } -> complete_value value
     | E_Ref { mut : bool = _; place } -> complete_place_expr place
     | E_Claim place -> complete_place_expr place
     | E_UnsafeCopy place -> complete_place_expr place

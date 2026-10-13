@@ -577,7 +577,7 @@ and eval_place : state -> Types.place_expr -> evaled_place_expr =
           Log.trace (fun log ->
             log "evaled binding %a = %a" Binding.print binding Id.print result.id);
           Place (~mut:true, result)
-        | PE_Const place -> Place (~mut:true, place)
+        | PE_Const place -> Place (~mut:false, place)
         | PE_Context -> failwith __LOC__
         | PE_Temp expr ->
           let value = eval state expr in
@@ -1243,12 +1243,6 @@ and eval : state -> expr -> value =
            | E_Ref place -> eval_expr_ref state expr place
            | E_Claim place -> eval_expr_claim state expr place
            | E_UnsafeCopy place -> eval_expr_claim state expr place
-           | E_Constant { id; value } ->
-             Log.trace (fun log -> log "const: before sub = %a" Value.print value);
-             Log.trace (fun log -> log "const :: %a" Ty.print (Value.ty_of value));
-             let result = monomorphized_value ~span ~state id value in
-             Log.trace (fun log -> log "const: after sub = %a" Value.print result);
-             result
            | E_Fn f -> eval_expr_fn state expr f
            | E_Generic f -> eval_expr_generic state expr f
            | E_Tuple tuple -> eval_expr_tuple state expr tuple

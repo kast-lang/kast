@@ -1,5 +1,4 @@
-const f = () => (
-    @native "#include <non-exitent-header.h>"
-);
+const f = () => ();
 
 f();
+
