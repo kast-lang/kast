@@ -111,7 +111,7 @@
             propagatedBuildInputs = c-deps;
             installPhase = ''
               mkdir -p $out/lib
-              cp libkast.a $out/lib/
+              cp lib/libkast.a $out/lib/
               cp -r include $out/include
             '';
           };
@@ -207,7 +207,7 @@
             -Wfatal-errors
             -Wmissing-field-initializers
             -O1
-            -lbacktrace -lgc -g -rdynamic
+            -lbacktrace -lunwind -g -rdynamic
             -fsanitize=address,undefined,leak
             -pthread
           '';

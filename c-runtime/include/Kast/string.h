@@ -40,6 +40,10 @@ void String_drop(String s);
 void String_drop_type_erased(void* v);
 void String_dbg_write(String* s, Kast_Formatter* fmt);
 void String_dbg_write_type_erased(void* s, Kast_Formatter* fmt);
+StringView StringView_claim(StringView* place);
+void StringView_claim_type_erased(void* place_void, void* result_void);
+void StringView_drop(StringView s);
+void StringView_drop_type_erased(void* v);
 void StringView_dbg_write(StringView* s, Kast_Formatter* fmt);
 void StringView_dbg_write_type_erased(void* s, Kast_Formatter* fmt);
 

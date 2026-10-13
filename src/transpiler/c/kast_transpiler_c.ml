@@ -16,6 +16,10 @@ let print_span = Span.print
 let debug = ref false
 let allocation_stats = ref false
 
+let runtime_defined_types_with_type_info =
+  StringSet.of_list [ "String"; "StringView"; "Byte" ]
+;;
+
 type block = { mutable stmts : C_ast.stmt list }
 
 module StringListMap = Map.Make (struct
@@ -54,6 +58,7 @@ end
 type transpiled_ty =
   { kast_ty : ty
   ; c_ty : C_ast.ty
+  ; generate_type_info : bool
   ; type_info_name : string
   ; claim : (C_ast.place_expr -> C_ast.expr) LazyNamed.t
   ; drop : (C_ast.pure_expr -> unit) LazyNamed.t
@@ -1031,33 +1036,64 @@ module Impl = struct
               LazyNamed.make name (fun () -> f name)
             in
             let result : transpiled_ty =
-              { kast_ty = ty
-              ; c_ty
-              ; type_info_name = make_string "%s_TypeInfo" (ty_to_string c_ty)
-              ; claim =
-                  gen_lazy_named "claim" (fun claim_name ->
-                    let claim_impl = generate_claim_impl ty c_ty in
-                    add_claim_impl_with_type_erased claim_name c_ty claim_impl;
-                    fun (place : C_ast.place_expr) : C_ast.expr ->
-                      E_Apply
-                        { f = Pure_Copy (P_Ident claim_name)
-                        ; args = [ Pure_AddrOf place ]
-                        })
-              ; drop =
-                  gen_lazy_named "drop" (fun drop_name ->
-                    let drop_impl = generate_drop_impl ty c_ty in
-                    add_drop_impl_with_type_erased drop_name c_ty drop_impl;
-                    fun (value : C_ast.pure_expr) ->
-                      insert_stmt
-                        (S_Expr
-                           (E_Apply
-                              { f = Pure_Copy (P_Ident drop_name); args = [ value ] })))
-              ; dbg_write =
-                  gen_lazy_named "dbg_write" (fun dbg_write_name ->
-                    let dbg_write_impl = generate_dbg_write_impl ty c_ty in
-                    add_dbg_write_impl_with_type_erased dbg_write_name c_ty dbg_write_impl;
-                    dbg_write_name)
-              }
+              if runtime_defined_types_with_type_info |> StringSet.contains c_ty_as_str
+              then
+                { kast_ty = ty
+                ; c_ty
+                ; generate_type_info = false
+                ; type_info_name = make_string "%s_TypeInfo" c_ty_as_str
+                ; claim =
+                    (let claim_name = make_string "%s_claim" c_ty_as_str in
+                     LazyNamed.make claim_name (fun () ->
+                       fun (place : C_ast.place_expr) : C_ast.expr ->
+                       E_Apply
+                         { f = Pure_Copy (P_Ident claim_name)
+                         ; args = [ Pure_AddrOf place ]
+                         }))
+                ; drop =
+                    (let drop_name = make_string "%s_drop" c_ty_as_str in
+                     LazyNamed.make drop_name (fun () ->
+                       fun (value : C_ast.pure_expr) ->
+                       insert_stmt
+                         (S_Expr
+                            (E_Apply
+                               { f = Pure_Copy (P_Ident drop_name); args = [ value ] }))))
+                ; dbg_write =
+                    (let name = make_string "%s_dbg_write" c_ty_as_str in
+                     LazyNamed.make name (fun () -> name))
+                }
+              else
+                { kast_ty = ty
+                ; c_ty
+                ; generate_type_info = true
+                ; type_info_name = make_string "%s_TypeInfo" c_ty_as_str
+                ; claim =
+                    gen_lazy_named "claim" (fun claim_name ->
+                      let claim_impl = generate_claim_impl ty c_ty in
+                      add_claim_impl_with_type_erased claim_name c_ty claim_impl;
+                      fun (place : C_ast.place_expr) : C_ast.expr ->
+                        E_Apply
+                          { f = Pure_Copy (P_Ident claim_name)
+                          ; args = [ Pure_AddrOf place ]
+                          })
+                ; drop =
+                    gen_lazy_named "drop" (fun drop_name ->
+                      let drop_impl = generate_drop_impl ty c_ty in
+                      add_drop_impl_with_type_erased drop_name c_ty drop_impl;
+                      fun (value : C_ast.pure_expr) ->
+                        insert_stmt
+                          (S_Expr
+                             (E_Apply
+                                { f = Pure_Copy (P_Ident drop_name); args = [ value ] })))
+                ; dbg_write =
+                    gen_lazy_named "dbg_write" (fun dbg_write_name ->
+                      let dbg_write_impl = generate_dbg_write_impl ty c_ty in
+                      add_dbg_write_impl_with_type_erased
+                        dbg_write_name
+                        c_ty
+                        dbg_write_impl;
+                      dbg_write_name)
+                }
             in
             ctx.captured_types
             <- ctx.captured_types |> ValueMap.add ty_as_value (Completed result);
@@ -2821,12 +2857,14 @@ module Impl = struct
       match ty with
       | Inprogress -> failwith __LOC__
       | Completed ty ->
-        Dynarray.add_last
-          ctx.statics
-          { ty = T_Raw { c = "TypeInfo"; is_primitive = false }
-          ; name = ty.type_info_name
-          ; comment = None
-          });
+        if ty.generate_type_info
+        then
+          Dynarray.add_last
+            ctx.statics
+            { ty = T_Raw { c = "TypeInfo"; is_primitive = false }
+            ; name = ty.type_info_name
+            ; comment = None
+            });
     while not (Queue.is_empty ctx.queued_work) do
       (Queue.pop ctx.queued_work) ()
     done;
@@ -2860,29 +2898,24 @@ module Impl = struct
     and construct_ty_type_info (ty : transpiled_ty) =
       let ctx = Effect.perform GetCtx in
       let raw (raw_ty : string) : C_ast.expr =
-        if raw_ty = "String"
-        then E_Native [ N_Raw "String_TypeInfo" ]
-        else
-          c_compound_literal
-            (T_Raw { c = "TypeInfo"; is_primitive = false })
-            (([ ( "name"
-                , C_ast.Pure_Literal (L_String (make_string "%a" Ty.print ty.kast_ty)) )
-              ; ( "alignment"
-                , C_ast.Pure_Native [ N_Raw "alignof("; N_Raw raw_ty; N_Raw ")" ] )
-              ; "size", Pure_Native [ N_Raw "sizeof("; N_Raw raw_ty; N_Raw ")" ]
-              ; "stride", Pure_Native [ N_Raw "sizeof("; N_Raw raw_ty; N_Raw ")" ]
-              ; "dbg_write", Pure_Copy (P_Ident (ty.dbg_write.name ^ "_type_erased"))
-              ; "drop", Pure_Copy (P_Ident (ty.drop.name ^ "_type_erased"))
-              ; "claim", Pure_Copy (P_Ident (ty.claim.name ^ "_type_erased"))
+        c_compound_literal
+          (T_Raw { c = "TypeInfo"; is_primitive = false })
+          (([ "name", C_ast.Pure_Literal (L_String (make_string "%a" Ty.print ty.kast_ty))
+            ; "alignment", C_ast.Pure_Native [ N_Raw "alignof("; N_Raw raw_ty; N_Raw ")" ]
+            ; "size", Pure_Native [ N_Raw "sizeof("; N_Raw raw_ty; N_Raw ")" ]
+            ; "stride", Pure_Native [ N_Raw "sizeof("; N_Raw raw_ty; N_Raw ")" ]
+            ; "dbg_write", Pure_Copy (P_Ident (ty.dbg_write.name ^ "_type_erased"))
+            ; "drop", Pure_Copy (P_Ident (ty.drop.name ^ "_type_erased"))
+            ; "claim", Pure_Copy (P_Ident (ty.claim.name ^ "_type_erased"))
+            ]
+            @
+            if !allocation_stats
+            then
+              [ ( "allocation_stats"
+                , C_ast.Pure_Native [ N_Raw "Kast_type_allocation_stats_new()" ] )
               ]
-              @
-              if !allocation_stats
-              then
-                [ ( "allocation_stats"
-                  , C_ast.Pure_Native [ N_Raw "Kast_type_allocation_stats_new()" ] )
-                ]
-              else [])
-             |> List.map (fun (name, expr) -> name, C_ast.E_Pure expr))
+            else [])
+           |> List.map (fun (name, expr) -> name, C_ast.E_Pure expr))
       in
       match ty.c_ty with
       | T_Unit -> raw "Unit"
@@ -2909,11 +2942,13 @@ module Impl = struct
               match ty with
               | Inprogress -> failwith __LOC__
               | Completed ty ->
-                insert_stmt
-                  (S_Assign
-                     { assignee = P_Ident ty.type_info_name
-                     ; value = construct_ty_type_info ty
-                     })))
+                if ty.generate_type_info
+                then
+                  insert_stmt
+                    (S_Assign
+                       { assignee = P_Ident ty.type_info_name
+                       ; value = construct_ty_type_info ty
+                       })))
       }
     in
     ctx.fns <- ctx.fns |> StringMap.add "Kast_init_user_type_infos" init_type_infos_fn
@@ -3048,6 +3083,7 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
           Impl.new_block
             (fun () ->
                Impl.insert_stmt (S_Native [ N_Raw "Kast_init(argc, argv)" ]);
+               Impl.insert_stmt (S_Native [ N_Raw "Kast_init_user_type_infos()" ]);
                Impl.let_c_var (T_Named "Context") ctx_var None;
                Impl.insert_stmt
                  (S_Expr

@@ -36,7 +36,6 @@ struct TypeInfo {
 
 void TypeInfo_drop(TypeInfo* T, void* value);
 
-void Kast_init_user_type_infos(void);
 void Kast_init_type_infos(void);
 
 extern TypeInfo Byte_TypeInfo;
