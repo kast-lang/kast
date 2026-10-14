@@ -6,10 +6,10 @@ module Inference = Kast_inference
 
 let span = Span.of_ocaml __POS__
 
-let single_arg ~span (args : value) : value =
+let single_arg ~span ~state (args : value) : value =
   let args = args |> Value.expect_tuple |> Option.unwrap in
   let arg = args.tuple |> Tuple.unwrap_single_unnamed in
-  claim ~span arg.place
+  claim ~span ~state arg.place
 ;;
 
 let make_args ~span (args : value tuple) (ty : Types.ty_tuple) : value =
@@ -116,7 +116,7 @@ let construct_list ~span (ty : Types.ty_list) (values : value list) : value =
   |> Value.inferred ~span
 ;;
 
-let construct_slist ~span list_ty (f : ty -> value list) : value =
+let construct_slist ~span ~state list_ty (f : ty -> value list) : value =
   let list_ty =
     list_ty |> Ty.await_inferred |> Ty.Shape.expect_variant |> Option.unwrap
   in
@@ -124,7 +124,7 @@ let construct_slist ~span list_ty (f : ty -> value list) : value =
   let elem_ty =
     match list_name with
     | Instantiation { generic = _; arg } ->
-      let arg = single_arg ~span arg in
+      let arg = single_arg ~span ~state arg in
       arg
       |> Value.expect_ty
       |> Option.unwrap_or_else (fun () ->

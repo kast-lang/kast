@@ -42,12 +42,12 @@ let init_natives () =
     @ (generic_types
        |> List.map (fun (name, f) : (string * (ty -> value)) ->
          let impl =
-           fun ~caller ~state:_ arg ->
+           fun ~caller ~state arg ->
            with_return (fun { return } : value ->
              let error () =
                return (V_Ty (Ty.inferred ~span T_Error) |> Value.inferred ~span)
              in
-             let arg = single_arg ~span arg in
+             let arg = single_arg ~span ~state arg in
              let arg =
                arg
                |> Value.expect_ty
@@ -90,15 +90,15 @@ let init_natives () =
     natives.by_name <- natives.by_name |> StringMap.add name (fun _ -> value)
   in
   let list : (string * (ty -> value)) list =
-    [ native_fn "create_context_type" (fun _ty ~caller ~state:_ arg ->
-        let arg = single_arg ~span arg in
+    [ native_fn "create_context_type" (fun _ty ~caller ~state arg ->
+        let arg = single_arg ~span ~state arg in
         match arg |> Value.await_inferred with
         | V_Ty ty -> V_ContextTy { id = Id.gen (); ty } |> Value.inferred ~span
         | _ ->
           Error.error caller "create_context_type expected a type";
           V_Error |> Value.inferred ~span)
-    ; native_fn "panic" (fun _ty ~caller ~state:_ arg ->
-        let arg = single_arg ~span arg in
+    ; native_fn "panic" (fun _ty ~caller ~state arg ->
+        let arg = single_arg ~span ~state arg in
         match arg |> Value.expect_any_string with
         | Some s -> raise (Panic s)
         | None ->
@@ -111,7 +111,7 @@ let init_natives () =
           |> Tuple.get_unnamed_opt 0
           |> Option.map (fun (field : Types.value_tuple_field) ->
             field.place
-            |> claim ~span:caller
+            |> claim ~span:caller ~state
             |> Value.expect_string_view
             |> Option.unwrap_or_else (fun () ->
               fail "new_opaque_type must recieve string as arg, if any"))
@@ -126,10 +126,10 @@ let init_natives () =
         match args |> Value.await_inferred with
         | V_Tuple { ty = _; tuple } ->
           let name, value = tuple |> Tuple.unwrap_unnamed2 in
-          let name = name.place |> claim ~span:caller in
+          let name = name.place |> claim ~span:caller ~state in
           (match name |> Value.expect_string_view with
            | Some name ->
-             let value = value.place |> claim ~span:caller in
+             let value = value.place |> claim ~span:caller ~state in
              impl_native state name value;
              V_Unit |> Value.inferred ~span
            | None ->
@@ -138,8 +138,8 @@ let init_natives () =
         | _ ->
           Error.error caller "impl_native expected a tuple as arg";
           V_Error |> Value.inferred ~span)
-    ; native_fn "@parse" (fun _ty ~caller ~state:_ arg ->
-        let arg = single_arg ~span arg in
+    ; native_fn "@parse" (fun _ty ~caller ~state arg ->
+        let arg = single_arg ~span ~state arg in
         match arg |> Value.expect_string with
         | Some contents ->
           let source : Source.t = { contents; uri = Uri.fake "@parse" } in

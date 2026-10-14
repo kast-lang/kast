@@ -1,14 +1,14 @@
 open Common
 
 let init () =
-  [ native_fn "random.gen_range" (fun (ty : Types.ty_fn) ~caller ~state:_ arg ->
+  [ native_fn "random.gen_range" (fun (ty : Types.ty_fn) ~caller ~state arg ->
       (try
          let { ty = _; tuple } : Kast_types.Types.value_tuple =
            arg |> Value.expect_tuple |> Option.get
          in
          let min, max = tuple |> Tuple.unwrap_named2 [ "min"; "max" ] in
-         let min = min.place |> claim ~span:caller in
-         let max = max.place |> claim ~span:caller in
+         let min = min.place |> claim ~span:caller ~state in
+         let max = max.place |> claim ~span:caller ~state in
          match ty.result |> Ty.await_inferred with
          | T_UInt32 ->
            let min = min |> Value.expect_uint32 |> Option.get in

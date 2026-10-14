@@ -3,12 +3,12 @@ module RecurseCache = Kast_inference_base.CompareRecurseCache
 
 let init () =
   let cmp_fn name op =
-    native_fn name (fun _ty ~caller ~state:_ value ->
+    native_fn name (fun _ty ~caller ~state value ->
       match value |> Value.await_inferred with
       | V_Tuple { ty = _; tuple } ->
         let a, b = tuple |> Tuple.unwrap_unnamed2 in
-        let a = a.place |> claim ~span:caller |> await_fully_inferred in
-        let b = b.place |> claim ~span:caller |> await_fully_inferred in
+        let a = a.place |> claim ~span:caller ~state |> await_fully_inferred in
+        let b = b.place |> claim ~span:caller ~state |> await_fully_inferred in
         let result : bool = op a b in
         V_Bool result |> Value.inferred ~span
       | _ ->

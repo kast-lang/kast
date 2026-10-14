@@ -498,7 +498,8 @@ module Impl = struct
                  |> Seq.map (fun (member, (field : value_tuple_field)) : JsAst.obj_part ->
                    let field_name = tuple_field_name member in
                    let value =
-                     field.place |> Kast_interpreter.read_place ~span:ctx.span
+                     field.place
+                     |> Kast_interpreter.read_place ~span:ctx.span ~state:ctx.interpreter
                    in
                    Field { name = field_name; value = transpile_value value |> pure })
                  |> List.of_seq)
@@ -511,7 +512,10 @@ module Impl = struct
                 (elements
                  |> Dynarray.to_list
                  |> List.map (fun place ->
-                   let value = place |> Kast_interpreter.read_place ~span:ctx.span in
+                   let value =
+                     place
+                     |> Kast_interpreter.read_place ~span:ctx.span ~state:ctx.interpreter
+                   in
                    transpile_value value |> pure))
           ; span = None
           }
@@ -520,7 +524,9 @@ module Impl = struct
           label
           (data
            |> Option.map (fun place ->
-             place |> Kast_interpreter.read_place ~span:ctx.span |> transpile_value))
+             place
+             |> Kast_interpreter.read_place ~span:ctx.span ~state:ctx.interpreter
+             |> transpile_value))
       | V_Ty ty -> transpile_ty ty
       | V_Fn { ty = _; fn = { def; captured; _ } } -> fn ~captured:(Some captured) def
       | V_Generic { name = _; fn = { def; captured; _ }; ty = _ } ->
@@ -833,7 +839,9 @@ module Impl = struct
   and transpile_place : place -> transpiled_place =
     fun captured_place ->
     let ctx = Effect.perform GetCtx in
-    let value = Kast_interpreter.read_place ~span:ctx.span captured_place in
+    let value =
+      Kast_interpreter.read_place ~span:ctx.span ~state:ctx.interpreter captured_place
+    in
     match value.var |> Inference.Var.inferred_opt with
     | Some (V_Blocked blocked) -> transpile_blocked blocked
     | _ ->
@@ -880,7 +888,10 @@ module Impl = struct
           { get =
               (fun () ->
                 transpile_value
-                  (place |> Kast_interpreter.read_place ~span:(Span.of_ocaml __POS__)))
+                  (place
+                   |> Kast_interpreter.read_place
+                        ~state:ctx.interpreter
+                        ~span:(Span.of_ocaml __POS__)))
           ; set = (fun _ -> panic "SET A CONST")
           ; ref_var = None
           }

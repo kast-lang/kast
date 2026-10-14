@@ -172,17 +172,17 @@ let workspace_roots (global : global_state) (workspace : workspace_state) : Uri.
   let processed_workspace_ks = process_file global workspace_ks in
   handle_processed workspace workspace_ks.uri processed_workspace_ks;
   let compiled = processed_workspace_ks.compiled |> Option.get in
+  let interpreter = Kast_interpreter.default (Uri workspace_ks.uri) in
   let evaled =
     match compiled with
-    | Compiled (Expr, compiled) ->
-      Kast_interpreter.eval (Kast_interpreter.default (Uri workspace_ks.uri)) compiled
+    | Compiled (Expr, compiled) -> Kast_interpreter.eval interpreter compiled
     | Compiled _ -> failwith "Compiled workspace.ks not as expr???"
   in
   let workspace_def = evaled |> Value.expect_tuple |> Option.get in
   let workspace_roots =
     let roots =
       (workspace_def.tuple |> Tuple.get_named "roots").place
-      |> Kast_interpreter.claim ~span:(Span.fake "lsp")
+      |> Kast_interpreter.claim ~span:(Span.fake "lsp") ~state:interpreter
     in
     let roots = roots |> Value.expect_tuple |> Option.get in
     let roots =
@@ -190,7 +190,7 @@ let workspace_roots (global : global_state) (workspace : workspace_state) : Uri.
       |> Array.to_list
       |> List.map (fun (field : Types.value_tuple_field) ->
         field.place
-        |> Kast_interpreter.claim ~span:(Span.fake "lsp")
+        |> Kast_interpreter.claim ~span:(Span.fake "lsp") ~state:interpreter
         |> Value.expect_string
         |> Option.get)
     in

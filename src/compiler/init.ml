@@ -287,7 +287,7 @@ and cast_as_module_ty : span:span -> State.t -> Expr.Place.t -> ty =
     match Kast_interpreter.eval_place state.interpreter value with
     | RefBlocked _ -> Error.error span "refblocked cast_as_module_ty"
     | Place (~mut:_, place) ->
-      let value = Kast_interpreter.claim ~span place in
+      let value = Kast_interpreter.claim ~span ~state:state.interpreter place in
       let module_ = Kast_interpreter.cast_as_module ~span state.interpreter value in
       ty |> Inference.Ty.expect_inferred_as ~span (Value.ty_of module_));
   ty
@@ -382,6 +382,7 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
               let ~matched:arg_matched, arg_bindings =
                 Kast_interpreter.pattern_match
                   ~span
+                  ~state:state.interpreter
                   (Place.init ~mut:Inherit arg)
                   arg_pattern
               in

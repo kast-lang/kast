@@ -380,17 +380,26 @@ let scope : core_syntax =
         : a ->
         let span = ast.data.span in
         let expr = children |> Ast.flatten_children |> Tuple.unwrap_single_unnamed in
-        let state = C.state |> State.enter_scope ~span:expr.data.span ~recursive:false in
         match kind with
         | Expr ->
+          let state =
+            C.state |> State.enter_scope ~span:expr.data.span ~recursive:false
+          in
           let expr = C.compile ~state Expr expr in
           E_Scope { expr } |> init_expr span C.state
         | PlaceExpr ->
+          let state =
+            C.state |> State.enter_scope ~span:expr.data.span ~recursive:false
+          in
           let expr = C.compile ~state PlaceExpr expr in
           PE_Scope expr |> init_place_expr span C.state
-        | Assignee -> C.compile ~state Assignee expr
-        | Pattern -> C.compile ~state Pattern expr
-        | TyExpr -> C.compile ~state TyExpr expr)
+        | Assignee -> C.compile ~state:C.state Assignee expr
+        | Pattern -> C.compile ~state:C.state Pattern expr
+        | TyExpr ->
+          let state =
+            C.state |> State.enter_scope ~span:expr.data.span ~recursive:false
+          in
+          C.compile ~state TyExpr expr)
   }
 ;;
 

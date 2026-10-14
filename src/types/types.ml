@@ -127,6 +127,7 @@ module rec TypesImpl : sig
     { native : (id, value) Hashtbl.t [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     ; ty : (id, ty) Hashtbl.t [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     ; value : (id, value) Hashtbl.t [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; place : (id, place) Hashtbl.t [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     }
 
   and value_generic =
@@ -895,6 +896,7 @@ end = struct
     { native : (id, value) Hashtbl.t [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     ; ty : (id, ty) Hashtbl.t [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     ; value : (id, value) Hashtbl.t [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; place : (id, place) Hashtbl.t [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     }
 
   and value_generic =
@@ -1667,5 +1669,9 @@ include TypesImpl
 type sub_state = interpreter_state
 
 let init_monomorphization_state () : monomorphization_state =
-  { native = Hashtbl.create 0; ty = Hashtbl.create 0; value = Hashtbl.create 0 }
+  { native = Hashtbl.create 0
+  ; ty = Hashtbl.create 0
+  ; value = Hashtbl.create 0
+  ; place = Hashtbl.create 0
+  }
 ;;

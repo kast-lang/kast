@@ -1,7 +1,7 @@
 open Common
 
 let init () =
-  [ native_fn "string.at" (fun _ty ~caller ~state:_ args : value ->
+  [ native_fn "string.at" (fun _ty ~caller ~state args : value ->
       with_return (fun { return } ->
         let error msg () =
           Error.error caller "string.at: %s" msg;
@@ -15,13 +15,13 @@ let init () =
         let s, idx = args.tuple |> Tuple.unwrap_unnamed2 in
         let s =
           s.place
-          |> claim ~span:caller
+          |> claim ~span:caller ~state
           |> Value.expect_any_string
           |> Option.unwrap_or_else (error "expected string as first arg")
         in
         let idx =
           idx.place
-          |> claim ~span:caller
+          |> claim ~span:caller ~state
           |> Value.expect_int32
           |> Option.unwrap_or_else (error "expected idx be int32")
         in
@@ -33,8 +33,8 @@ let init () =
           if Uchar.utf_decode_is_valid c
           then V_Char (Uchar.utf_decode_uchar c) |> Value.inferred ~span
           else error "invalid utf8 index" ())))
-  ; native_fn "string.length" (fun _ty ~caller ~state:_ args : value ->
-      let arg = single_arg ~span args in
+  ; native_fn "string.length" (fun _ty ~caller ~state args : value ->
+      let arg = single_arg ~span ~state args in
       with_return (fun { return } ->
         let error msg () =
           Error.error caller "string.length: %s" msg;
@@ -46,7 +46,7 @@ let init () =
           |> Option.unwrap_or_else (error "expected string as arg")
         in
         V_Int32 (Int32.of_int (String.length s)) |> Value.inferred ~span))
-  ; native_fn "string.substring" (fun _ty ~caller ~state:_ args : value ->
+  ; native_fn "string.substring" (fun _ty ~caller ~state args : value ->
       with_return (fun { return } ->
         let error msg () =
           Error.error caller "string.substring: %s" msg;
@@ -60,19 +60,19 @@ let init () =
         let s, start, len = args.tuple |> Tuple.unwrap_unnamed3 in
         let s =
           s.place
-          |> claim ~span:caller
+          |> claim ~span:caller ~state
           |> Value.expect_any_string
           |> Option.unwrap_or_else (error "expected string as first arg")
         in
         let start =
           start.place
-          |> claim ~span:caller
+          |> claim ~span:caller ~state
           |> Value.expect_int32
           |> Option.unwrap_or_else (error "expected start be int32")
         in
         let len =
           len.place
-          |> claim ~span:caller
+          |> claim ~span:caller ~state
           |> Value.expect_int32
           |> Option.unwrap_or_else (error "expected len be int32")
         in
@@ -92,11 +92,11 @@ let init () =
         let s, f = args.tuple |> Tuple.unwrap_unnamed2 in
         let s =
           s.place
-          |> claim ~span:caller
+          |> claim ~span:caller ~state
           |> Value.expect_any_string
           |> Option.unwrap_or_else (error "expected string as first arg")
         in
-        let f = f.place |> claim ~span:caller in
+        let f = f.place |> claim ~span:caller ~state in
         let _ =
           f
           |> Value.expect_fn
@@ -128,11 +128,11 @@ let init () =
         let s, f = args.tuple |> Tuple.unwrap_unnamed2 in
         let s =
           s.place
-          |> claim ~span:caller
+          |> claim ~span:caller ~state
           |> Value.expect_any_string
           |> Option.unwrap_or_else (error "expected string as first arg")
         in
-        let f = f.place |> claim ~span:caller in
+        let f = f.place |> claim ~span:caller ~state in
         let _ =
           f
           |> Value.expect_fn
@@ -166,11 +166,11 @@ let init () =
         let s, f = args.tuple |> Tuple.unwrap_unnamed2 in
         let s =
           s.place
-          |> claim ~span:caller
+          |> claim ~span:caller ~state
           |> Value.expect_any_string
           |> Option.unwrap_or_else (error "expected string as first arg")
         in
-        let f = f.place |> claim ~span:caller in
+        let f = f.place |> claim ~span:caller ~state in
         let _ =
           f
           |> Value.expect_fn
@@ -190,8 +190,8 @@ let init () =
            | None -> Error.error span "not a fn");
           ());
         V_Unit |> Value.inferred ~span))
-  ; native_fn "to_string" (fun _ty ~caller ~state:_ args ->
-      let arg = single_arg ~span args in
+  ; native_fn "to_string" (fun _ty ~caller ~state args ->
+      let arg = single_arg ~span ~state args in
       with_return (fun { return } : Value.Shape.t ->
         let s =
           match arg |> Value.await_inferred with
@@ -207,16 +207,16 @@ let init () =
         in
         V_String s)
       |> Value.inferred ~span)
-  ; native_fn "String.from_str" (fun _ ~caller ~state:_ args ->
-      match single_arg ~span args |> Value.expect_string_view with
+  ; native_fn "String.from_str" (fun _ ~caller ~state args ->
+      match single_arg ~span ~state args |> Value.expect_string_view with
       | Some s -> V_String s |> Value.inferred ~span
       | None ->
         Error.error caller "String.from_str expected a &str";
         V_Error |> Value.inferred ~span)
-  ; native_fn "String.as_str" (fun _ ~caller ~state:_ args ->
-      match single_arg ~span args |> Value.expect_ref with
+  ; native_fn "String.as_str" (fun _ ~caller ~state args ->
+      match single_arg ~span ~state args |> Value.expect_ref with
       | Some ref ->
-        (match ref.place |> read_place ~span |> Value.await_inferred with
+        (match ref.place |> read_place ~span ~state |> Value.await_inferred with
          | V_String s -> V_StringView s |> Value.inferred ~span
          | _ ->
            Error.error caller "String.as_str expected a &String";
@@ -224,13 +224,13 @@ let init () =
       | None ->
         Error.error caller "String.as_str expected a &String";
         V_Error |> Value.inferred ~span)
-  ; native_fn "parse" (fun ty ~caller ~state:_ args ->
+  ; native_fn "parse" (fun ty ~caller ~state args ->
       let { is_closure = _; call_convention = _; args = _; result = result_ty }
         : Types.ty_fn
         =
         ty
       in
-      let arg = single_arg ~span args in
+      let arg = single_arg ~span ~state args in
       match arg |> Value.expect_any_string with
       | Some s ->
         let shape : Value.shape =

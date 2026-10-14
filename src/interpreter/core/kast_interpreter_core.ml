@@ -19,59 +19,24 @@ exception
 
 let is_copy_ty (_ty : ty) : bool = true
 
-let read_place ~span (place : place) : value =
-  match place.state with
-  | Occupied value -> value
-  | Uninitialized ->
-    Error.error span "place is not initialized";
-    V_Error |> Value.inferred ~span
-  | MovedOut ->
-    Error.error span "place has been moved out of";
-    V_Error |> Value.inferred ~span
-;;
-
-let claim ~span (place : place) : value =
-  match place.state with
-  | Occupied value ->
-    if is_copy_ty place.ty
-    then value
-    else (
-      place.state <- MovedOut;
-      value)
-  | Uninitialized ->
-    Error.error span "place is not initialized";
-    V_Error |> Value.inferred ~span
-  | MovedOut ->
-    Error.error span "place has been moved out of";
-    V_Error |> Value.inferred ~span
-;;
-
-let claim_ref ~span ~state:_ ~result_ty ref : value =
-  match ref |> Value.await_inferred with
-  | V_Ref { mut = _; place } -> claim ~span place
-  | V_Blocked blocked ->
-    V_Blocked { shape = BV_ClaimRef blocked; ty = result_ty } |> Value.inferred ~span
-  | _ ->
-    Error.error span "Expected a ref";
-    V_Error |> Value.inferred ~span
-;;
-
 (* TODO do in two steps - can_match and perform_match *)
-let rec pattern_match : span:span -> place -> pattern -> (matched:bool * Scope.locals) =
-  fun ~span place pattern ->
+let rec pattern_match
+  : span:span -> state:state -> place -> pattern -> (matched:bool * Scope.locals)
+  =
+  fun ~span ~state place pattern ->
   match pattern.shape with
   | P_Placeholder -> ~matched:true, Scope.Locals.empty
   | P_Unit ->
     (* TODO assert that value is unit *)
     ~matched:true, Scope.Locals.empty
   | P_Ref { mut; referenced } ->
-    (match place |> claim ~span |> Value.expect_ref with
+    (match place |> claim ~span ~state |> Value.expect_ref with
      | None ->
        Error.error span "Expected a ref";
        ~matched:false, Scope.Locals.empty
      | Some ref ->
        if not (Bool.equal ref.mut mut) then Error.error span "Different mutability";
-       pattern_match ~span ref.place referenced)
+       pattern_match ~span ~state ref.place referenced)
   | P_Binding { bind_mode; binding } ->
     let ty, value =
       match bind_mode with
@@ -80,7 +45,7 @@ let rec pattern_match : span:span -> place -> pattern -> (matched:bool * Scope.l
             ~span
             (T_Ref { mut = IsMutable.new_inferred ~span mut; referenced = place.ty })
         , Value.inferred ~span (V_Ref { mut; place }) )
-      | Claim -> place.ty, claim ~span place
+      | Claim -> place.ty, claim ~span ~state place
     in
     ( ~matched:true
     , { by_symbol =
@@ -92,7 +57,7 @@ let rec pattern_match : span:span -> place -> pattern -> (matched:bool * Scope.l
              : Types.interpreter_local)
       } )
   | P_Tuple { guaranteed_anonymous = _; parts } ->
-    (match place |> claim ~span |> Value.await_inferred with
+    (match place |> claim ~span ~state |> Value.await_inferred with
      | V_Tuple { ty = _; tuple } ->
        let matched = ref true in
        let matches = ref Scope.Locals.empty in
@@ -128,7 +93,7 @@ let rec pattern_match : span:span -> place -> pattern -> (matched:bool * Scope.l
            in
            (match Tuple.get_opt member tuple with
             | Some field ->
-              pattern_match ~span field.place field_pattern |> update_matches
+              pattern_match ~span ~state field.place field_pattern |> update_matches
             | None -> Error.error span "No field %a" Tuple.Member.print member)
          | Unpack packed_pattern ->
            (match
@@ -159,14 +124,14 @@ let rec pattern_match : span:span -> place -> pattern -> (matched:bool * Scope.l
                   ~mut:Inherit
                   (V_Tuple { tuple; ty = ty_tuple } |> Value.inferred ~span)
               in
-              pattern_match ~span placed packed_pattern |> update_matches
+              pattern_match ~span ~state placed packed_pattern |> update_matches
             | None -> Error.error span "packed pattern type is not tuple?"));
        ~matched:!matched, !matches
      | value ->
        Error.error pattern.data.span "Expected tuple, got %a" Value.Shape.print value;
        ~matched:false, Scope.Locals.empty)
   | P_Variant { label = patern_label; label_span = _; value = value_pattern } ->
-    (match place |> claim ~span |> Value.await_inferred with
+    (match place |> claim ~span ~state |> Value.await_inferred with
      | V_Variant { label; data; ty = _ } ->
        if Label.equal label patern_label
        then (
@@ -178,7 +143,7 @@ let rec pattern_match : span:span -> place -> pattern -> (matched:bool * Scope.l
          | Some _, None ->
            Error.error pattern.data.span "Expected no value, got value";
            ~matched:false, Scope.Locals.empty
-         | Some value, Some pattern -> pattern_match ~span value pattern)
+         | Some value, Some pattern -> pattern_match ~span ~state value pattern)
        else ~matched:false, Scope.Locals.empty
      | other ->
        Error.error pattern.data.span "Expected variant, got %a" Value.Shape.print other;
@@ -200,6 +165,48 @@ and await_compiled_ty_expr ~span (expr : Expr.ty) : Expr.Ty.Shape.t =
   | None ->
     Error.error span "Couldn't await ty expr to be compiled";
     TE_Error
+
+and read_place ~span ~(state : state) (place : place) : value =
+  match place.state with
+  | Occupied value ->
+    if true then value else monomorphized_value ~span ~state place.id value
+  | Uninitialized ->
+    Error.error span "place is not initialized";
+    V_Error |> Value.inferred ~span
+  | MovedOut ->
+    Error.error span "place has been moved out of";
+    V_Error |> Value.inferred ~span
+
+and claim ~span ~(state : state) (place : place) : value =
+  match place.state with
+  | Occupied value ->
+    if true
+    then value
+    else
+      monomorphized_value
+        ~span
+        ~state
+        place.id
+        (if is_copy_ty place.ty
+         then value
+         else (
+           place.state <- MovedOut;
+           value))
+  | Uninitialized ->
+    Error.error span "place is not initialized";
+    V_Error |> Value.inferred ~span
+  | MovedOut ->
+    Error.error span "place has been moved out of";
+    V_Error |> Value.inferred ~span
+
+and claim_ref ~span ~state ~result_ty ref : value =
+  match ref |> Value.await_inferred with
+  | V_Ref { mut = _; place } -> claim ~span ~state place
+  | V_Blocked blocked ->
+    V_Blocked { shape = BV_ClaimRef blocked; ty = result_ty } |> Value.inferred ~span
+  | _ ->
+    Error.error span "Expected a ref";
+    V_Error |> Value.inferred ~span
 
 and call_untyped_fn
       ~(sub_mode : Substitute_bindings.mode)
@@ -226,7 +233,7 @@ and call_untyped_fn
         Value.print
         arg);
     let ~matched:arg_matched, arg_bindings =
-      pattern_match ~span (Place.init ~mut:Inherit arg) def.args.pattern
+      pattern_match ~span ~state (Place.init ~mut:Inherit arg) def.args.pattern
     in
     if not arg_matched then Error.error span "Failed to pattern match fn's arg";
     let new_state =
@@ -462,11 +469,11 @@ and assign : span:span -> state -> Expr.assignee -> parent_mut:bool -> place -> 
     (match eval_place state assignee_place_expr with
      | RefBlocked _ -> Error.error span "can't assign to blocked value"
      | Place (~mut:assignee_mut, assignee_place) ->
-       let value = claim ~span place in
+       let value = claim ~span ~state place in
        assignee_place |> Place.assign ~parent_mut:assignee_mut value)
   | A_Tuple { guaranteed_anonymous = _; parts } ->
     let parent_mut = Place.is_mutable ~parent_mut place in
-    (match place |> claim ~span |> Value.await_inferred with
+    (match place |> claim ~span ~state |> Value.await_inferred with
      | V_Tuple { ty = _; tuple } ->
        let next_indexed_field = ref 0 in
        parts
@@ -487,7 +494,7 @@ and assign : span:span -> state -> Expr.assignee -> parent_mut:bool -> place -> 
          | Unpack _ -> Error.error span "TODO unpack assignee")
      | _ -> Error.error span "Expected tuple")
   | A_Let pattern ->
-    let ~matched, new_bindings = pattern_match ~span place pattern in
+    let ~matched, new_bindings = pattern_match ~state ~span place pattern in
     if not matched then Error.error assignee.data.span "Failed to pattern match";
     state.scope |> Scope.add_locals new_bindings
   | A_Error -> ()
@@ -577,7 +584,7 @@ and eval_place : state -> Types.place_expr -> evaled_place_expr =
           Log.trace (fun log ->
             log "evaled binding %a = %a" Binding.print binding Id.print result.id);
           Place (~mut:true, result)
-        | PE_Const place -> Place (~mut:false, place)
+        | PE_Const place -> Place (~mut:false, monomorphized_place ~span ~state place)
         | PE_Context -> failwith __LOC__
         | PE_Temp expr ->
           let value = eval state expr in
@@ -586,7 +593,7 @@ and eval_place : state -> Types.place_expr -> evaled_place_expr =
           (match eval_place state ref_expr with
            | RefBlocked _ -> failwith __LOC__
            | Place (~mut:_, place) ->
-             let ref = place |> read_place ~span in
+             let ref = place |> read_place ~span ~state in
              (match ref |> Value.expect_ref with
               | None ->
                 Error.error ref_expr.data.span "Expected a reference";
@@ -617,7 +624,13 @@ and eval_place : state -> Types.place_expr -> evaled_place_expr =
                }
            | Place (~mut:obj_mut, obj) ->
              let result_ty = monomorphized_ir_data_ty ~state expr.data in
-             get_field ~state ~result_ty ~span ~obj_mut (obj |> read_place ~span) member))
+             get_field
+               ~state
+               ~result_ty
+               ~span
+               ~obj_mut
+               (obj |> read_place ~span ~state)
+               member))
     in
     Log.trace (fun log -> log "evaled place at %a" Span.print span);
     result
@@ -628,7 +641,15 @@ and eval_place : state -> Types.place_expr -> evaled_place_expr =
       log "While evaluating place expr at %a" Span.print expr.data.span);
     raise exc
 
-and monomorphized_value ~span ~(state : state) id value : value =
+and monomorphized_place ~span ~(state : state) (place : place) : place =
+  match Hashtbl.find_opt state.monomorphization_state.place place.id with
+  | Some result -> result
+  | None ->
+    let result = Substitute_bindings.sub_place ~span ~state:(sub_here state) place in
+    Hashtbl.add state.monomorphization_state.place place.id result;
+    result
+
+and monomorphized_value ~span ~(state : state) (id : Id.t) (value : value) : value =
   match Hashtbl.find_opt state.monomorphization_state.value id with
   | Some ty -> ty
   | None ->
@@ -667,7 +688,7 @@ and eval_expr_claim : state -> expr -> Types.place_expr -> value =
   | RefBlocked blocked ->
     let ty = monomorphized_ir_data_ty ~state expr.data in
     V_Blocked { shape = BV_ClaimRef blocked; ty } |> Value.inferred ~span
-  | Place (~mut:_, place) -> place |> claim ~span
+  | Place (~mut:_, place) -> place |> claim ~span ~state
 
 and eval_expr_fn : state -> expr -> Types.expr_fn -> value =
   fun state expr { def; ty } ->
@@ -762,7 +783,7 @@ and eval_expr_tuple : state -> expr -> Types.expr_tuple -> value =
              | Index _ -> None
              | Name name -> Some name
            in
-           let field_value = field.place |> claim ~span in
+           let field_value = field.place |> claim ~span ~state in
            let field : Types.value_tuple_field =
              { place = Place.init ~mut:Inherit field_value
              ; span = field.span
@@ -827,7 +848,7 @@ and eval_expr_apply : state -> expr -> Types.expr_apply -> value =
   fun state expr { f; arg } ->
   let f =
     match eval_place state f with
-    | Place (~mut:_, place) -> read_place ~span:expr.data.span place
+    | Place (~mut:_, place) -> read_place ~span:expr.data.span ~state place
     | RefBlocked _ -> failwith __LOC__
   in
   let arg = eval state arg in
@@ -840,7 +861,7 @@ and eval_expr_instantiategeneric
   let span = expr.data.span in
   let generic =
     match eval_place state generic with
-    | Place (~mut:_, place) -> read_place ~span:expr.data.span place
+    | Place (~mut:_, place) -> read_place ~span:expr.data.span ~state place
     | RefBlocked _ -> failwith __LOC__
   in
   let arg = eval state arg in
@@ -973,7 +994,7 @@ and eval_expr_match : state -> expr -> Types.expr_match -> value =
       branches
       |> List.find_map (fun (branch : Types.expr_match_branch) ->
         let ~matched, matches =
-          pattern_match ~span:place_expr.data.span place branch.pattern
+          pattern_match ~span:place_expr.data.span ~state place branch.pattern
         in
         if matched
         then
@@ -1016,6 +1037,7 @@ and eval_expr_unwindable : state -> expr -> Types.expr_unwindable -> value =
   |> Scope.add_locals
        (pattern_match
           ~span:token_pattern.data.span
+          ~state
           (Place.init ~mut:Immutable token)
           token_pattern
         |> fun (~matched, locals) ->

@@ -2,8 +2,8 @@ open Common
 
 let init () =
   let code =
-    native_fn "char.code" (fun _ty ~caller ~state:_ arg : value ->
-      let arg = single_arg ~span arg in
+    native_fn "char.code" (fun _ty ~caller ~state arg : value ->
+      let arg = single_arg ~span ~state arg in
       with_return (fun { return } ->
         let error msg () =
           Error.error caller "char.code: %s" msg;
@@ -15,8 +15,8 @@ let init () =
         V_Int32 (Uchar.to_int c |> Int32.of_int) |> Value.inferred ~span))
   in
   let from_code =
-    native_fn "char.from_code" (fun _ty ~caller ~state:_ args : value ->
-      let arg = single_arg ~span args in
+    native_fn "char.from_code" (fun _ty ~caller ~state args : value ->
+      let arg = single_arg ~span ~state args in
       with_return (fun { return } ->
         let error msg () =
           Error.error caller "char.from_code: %s" msg;
@@ -35,8 +35,8 @@ let init () =
         | Invalid_argument _ -> error "invalid utf8" ()))
   in
   let string_encoding_len =
-    native_fn "char.string_encoding_len" (fun _ty ~caller ~state:_ arg : value ->
-      let arg = single_arg ~span arg in
+    native_fn "char.string_encoding_len" (fun _ty ~caller ~state arg : value ->
+      let arg = single_arg ~span ~state arg in
       with_return (fun { return } ->
         let error msg () =
           Error.error caller "char.string_encoding_len: %s" msg;
@@ -48,8 +48,8 @@ let init () =
         V_Int32 (Uchar.utf_8_byte_length c |> Int32.of_int) |> Value.inferred ~span))
   in
   let utf16_len =
-    native_fn "char.utf16_len" (fun _ty ~caller ~state:_ arg : value ->
-      let arg = single_arg ~span arg in
+    native_fn "char.utf16_len" (fun _ty ~caller ~state arg : value ->
+      let arg = single_arg ~span ~state arg in
       with_return (fun { return } ->
         let error msg () =
           Error.error caller "char.utf16_len: %s" msg;

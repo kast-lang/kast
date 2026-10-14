@@ -2,8 +2,8 @@ open Common
 
 let init () =
   let to_bits =
-    native_fn "float64.to_bits" (fun _ty ~caller ~state:_ arg : value ->
-      let arg = single_arg ~span arg in
+    native_fn "float64.to_bits" (fun _ty ~caller ~state arg : value ->
+      let arg = single_arg ~span ~state arg in
       with_return (fun { return } ->
         let error msg () =
           Error.error caller "float64.to_bits: %s" msg;

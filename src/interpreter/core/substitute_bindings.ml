@@ -698,8 +698,10 @@ module Impl = struct
     let var_scope = var |> Inference.Var.scope in
     Log.trace (fun log ->
       log
-        "subbing %s: %a into %a"
+        "subbing %s %a: %a into %a"
         name
+        (Inference.Var.print print_shape)
+        var
         Print.print_var_scope
         var_scope
         Print.print_var_scope
@@ -756,13 +758,21 @@ module Impl = struct
              with_ctx (go_deeper ctx) (fun () ->
                let subbed = sub_shape ~state original_value shape in
                let subbed_var = get_var subbed in
+               Log.trace (fun log ->
+                 log
+                   "unifying sub result: %a = %a"
+                   (Inference.Var.print print_shape)
+                   subbed_var
+                   (Inference.Var.print print_shape)
+                   subbed_temp_var);
                Inference.Var.unite
                  unite_shape
                  VarScope.unite
                  ~span
                  subbed_temp_var
                  subbed_var
-               |> ignore)
+               |> ignore;
+               Log.trace (fun log -> log "unified"))
            in
            (* var *)
            (* |> Inference.Var.await_inferred ~error_shape:(fun _ -> failwith __LOC__) *)
@@ -780,6 +790,8 @@ let with_cache ~span f =
     Impl.subs_count := 0;
     result)
 ;;
+
+let sub_place ~span ~state value = with_cache ~span Impl.sub_place ~state value
 
 let sub_value ~span ~state value =
   Log.trace (fun log -> log "sub_value begin at %a" Span.print span);

@@ -2,8 +2,8 @@ open Common
 
 let init () =
   let read_file =
-    native_fn "fs.read_file" (fun _ty ~caller ~state:_ arg : value ->
-      let arg = single_arg ~span arg in
+    native_fn "fs.read_file" (fun _ty ~caller ~state arg : value ->
+      let arg = single_arg ~span ~state arg in
       match arg |> Value.expect_any_string with
       | Some path ->
         let contents = read_from_filesystem path in

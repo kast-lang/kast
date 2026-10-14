@@ -9,11 +9,11 @@ type tcp_stream =
 type tcp_listener = { file : Unix.file_descr }
 
 let tcp () =
-  [ native_fn "net.tcp.read_line" (fun _ty ~caller ~state:_ args : value ->
-      let arg = single_arg ~span args in
+  [ native_fn "net.tcp.read_line" (fun _ty ~caller ~state args : value ->
+      let arg = single_arg ~span ~state args in
       match arg |> Value.await_inferred with
       | V_Ref { mut = _; place } ->
-        (match read_place ~span place |> Value.await_inferred with
+        (match read_place ~span ~state place |> Value.await_inferred with
          | V_Opaque { ty = _; value = stream } ->
            let stream : tcp_stream = Obj.obj stream in
            let result = ref (Bytes.sub_string stream.buffer 0 stream.buf_pos) in
@@ -46,26 +46,26 @@ let tcp () =
       | _ ->
         Error.error caller "net.tcp.read_line expected the &tcpstream";
         V_Error |> Value.inferred ~span)
-  ; native_fn "net.tcp.write" (fun _ty ~caller:_ ~state:_ arg : value ->
+  ; native_fn "net.tcp.write" (fun _ty ~caller:_ ~state arg : value ->
       let args = arg |> Value.expect_tuple |> Option.get in
       let stream, data = args.tuple |> Tuple.unwrap_unnamed2 in
       let stream : tcp_stream =
-        (stream.place |> claim ~span |> Value.expect_ref |> Option.get).place
-        |> read_place ~span
+        (stream.place |> claim ~span ~state |> Value.expect_ref |> Option.get).place
+        |> read_place ~span ~state
         |> Value.expect_opaque
         |> Option.get
       in
       let data =
-        (data.place |> claim ~span |> Value.expect_ref |> Option.get).place
-        |> read_place ~span
+        (data.place |> claim ~span ~state |> Value.expect_ref |> Option.get).place
+        |> read_place ~span ~state
         |> Value.expect_string
         |> Option.get
       in
       let wrote = Unix.write_substring stream.file data 0 (String.length data) in
       if String.length data <> wrote then failwith "SHORT WRITE";
       V_Unit |> Value.inferred ~span)
-  ; native_fn "net.tcp.connect" (fun ty ~caller ~state:_ args : value ->
-      let arg = single_arg ~span args in
+  ; native_fn "net.tcp.connect" (fun ty ~caller ~state args : value ->
+      let arg = single_arg ~span ~state args in
       match Ty.await_inferred ty.result with
       | T_Opaque result_ty ->
         (match arg |> Value.await_inferred with
@@ -95,8 +95,8 @@ let tcp () =
       | _ ->
         Error.error caller "net.tcp.connect returns type TcpStream";
         V_Error |> Value.inferred ~span)
-  ; native_fn "net.tcp.bind" (fun ty ~caller ~state:_ args : value ->
-      let arg = single_arg ~span args in
+  ; native_fn "net.tcp.bind" (fun ty ~caller ~state args : value ->
+      let arg = single_arg ~span ~state args in
       match Ty.await_inferred ty.result with
       | T_Opaque result_ty ->
         (match arg |> Value.await_inferred with
@@ -125,22 +125,22 @@ let tcp () =
       | _ ->
         Error.error caller "net.tcp.bind returns type TcpStream";
         V_Error |> Value.inferred ~span)
-  ; native_fn "net.tcp.listen" (fun _ty ~caller:_ ~state:_ args : value ->
+  ; native_fn "net.tcp.listen" (fun _ty ~caller:_ ~state args : value ->
       let args = args |> Value.expect_tuple |> Option.get in
       let stream, max_pending = args.tuple |> Tuple.unwrap_unnamed2 in
       let stream : tcp_stream =
-        (stream.place |> claim ~span |> Value.expect_ref |> Option.get).place
-        |> read_place ~span
+        (stream.place |> claim ~span ~state |> Value.expect_ref |> Option.get).place
+        |> read_place ~span ~state
         |> Value.expect_opaque
         |> Option.get
       in
       let max_pending =
-        max_pending.place |> claim ~span |> Value.expect_int32 |> Option.get
+        max_pending.place |> claim ~span ~state |> Value.expect_int32 |> Option.get
       in
       (* Native call *)
       Unix.listen stream.file (Int32.to_int max_pending);
       V_Unit |> Value.inferred ~span)
-  ; native_fn "net.tcp.accept" (fun ty ~caller ~state:_ args : value ->
+  ; native_fn "net.tcp.accept" (fun ty ~caller ~state args : value ->
       match Ty.await_inferred ty.result with
       (* Get return type *)
       | T_Tuple ({ tuple = result_ty_field; _ } as result_ty) ->
@@ -155,13 +155,13 @@ let tcp () =
            let args = args |> Value.expect_tuple |> Option.get in
            let stream, close_on_exec = args.tuple |> Tuple.unwrap_unnamed2 in
            let stream : tcp_stream =
-             (stream.place |> claim ~span |> Value.expect_ref |> Option.get).place
-             |> read_place ~span
+             (stream.place |> claim ~span ~state |> Value.expect_ref |> Option.get).place
+             |> read_place ~span ~state
              |> Value.expect_opaque
              |> Option.get
            in
            let close_on_exec =
-             close_on_exec.place |> claim ~span |> Value.expect_bool |> Option.get
+             close_on_exec.place |> claim ~span ~state |> Value.expect_bool |> Option.get
            in
            (* Native call *)
            let client_stream, client_addr =
@@ -208,8 +208,8 @@ let tcp () =
       | _ ->
         Error.error caller "net.tcp.accept returns tuple";
         V_Error |> Value.inferred ~span)
-  ; native_fn "net.tcp.stream.close" (fun _ty ~caller ~state:_ args : value ->
-      let arg = single_arg ~span args in
+  ; native_fn "net.tcp.stream.close" (fun _ty ~caller ~state args : value ->
+      let arg = single_arg ~span ~state args in
       match arg |> Value.await_inferred with
       | V_Opaque { ty = _; value = stream } ->
         let stream : tcp_stream = Obj.obj stream in
@@ -219,8 +219,8 @@ let tcp () =
       | _ ->
         Error.error caller "net.tcp.stream.close expected the tcp.stream";
         V_Error |> Value.inferred ~span)
-  ; native_fn "net.tcp.listener.close" (fun _ty ~caller ~state:_ args : value ->
-      let arg = single_arg ~span args in
+  ; native_fn "net.tcp.listener.close" (fun _ty ~caller ~state args : value ->
+      let arg = single_arg ~span ~state args in
       match arg |> Value.await_inferred with
       | V_Opaque { ty = _; value = stream } ->
         let listener : tcp_listener = Obj.obj stream in

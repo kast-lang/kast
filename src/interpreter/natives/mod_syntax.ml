@@ -1,8 +1,8 @@
 open Common
 
 let init () =
-  [ native_fn "syntax.number_literal" (fun _ty ~caller:span ~state:_ arg : value ->
-      let arg = single_arg ~span arg in
+  [ native_fn "syntax.number_literal" (fun _ty ~caller:span ~state arg : value ->
+      let arg = single_arg ~span ~state arg in
       match arg |> Value.await_inferred with
       | V_Int32 n ->
         let token : Kast_token.Types.number = { raw = Int32.to_string n } in
@@ -17,8 +17,8 @@ let init () =
       | _ ->
         Error.error span "syntax.number_literal expected int32 arg";
         V_Error |> Value.inferred ~span)
-  ; native_fn "syntax.ident" (fun _ty ~caller:span ~state:_ arg : value ->
-      let arg = single_arg ~span arg in
+  ; native_fn "syntax.ident" (fun _ty ~caller:span ~state arg : value ->
+      let arg = single_arg ~span ~state arg in
       match arg |> Value.await_inferred with
       | V_String name ->
         let token : Kast_token.Types.ident = { raw = name; name } in
@@ -32,8 +32,8 @@ let init () =
       | _ ->
         Error.error span "syntax.ident expected string arg";
         V_Error |> Value.inferred ~span)
-  ; native_fn "Ast.get_comma_separated_list" (fun _ty ~caller:span ~state:_ arg : value ->
-      let arg = single_arg ~span arg in
+  ; native_fn "Ast.get_comma_separated_list" (fun _ty ~caller:span ~state arg : value ->
+      let arg = single_arg ~span ~state arg in
       match arg |> Value.await_inferred with
       | V_Ast ast ->
         let ty : Types.ty_list = { element_ty = T_Ast |> Ty.inferred ~span } in
@@ -53,11 +53,11 @@ let init () =
       | _ ->
         Error.error span "Ast.get_comma_separated_list expected ast arg";
         V_Error |> Value.inferred ~span)
-  ; native_fn "Ast.shape" (fun fn_ty ~caller:span ~state:_ arg : value ->
+  ; native_fn "Ast.shape" (fun fn_ty ~caller:span ~state arg : value ->
       let shape_ty =
         fn_ty.result |> Ty.await_inferred |> Ty.Shape.expect_variant |> Option.unwrap
       in
-      let arg = single_arg ~span arg in
+      let arg = single_arg ~span ~state arg in
       match arg |> Value.await_inferred with
       | V_Ast ast ->
         (match ast.shape with

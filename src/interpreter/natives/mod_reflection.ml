@@ -1,11 +1,11 @@
 open Common
 
 let init () =
-  [ native_fn "reflection.type_info" (fun ty_fn ~caller:span ~state:_ args ->
+  [ native_fn "reflection.type_info" (fun ty_fn ~caller:span ~state args ->
       let type_info_ty =
         ty_fn.result |> Ty.await_inferred |> Ty.Shape.expect_variant |> Option.unwrap
       in
-      let arg = single_arg ~span args in
+      let arg = single_arg ~span ~state args in
       match arg |> Value.expect_ty with
       | Some ty ->
         let shape = ty |> Ty.await_inferred in
@@ -61,7 +61,7 @@ let init () =
                        []
                        [ ( "variants"
                          , fun list_ty ->
-                             construct_slist ~span list_ty (fun elem_ty ->
+                             construct_slist ~span ~state list_ty (fun elem_ty ->
                                ty_variant.variants
                                |> Row.await_inferred_to_list
                                |> List.map
@@ -122,14 +122,14 @@ let init () =
                        []
                        [ ( "unnamed"
                          , fun list_ty ->
-                             construct_slist ~span list_ty (fun _elem_ty ->
+                             construct_slist ~span ~state list_ty (fun _elem_ty ->
                                ty_tuple.tuple.unnamed
                                |> Array.to_list
                                |> List.map (fun (field : Types.ty_tuple_field) ->
                                  V_Ty field.ty |> Value.inferred ~span)) )
                        ; ( "named"
                          , fun list_ty ->
-                             construct_slist ~span list_ty (fun elem_ty ->
+                             construct_slist ~span ~state list_ty (fun elem_ty ->
                                ty_tuple.tuple.named_order_rev
                                |> List.rev
                                |> List.map (fun name ->

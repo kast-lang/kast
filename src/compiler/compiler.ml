@@ -374,7 +374,11 @@ let is_blocked (value : value) =
   | Some _ -> false
 ;;
 
-let local_lookup def_site_interpreter_scope span (local : State.Scope.local)
+let local_lookup
+      ~(state : State.t)
+      def_site_interpreter_scope
+      span
+      (local : State.Scope.local)
   : looked_up_local
   =
   match local with
@@ -384,7 +388,7 @@ let local_lookup def_site_interpreter_scope span (local : State.Scope.local)
      | Some scope ->
        (match Kast_interpreter.Scope.find_opt binding.name scope with
         | Some place ->
-          let value = Kast_interpreter.read_place place ~span in
+          let value = Kast_interpreter.read_place place ~span ~state:state.interpreter in
           if is_blocked value
           then Binding binding
           else Const { place; binding = Some binding }
@@ -394,7 +398,7 @@ let local_lookup def_site_interpreter_scope span (local : State.Scope.local)
 
 let rec local_place_expr def_site_interpreter_scope span state (local : State.Scope.local)
   =
-  match local_lookup def_site_interpreter_scope span local with
+  match local_lookup ~state def_site_interpreter_scope span local with
   | Const { place; _ } -> PE_Const place |> Init.init_place_expr span state
   | Binding binding -> PE_Binding binding |> Init.init_place_expr span state
 

@@ -331,7 +331,9 @@ module Impl = struct
     let captured = Effect.perform CurrentFnCaptured in
     match captured.interpreter_scope |> Kast_interpreter.Scope.find_opt binding.name with
     (* if I compile a closure, all captured variables are promoted to be consts in generated code *)
-    | Some place -> transpile_value (Interpreter.read_place ~span place)
+    | Some place ->
+      transpile_value
+        (Interpreter.read_place ~span ~state:captured.interpreter_state place)
     | None ->
       (match captured.bindings |> Id.Map.find_opt binding.id with
        | Some place -> place
@@ -408,7 +410,7 @@ module Impl = struct
           ~span
           ~state:interpreter
           ~result_ty:expr.data.signature.ty
-          (Interpreter.read_place ~span obj)
+          (Interpreter.read_place ~span ~state:interpreter obj)
           ~obj_mut:true
           member
       in
@@ -1866,7 +1868,8 @@ module Impl = struct
   and not_inferred (var : _ Inference.var) : C_ast.expr = failwith __LOC__
 
   and transpile_place (place : place) : C_ast.place_expr =
-    transpile_value (Interpreter.read_place ~span place)
+    let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
+    transpile_value (Interpreter.read_place ~span ~state:interpreter place)
 
   (* TODO should be pure_expr? *)
   and transpile_value (value : value) : C_ast.place_expr =
@@ -1961,6 +1964,7 @@ module Impl = struct
        | effect GetCurrentBlock, k -> Effect.continue k ctx.init_statics)
 
   and transpile_value_shape (shape : Types.value_shape) : C_ast.expr =
+    let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
     match shape with
     | V_Unit -> E_Pure Pure_Unit
     | V_Bool x -> E_Pure (Pure_Literal (L_Bool x))
@@ -1992,7 +1996,9 @@ module Impl = struct
                 ( member_name member
                 , E_Pure
                     (C_ast.Pure_Copy
-                       (transpile_value (field.place |> Interpreter.read_place ~span))) ))
+                       (transpile_value
+                          (field.place |> Interpreter.read_place ~span ~state:interpreter)))
+                ))
         |> List.of_seq
       in
       compound_literal (Value.Shape.ty_of shape) fields
