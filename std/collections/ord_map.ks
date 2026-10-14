@@ -83,7 +83,7 @@ const remove = [K, V] (map :: &mut OrdMap.t[K, V], key :: &K) -> Option.t[V] => 
     map^.inner = Treap.join(less, greater);
     match equal with (
         | :Empty => :None
-        | :Node mut data => :Some data.value.value
+        | :Node data => :Some data^.value.value
     )
 );
 

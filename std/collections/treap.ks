@@ -1,50 +1,47 @@
 module:
 
 const data = [T] newtype {
-    .left :: Box[Treap.t[T]],
-    .right :: Box[Treap.t[T]],
+    .left :: Treap.t[T],
+    .right :: Treap.t[T],
     .value :: T,
     .count :: Int32,
     .priority :: Int32,
 };
 const t = [T] newtype (
     | :Empty
-    | :Node data[T]
+    | :Node Box[data[T]]
 );
 
 const new = [T] () -> Treap.t[T] => :Empty;
-const singleton = [T] (value :: T) -> Treap.t[T] => :Node (
+const singleton = [T] (value :: T) -> Treap.t[T] => :Node Box_new(
     {
-        .left = Box_new(:Empty),
-        .right = Box_new(:Empty),
+        .left = :Empty,
+        .right = :Empty,
         .value,
         .count = 1,
         .priority = std.random.gen_range(.min = 0, .max = 1000000000),
     }
 );
+
 const length = [T] (v :: &Treap.t[T]) -> Int32 => (
     match v^ with (
         | :Empty => 0
-        | :Node ref v => v^.count
+        | :Node ref v => v^^.count
     )
 );
 
 const update_data = (data :: Ast, .new_left :: Ast, .new_right :: Ast) -> Ast => `(
-    let count = 1 + length(&$new_left^) + length(&$new_right^);
-    :Node {
-        .left = $new_left,
-        .right = $new_right,
-        .value = $data.value,
-        .count,
-        .priority = $data.priority,
-    }
+    $data^.count = 1 + length(&$new_left) + length(&$new_right);
+    $data^.left = $new_left;
+    $data^.right = $new_right;
+    :Node $data
 );
 
 @comment_out (
 const update_data = [T] (
     data :: data[T],
 ) -> Treap.t[T] => (
-    let count = 1 + length(&data.left^) + length(&data.right^);
+    let count = 1 + length(&data.left) + length(&data.right);
     :Node {
         ...data,
         .count,
@@ -57,14 +54,14 @@ const join = [T] (left :: Treap.t[T], right :: Treap.t[T]) -> Treap.t[T] => (
         | { :Empty, :Empty } => :Empty
         | { :Empty, other } => other
         | { other, :Empty } => other
-        | { :Node (left :: data[T]), :Node (right :: data[T]) } => (
-            if left.priority > right.priority then (
-                let new_left = left.left;
-                let new_right = Box_new(join[T](left.right^, :Node right));
+        | { :Node mut left, :Node mut right } => (
+            if left^.priority > right^.priority then (
+                let new_left = left^.left;
+                let new_right = join[T](left^.right, :Node right);
                 include_ast update_data(`(left), .new_left = `(new_left), .new_right = `(new_right))
             ) else (
-                let new_left = Box_new(join[T](:Node left, right.left^));
-                let new_right = right.right;
+                let new_left = join[T](:Node left, right^.left);
+                let new_right = right^.right;
                 include_ast update_data(`(right), .new_left = `(new_left), .new_right = `(new_right))
             )
         )
@@ -90,15 +87,15 @@ const lookup = [T] (
         match v^ with (
             | :Empty => return :None
             | :Node ref node => (
-                match f(node) with (
+                match f(&node^^) with (
                     | :LeftSubtree => (
-                        v = &node^.left^;
+                        v = &node^^.left;
                     )
                     | :RightSubtree => (
-                        v = &node^.right^;
+                        v = &node^^.right;
                     )
                     | :Here => (
-                        return :Some &node^.value;
+                        return :Some &node^^.value;
                     )
                 )
             )
@@ -115,15 +112,15 @@ const lookup_mut = [T] (
         match v^ with (
             | :Empty => return :None
             | :Node ref mut node => (
-                match f(&node^) with (
+                match f(&node^^) with (
                     | :LeftSubtree => (
-                        v = &mut node^.left^;
+                        v = &mut node^^.left;
                     )
                     | :RightSubtree => (
-                        v = &mut node^.right^;
+                        v = &mut node^^.right;
                     )
                     | :Here => (
-                        return :Some &mut node^.value;
+                        return :Some &mut node^^.value;
                     )
                 )
             )
@@ -144,25 +141,25 @@ const node_splitter = [T] type (
 const split = [T] (v :: t[T], f :: node_splitter[T]) -> { t[T], t[T] } => (
     match v with (
         | :Empty => { :Empty, :Empty }
-        | :Node node => match f(&node) with (
+        | :Node mut node => match f(&node^) with (
             | :RightSubtree => (
-                let { left_left, left_right } = split[T](node.left^, f);
-                let new_left = Box_new(left_right);
-                let new_right = node.right;
+                let { left_left, left_right } = split[T](node^.left, f);
+                let new_left = left_right;
+                let new_right = node^.right;
                 let node = include_ast update_data(`(node), .new_left = `(new_left), .new_right = `(new_right));
                 { left_left, node }
             )
             | :LeftSubtree => (
-                let { right_left, right_right } = split[T](node.right^, f);
-                let new_left = node.left;
-                let new_right = Box_new(right_left);
+                let { right_left, right_right } = split[T](node^.right, f);
+                let new_left = node^.left;
+                let new_right = right_left;
                 let node = include_ast update_data(`(node), .new_left = `(new_left), .new_right = `(new_right));
                 { node, right_right }
             )
             | :Node { left, right } => (
                 let left = singleton(left);
                 let right = singleton(right);
-                { join(node.left^, left), join(right, node.right^) }
+                { join(node^.left, left), join(right, node^.right) }
             )
         )
     )
@@ -172,7 +169,7 @@ const split_at = [T] (v :: Treap.t[T], mut idx :: Int32) -> { Treap.t[T], Treap.
     split(
         v,
         node => (
-            let this_node_idx = length(&node^.left^);
+            let this_node_idx = length(&node^.left);
             if this_node_idx < idx then (
                 idx -= this_node_idx + 1;
                 :LeftSubtree
@@ -189,12 +186,12 @@ const at = [T] (v :: &Treap.t[T], idx :: Int32) -> &T => (
     match v^ with (
         | :Empty => panic("oob")
         | :Node ref v => (
-            if idx == length(&v^.left^) then (
-                &v^.value
-            ) else if idx < length(&v^.left^) then (
-                at[T](&v^.left^, idx)
+            if idx == length(&v^^.left) then (
+                &v^^.value
+            ) else if idx < length(&v^^.left) then (
+                at[T](&v^^.left, idx)
             ) else (
-                at[T](&v^.right^, idx - length(&v^.left^) - 1)
+                at[T](&v^^.right, idx - length(&v^^.left) - 1)
             )
         )
     )
@@ -203,12 +200,12 @@ const at_mut = [T] (v :: &mut Treap.t[T], idx :: Int32) -> &mut T => (
     match v^ with (
         | :Empty => panic("oob")
         | :Node ref mut v => (
-            if idx == length(&v^.left^) then (
-                &mut v^.value
-            ) else if idx < length(&v^.left^) then (
-                at_mut[T](&mut v^.left^, idx)
+            if idx == length(&v^^.left) then (
+                &mut v^^.value
+            ) else if idx < length(&v^^.left) then (
+                at_mut[T](&mut v^^.left, idx)
             ) else (
-                at_mut[T](&mut v^.right^, idx - length(&v^.left^) - 1)
+                at_mut[T](&mut v^^.right, idx - length(&v^^.left) - 1)
             )
         )
     )
@@ -240,9 +237,9 @@ const into_iter = [T] (v :: Treap.t[T]) -> std.iter.Iterable[T] => {
         match v with (
             | :Empty => ()
             | :Node data => (
-                (into_iter[T](data.left^)).iter(f);
-                f(data.value);
-                (into_iter[T](data.right^)).iter(f);
+                (into_iter[T](data^.left)).iter(f);
+                f(data^.value);
+                (into_iter[T](data^.right)).iter(f);
             )
         )
     )
@@ -252,9 +249,9 @@ const iter = [T] (v :: &Treap.t[T]) -> std.iter.Iterable[type (&T)] => {
         match v^ with (
             | :Empty => ()
             | :Node ref data => (
-                (iter[T](&data^.left^)).iter(f);
-                f(&data^.value);
-                (iter[T](&data^.right^)).iter(f);
+                (iter[T](&data^^.left)).iter(f);
+                f(&data^^.value);
+                (iter[T](&data^^.right)).iter(f);
             )
         )
     )
@@ -264,9 +261,9 @@ const iter_mut = [T] (v :: &mut Treap.t[T]) -> std.iter.Iterable[type (&mut T)] 
         match v^ with (
             | :Empty => ()
             | :Node ref mut data => (
-                (iter_mut[T](&mut data^.left^)).iter(f);
-                f(&mut data^.value);
-                (iter_mut[T](&mut data^.right^)).iter(f);
+                (iter_mut[T](&mut data^^.left)).iter(f);
+                f(&mut data^^.value);
+                (iter_mut[T](&mut data^^.right)).iter(f);
             )
         )
     ),
