@@ -58,6 +58,7 @@ end
 type transpiled_ty =
   { kast_ty : ty
   ; c_ty : C_ast.ty
+  ; is_copy : bool Lazy.t
   ; generate_type_info : bool
   ; type_info_name : string
   ; claim : (C_ast.place_expr -> C_ast.expr) LazyNamed.t
@@ -454,6 +455,53 @@ module Impl = struct
     in
     ctx.fns
     <- ctx.fns |> StringMap.add (claim_name ^ "_type_erased") claim_impl_type_erased
+
+  and is_copy_impl (ty : ty) : bool =
+    let ty =
+      match ty.var |> Inference.Var.inferred_opt with
+      | None -> fail "can't generate_claim_impl for not inferred"
+      | Some ty -> ty
+    in
+    let copy = true in
+    match ty with
+    | Types.T_Unit -> copy
+    | Types.T_Bool -> copy
+    | Types.T_Int32 -> copy
+    | Types.T_UInt32 -> copy
+    | Types.T_Int64 -> copy
+    | Types.T_UInt64 -> copy
+    | Types.T_Float32 -> copy
+    | Types.T_Float64 -> copy
+    | Types.T_String -> false
+    | Types.T_StringView -> copy
+    | Types.T_Char -> copy
+    | Types.T_Ref _ -> copy
+    | Types.T_Box _ -> false
+    | Types.T_Variant ty ->
+      ty.variants
+      |> Row.await_inferred_to_list
+      |> List.for_all (fun ((_label, variant) : Label.t * Types.ty_variant_data) ->
+        match variant.data with
+        | None -> copy
+        | Some data_ty -> (transpile_ty data_ty).is_copy |> Lazy.force)
+    | Types.T_Tuple tuple ->
+      tuple.tuple
+      |> Tuple.to_seq
+      |> Seq.for_all (fun ((_member, field) : Tuple.member * Types.ty_tuple_field) ->
+        (transpile_ty field.ty).is_copy |> Lazy.force)
+    | Types.T_List _ -> false
+    | Types.T_Ty -> copy
+    | Types.T_Fn { is_closure; _ } -> not (is_closure |> Inference.await_inferred_simple)
+    | Types.T_Generic _ -> copy
+    | Types.T_Ast -> copy
+    | Types.T_UnwindToken _ -> copy
+    | Types.T_Target -> copy
+    | Types.T_ContextTy -> copy
+    | Types.T_ImplicitContext -> false
+    | Types.T_CompilerScope -> copy
+    | Types.T_Opaque _ -> true
+    | Types.T_Blocked _ -> copy
+    | Types.T_Error -> copy
 
   and generate_claim_impl (ty : ty) (c_ty : C_ast.ty) : C_ast.fn_def =
     let kast_ty = ty in
@@ -1037,29 +1085,37 @@ module Impl = struct
               let name = gen_name (make_string "%s_%s" c_ty_as_str suffix) in
               LazyNamed.make name (fun () -> f name)
             in
+            let is_copy = lazy (is_copy_impl ty) in
             let result : transpiled_ty =
               if runtime_defined_types_with_type_info |> StringSet.contains c_ty_as_str
               then
                 { kast_ty = ty
                 ; c_ty
+                ; is_copy
                 ; generate_type_info = false
                 ; type_info_name = make_string "%s_TypeInfo" c_ty_as_str
                 ; claim =
                     (let claim_name = make_string "%s_claim" c_ty_as_str in
                      LazyNamed.make claim_name (fun () ->
                        fun (place : C_ast.place_expr) : C_ast.expr ->
-                       E_Apply
-                         { f = Pure_Copy (P_Ident claim_name)
-                         ; args = [ Pure_AddrOf place ]
-                         }))
+                       if Lazy.force is_copy
+                       then E_Pure (Pure_Copy place)
+                       else
+                         E_Apply
+                           { f = Pure_Copy (P_Ident claim_name)
+                           ; args = [ Pure_AddrOf place ]
+                           }))
                 ; drop =
                     (let drop_name = make_string "%s_drop" c_ty_as_str in
                      LazyNamed.make drop_name (fun () ->
                        fun (value : C_ast.pure_expr) ->
-                       insert_stmt
-                         (S_Expr
-                            (E_Apply
-                               { f = Pure_Copy (P_Ident drop_name); args = [ value ] }))))
+                       if Lazy.force is_copy
+                       then ()
+                       else
+                         insert_stmt
+                           (S_Expr
+                              (E_Apply
+                                 { f = Pure_Copy (P_Ident drop_name); args = [ value ] }))))
                 ; dbg_write =
                     (let name = make_string "%s_dbg_write" c_ty_as_str in
                      LazyNamed.make name (fun () -> name))
@@ -1067,6 +1123,7 @@ module Impl = struct
               else
                 { kast_ty = ty
                 ; c_ty
+                ; is_copy
                 ; generate_type_info = true
                 ; type_info_name = make_string "%s_TypeInfo" c_ty_as_str
                 ; claim =
@@ -1074,19 +1131,25 @@ module Impl = struct
                       let claim_impl = generate_claim_impl ty c_ty in
                       add_claim_impl_with_type_erased claim_name c_ty claim_impl;
                       fun (place : C_ast.place_expr) : C_ast.expr ->
-                        E_Apply
-                          { f = Pure_Copy (P_Ident claim_name)
-                          ; args = [ Pure_AddrOf place ]
-                          })
+                        if Lazy.force is_copy
+                        then E_Pure (Pure_Copy place)
+                        else
+                          E_Apply
+                            { f = Pure_Copy (P_Ident claim_name)
+                            ; args = [ Pure_AddrOf place ]
+                            })
                 ; drop =
                     gen_lazy_named "drop" (fun drop_name ->
                       let drop_impl = generate_drop_impl ty c_ty in
                       add_drop_impl_with_type_erased drop_name c_ty drop_impl;
                       fun (value : C_ast.pure_expr) ->
-                        insert_stmt
-                          (S_Expr
-                             (E_Apply
-                                { f = Pure_Copy (P_Ident drop_name); args = [ value ] })))
+                        if Lazy.force is_copy
+                        then ()
+                        else
+                          insert_stmt
+                            (S_Expr
+                               (E_Apply
+                                  { f = Pure_Copy (P_Ident drop_name); args = [ value ] })))
                 ; dbg_write =
                     gen_lazy_named "dbg_write" (fun dbg_write_name ->
                       let dbg_write_impl = generate_dbg_write_impl ty c_ty in
@@ -1787,44 +1850,51 @@ module Impl = struct
   and construct_type_info_for_struct (struct_name : string) (fields : ty StringMap.t)
     : unit -> C_ast.expr
     =
+    let is_copy =
+      fields
+      |> StringMap.for_all (fun _field_name field_ty ->
+        (transpile_ty field_ty).is_copy |> Lazy.force)
+    in
     let drop_fn_name = struct_name ^ "_drop" in
     let claim_fn_name = struct_name ^ "_claim" in
-    let drop_fn_impl : C_ast.fn_def =
-      { args = [ { name = "value"; ty = T_Named struct_name } ]
-      ; result_ty = T_Void
-      ; body =
-          new_block (fun () ->
-            fields
-            |> StringMap.iter (fun field_name field_ty ->
-              LazyNamed.force
-                (transpile_ty field_ty).drop
-                (Pure_Copy (P_Field { obj = P_Ident "value"; field = field_name }))))
-      ; comment = None
-      }
-    in
-    let claim_fn_impl : C_ast.fn_def =
-      { args = [ { name = "place"; ty = T_Ptr (T_Named struct_name) } ]
-      ; result_ty = T_Named struct_name
-      ; body =
-          new_block (fun () ->
-            insert_stmt
-              (S_Return
-                 (c_compound_literal
-                    (T_Named struct_name)
-                    (fields
-                     |> StringMap.mapi (fun field_name field_ty : C_ast.expr ->
-                       LazyNamed.force
-                         (transpile_ty field_ty).claim
-                         (P_Field
-                            { obj = P_Deref (Pure_Copy (P_Ident "place"))
-                            ; field = field_name
-                            }))
-                     |> StringMap.to_list))))
-      ; comment = None
-      }
-    in
-    add_drop_impl_with_type_erased drop_fn_name (T_Named struct_name) drop_fn_impl;
-    add_claim_impl_with_type_erased claim_fn_name (T_Named struct_name) claim_fn_impl;
+    if not is_copy
+    then (
+      let drop_fn_impl : C_ast.fn_def =
+        { args = [ { name = "value"; ty = T_Named struct_name } ]
+        ; result_ty = T_Void
+        ; body =
+            new_block (fun () ->
+              fields
+              |> StringMap.iter (fun field_name field_ty ->
+                LazyNamed.force
+                  (transpile_ty field_ty).drop
+                  (Pure_Copy (P_Field { obj = P_Ident "value"; field = field_name }))))
+        ; comment = None
+        }
+      in
+      let claim_fn_impl : C_ast.fn_def =
+        { args = [ { name = "place"; ty = T_Ptr (T_Named struct_name) } ]
+        ; result_ty = T_Named struct_name
+        ; body =
+            new_block (fun () ->
+              insert_stmt
+                (S_Return
+                   (c_compound_literal
+                      (T_Named struct_name)
+                      (fields
+                       |> StringMap.mapi (fun field_name field_ty : C_ast.expr ->
+                         LazyNamed.force
+                           (transpile_ty field_ty).claim
+                           (P_Field
+                              { obj = P_Deref (Pure_Copy (P_Ident "place"))
+                              ; field = field_name
+                              }))
+                       |> StringMap.to_list))))
+        ; comment = None
+        }
+      in
+      add_drop_impl_with_type_erased drop_fn_name (T_Named struct_name) drop_fn_impl;
+      add_claim_impl_with_type_erased claim_fn_name (T_Named struct_name) claim_fn_impl);
     fun () ->
       c_compound_literal
         (T_Raw { c = "TypeInfo"; is_primitive = false })
@@ -1834,8 +1904,14 @@ module Impl = struct
           ; "size", Pure_Native [ N_Raw "sizeof("; N_Raw struct_name; N_Raw ")" ]
           ; "stride", Pure_Native [ N_Raw "sizeof("; N_Raw struct_name; N_Raw ")" ]
             (* ; "kind", E_Native { parts = [ N_Raw "TypeInfoKind_raw" ] } *)
-          ; "drop", Pure_Copy (P_Ident (drop_fn_name ^ "_type_erased"))
-          ; "claim", Pure_Copy (P_Ident (claim_fn_name ^ "_type_erased"))
+          ; ( "drop"
+            , if is_copy
+              then Pure_Native [ N_Raw "NULL" ]
+              else Pure_Copy (P_Ident (drop_fn_name ^ "_type_erased")) )
+          ; ( "claim"
+            , if is_copy
+              then Pure_Native [ N_Raw "NULL" ]
+              else Pure_Copy (P_Ident (claim_fn_name ^ "_type_erased")) )
           ]
           @
           if !allocation_stats
@@ -2887,8 +2963,14 @@ module Impl = struct
             ; "size", Pure_Native [ N_Raw "sizeof("; N_Raw name; N_Raw ")" ]
             ; "stride", Pure_Native [ N_Raw "sizeof("; N_Raw name; N_Raw ")" ]
             ; "dbg_write", Pure_Copy (P_Ident (ty.dbg_write.name ^ "_type_erased"))
-            ; "drop", Pure_Copy (P_Ident (ty.drop.name ^ "_type_erased"))
-            ; "claim", Pure_Copy (P_Ident (ty.claim.name ^ "_type_erased"))
+            ; ( "drop"
+              , if ty.is_copy |> Lazy.force
+                then Pure_Native [ N_Raw "NULL" ]
+                else Pure_Copy (P_Ident (ty.drop.name ^ "_type_erased")) )
+            ; ( "claim"
+              , if ty.is_copy |> Lazy.force
+                then Pure_Native [ N_Raw "NULL" ]
+                else Pure_Copy (P_Ident (ty.claim.name ^ "_type_erased")) )
             ]
             @
             if !allocation_stats
@@ -2908,8 +2990,14 @@ module Impl = struct
             ; "size", Pure_Native [ N_Raw "sizeof("; N_Raw raw_ty; N_Raw ")" ]
             ; "stride", Pure_Native [ N_Raw "sizeof("; N_Raw raw_ty; N_Raw ")" ]
             ; "dbg_write", Pure_Copy (P_Ident (ty.dbg_write.name ^ "_type_erased"))
-            ; "drop", Pure_Copy (P_Ident (ty.drop.name ^ "_type_erased"))
-            ; "claim", Pure_Copy (P_Ident (ty.claim.name ^ "_type_erased"))
+            ; ( "drop"
+              , if ty.is_copy |> Lazy.force
+                then Pure_Native [ N_Raw "NULL" ]
+                else Pure_Copy (P_Ident (ty.drop.name ^ "_type_erased")) )
+            ; ( "claim"
+              , if ty.is_copy |> Lazy.force
+                then Pure_Native [ N_Raw "NULL" ]
+                else Pure_Copy (P_Ident (ty.claim.name ^ "_type_erased")) )
             ]
             @
             if !allocation_stats
