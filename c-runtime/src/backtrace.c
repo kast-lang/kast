@@ -1,13 +1,18 @@
 #include <Kast.h>
 
+#ifdef USE_BACKTRACE
 struct backtrace_state* BACKTRACE_STATE;
+#endif
 
 void Kast_backtrace_init(void) {
+#ifdef USE_BACKTRACE
     BACKTRACE_STATE =
         backtrace_create_state(NULL, 1, Kast_Backtrace_error_callback, NULL);
+#endif
 }
 
 void Kast_Backtrace_print(Kast_Backtrace* trace) {
+#ifdef USE_BACKTRACE
     int frame_num = 0;
     for (Kast_Backtrace_C_Entry* entry = trace->c_entries; entry != NULL;
          entry = entry->next) {
@@ -19,8 +24,12 @@ void Kast_Backtrace_print(Kast_Backtrace* trace) {
             &frame_num
         );
     }
+#else
+    fprintf(stderr, "<TODO backtrace>");
+#endif
 }
 
+#ifdef USE_BACKTRACE
 int Kast_Backtrace_print_entry(
     void* data,
     uintptr_t pc,
@@ -39,6 +48,7 @@ int Kast_Backtrace_print_entry(
     );
     return 0;
 }
+#endif
 
 void Kast_Backtrace_drop_boxed(Kast_Backtrace* trace) {
     Kast_Backtrace_drop(*trace);
@@ -68,6 +78,7 @@ Kast_Backtrace Kast_Backtrace_get(void) {
     Kast_Backtrace trace = {
         .c_entries = NULL,
     };
+#ifdef USE_BACKTRACE
     backtrace_full(
         BACKTRACE_STATE,
         1,
@@ -75,9 +86,11 @@ Kast_Backtrace Kast_Backtrace_get(void) {
         Kast_Backtrace_error_callback,
         &trace
     );
+#endif
     return trace;
 }
 
+#ifdef USE_BACKTRACE
 int Kast_Backtrace_callback(
     void* data,
     uintptr_t pc,
@@ -103,3 +116,4 @@ void Kast_Backtrace_error_callback(void* data, const char* msg, int errnum) {
     fprintf(stderr, "libbacktrace error: %s (errnum: %d)\n", msg, errnum);
     exit(-1);
 }
+#endif
