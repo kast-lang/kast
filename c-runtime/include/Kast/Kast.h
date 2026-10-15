@@ -12,6 +12,7 @@
 #include "./random.h"
 #include "./ref_counted.h"
 #include "./string.h"
+#include "./sys.h"
 #include "./tcp.h"
 #include "./thread.h"
 #include "./type_info.h"

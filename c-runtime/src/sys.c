@@ -28,9 +28,14 @@ Int32 Kast_exec(StringView cmd) {
 #endif
 }
 
-String Kast_getenv(StringView name) {
+bool Kast_getenv(StringView name, String* result) {
     char* name_c = StringView_to_C_String(name);
     char* buf = getenv(name_c);
     Kast_free(name_c);
-    return String_from_C_StringView(buf);
+    if (buf == NULL) {
+        return false;
+    } else {
+        *result = String_from_C_StringView(buf);
+        return true;
+    }
 }

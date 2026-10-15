@@ -1,1 +1,1 @@
-let x :: Int32 = 2 + 2;
+dbg.print(std.sys.get_env("FOO"));

@@ -24,9 +24,9 @@ const exec = (cmd :: &str) -> Int32 => @cfg (
 const get_env = (var :: &str) -> Option.t[String] => @cfg (
     | target.name == "interpreter" => (@native "sys.get_env")(var)
     | target.name == "c" => (
-        let s :: String = @native "Kast_getenv(\(var))";
-        if @native "\(s).buf != NULL" then (
-            :Some s
+        let mut result :: String = String.from_str("");
+        if @native "Kast_getenv(\(var), \(&mut result))" then (
+            :Some result
         ) else (
             :None
         )

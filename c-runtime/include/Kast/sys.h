@@ -5,6 +5,6 @@
 
 void Kast_chdir(StringView path);
 Int32 Kast_exec(StringView cmd);
-String Kast_getenv(StringView name);
+bool Kast_getenv(StringView name, String* result);
 
 #endif
