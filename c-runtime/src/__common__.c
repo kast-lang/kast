@@ -6,8 +6,8 @@ noreturn void exit_with_error(const char* fmt, ...) {
         va_list va;
         va_start(va, fmt);
         vfprintf(stderr, fmt, va);
-        fprintf(stderr, "\n");
         va_end(va);
+        fprintf(stderr, "\n");
     }
 #ifndef __EMSCRIPTEN__
 #ifdef USE_BACKTRACE
@@ -35,6 +35,6 @@ noreturn void exit_errno(const char* fmt, ...) {
     va_start(va, fmt);
     vfprintf(stderr, fmt, va);
     va_end(va);
-    fprintf(stderr, "%s\n", strerror(errno));
+    fprintf(stderr, ": %s\n", strerror(errno));
     exit_with_error(NULL);
 }
