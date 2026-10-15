@@ -121,10 +121,10 @@ String Kast_read_to_end(FILE* f) {
 String Kast_read_file(StringView path) {
     char* path_c = StringView_to_C_String(path);
     FILE* f = fopen(path_c, "r");
-    Kast_free(path_c);
     if (!f) {
-        exit_errno("Kast_read_file.fopen");
+        exit_errno("Kast_read_file.fopen(%s)", path_c);
     }
+    Kast_free(path_c);
     String result = Kast_read_to_end(f);
     if (fclose(f) != 0) {
         exit_errno("Kast_read_file.fclose");

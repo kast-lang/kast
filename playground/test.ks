@@ -1,1 +1,1 @@
-dbg.print(std.sys.get_env("FOO"));
+std.fs.read_file("nonexistent.txt")
