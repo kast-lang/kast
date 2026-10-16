@@ -197,7 +197,13 @@ let init () =
           match arg |> Value.await_inferred with
           | V_Bool value -> Bool.to_string value
           | V_Char value -> String.from_single_utf8 value
-          | V_Int32 value | V_UInt32 value -> Int32.to_string value
+          | V_Int32 value -> Int32.to_string value
+          | V_UInt32 value ->
+            (match Int32.unsigned_to_int value with
+             | Some i -> string_of_int i
+             | None ->
+               Error.error caller "to_string: int isn't wide enough on this platform";
+               return (V_Error : Value.Shape.t))
           | V_Int64 value | V_UInt64 value -> Int64.to_string value
           | V_Float32 value | V_Float64 value -> Float.to_string value
           | V_Ty ty -> make_string "%a" Ty.print ty
