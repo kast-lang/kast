@@ -333,11 +333,12 @@ module Make (Data : DataS) : S with module Data = Data = struct
       ->
       collect_list
         ~binary_rule_name
+        ?trailing_or_leading_rule_name
         (root.children |> Tuple.unwrap_single_unnamed |> Child.expect_ast)
     | Complex { rule = { name; _ }; root } when name = binary_rule_name ->
       let a, b = root.children |> Tuple.map Child.expect_ast |> Tuple.unwrap_unnamed2 in
-      let a = collect_list ~binary_rule_name a in
-      let b = collect_list ~binary_rule_name b in
+      let a = collect_list ~binary_rule_name ?trailing_or_leading_rule_name a in
+      let b = collect_list ~binary_rule_name ?trailing_or_leading_rule_name b in
       a @ b
     | _ -> [ ast ]
   ;;
