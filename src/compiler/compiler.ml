@@ -213,7 +213,7 @@ and calculate_import ?(prelude : bool = true) ~(span : span) (module C : S) (uri
     { value = V_Error |> Value.inferred ~span
     ; parser_ruleset = Kast_parser.Ruleset.empty
     ; custom_syntax_impls = Hashtbl.create 0
-    ; cast_impls = { map = Types.ValueMap.empty; as_module = Types.ValueMap.empty }
+    ; cast_impls = { map = Types.ValueMap.empty (); as_module = Types.ValueMap.empty () }
     ; set_natives = { by_name = StringMap.empty }
     }
 ;;

@@ -1580,9 +1580,9 @@ and ValueMap : sig
 
   module CompareMap : Map.S with type key = ValueImpl.t
 
-  val empty : 'a t
+  val empty : unit -> 'a t
   val add : key -> 'a -> 'a t -> 'a t
-  val find_opt : key -> 'a t -> 'a option
+  val find_opt : ('a -> 'a -> 'a) -> key -> 'a t -> 'a option
   val update : key -> ('a option -> 'a option) -> 'a t -> 'a t
   val iter : (key -> 'a -> unit) -> 'a t -> unit
   val union : (key -> 'a -> 'a -> 'a option) -> 'a t -> 'a t -> 'a t
@@ -1592,11 +1592,11 @@ end = struct
 
   module CompareMap = Map.Make (ValueImpl)
 
-  type 'a t = { entries : (key * 'a) list }
+  type 'a t = { mutable entries : (key * 'a) list }
 
-  let empty = { entries = [] }
+  let empty () = { entries = [] }
 
-  let find_opt (key : key) (map : 'a t) : 'a option =
+  let find_opt (unite : 'a -> 'a -> 'a) (key : key) (map : 'a t) : 'a option =
     profile "find_opt valuemap"
     <| fun () ->
     let values =
@@ -1605,8 +1605,14 @@ end = struct
       |> Seq.filter_map (fun (map_key, value) ->
         if ValueImpl.equal key map_key then Some value else None)
     in
-    if values |> Seq.length > 1 then fail "TODO: Multiple values for key";
-    values |> Seq.find_map (fun x -> Some x)
+    (* TODO mutate inplace so we dont unify next time *)
+    values
+    |> Seq.fold_left
+         (fun acc value ->
+            match acc with
+            | None -> Some value
+            | Some acc -> Some (unite acc value))
+         None
   ;;
 
   let update (key : key) (f : 'a option -> 'a option) (map : 'a t) : 'a t =

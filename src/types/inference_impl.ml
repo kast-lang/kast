@@ -469,7 +469,8 @@ module Impl = struct
           ; monomorphization_state = init_monomorphization_state ()
           ; implicit_context = { contexts = Id.Map.empty }
           ; instantiated_generics = { map = Id.Map.empty }
-          ; cast_impls = { map = Types.ValueMap.empty; as_module = Types.ValueMap.empty }
+          ; cast_impls =
+              { map = Types.ValueMap.empty (); as_module = Types.ValueMap.empty () }
           ; current_name = Simple (Str "<unused>")
           }
         in

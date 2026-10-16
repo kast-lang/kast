@@ -353,7 +353,7 @@ and instantiate
              let save new_state =
                let generic_instantiations =
                  match state.instantiated_generics.map |> Id.Map.find_opt id with
-                 | None -> Types.ValueMap.empty
+                 | None -> Types.ValueMap.empty ()
                  | Some instantiations -> instantiations
                in
                let generic_instantiations =
@@ -369,7 +369,8 @@ and instantiate
                     state.instantiated_generics.map
                     |> Id.Map.find_opt id
                     |> Option.and_then (fun instantiations ->
-                      instantiations |> Types.ValueMap.find_opt arg))
+                      instantiations
+                      |> Types.ValueMap.find_opt (Inference_impl.unite_value ~span) arg))
              in
              (match current_state with
               | None ->
@@ -1093,8 +1094,11 @@ and eval_expr_implcast : state -> expr -> Types.expr_impl_cast -> value =
     impl_value |> Inference.Value.expect_inferred_as ~span (eval state impl));
   let current_target_impls =
     state.cast_impls.map
-    |> Types.ValueMap.find_opt target
-    |> Option.unwrap_or_else (fun () -> Types.ValueMap.empty)
+    |> Types.ValueMap.find_opt
+         (Types.ValueMap.union (fun _key a b ->
+            Some (Inference_impl.unite_value ~span a b)))
+         target
+    |> Option.unwrap_or_else (fun () -> Types.ValueMap.empty ())
   in
   let updated_target_impls =
     current_target_impls |> Types.ValueMap.add value impl_value
@@ -1116,10 +1120,16 @@ and eval_expr_cast : state -> expr -> Types.expr_cast -> value =
   let value = eval state value in
   let _ : Value.shape = value |> await_fully_inferred in
   Log.trace (fun log -> log "evaling cast %a as %a" Value.print value Value.print target);
-  let target_impls = state.cast_impls.map |> Types.ValueMap.find_opt target in
+  let target_impls =
+    state.cast_impls.map
+    |> Types.ValueMap.find_opt
+         (Types.ValueMap.union (fun _ a b -> Some (Inference_impl.unite_value ~span a b)))
+         target
+  in
   let impl =
     target_impls
-    |> Option.and_then (fun target_impls -> target_impls |> Types.ValueMap.find_opt value)
+    |> Option.and_then (fun target_impls ->
+      target_impls |> Types.ValueMap.find_opt (Inference_impl.unite_value ~span) value)
   in
   match impl with
   | Some impl -> impl
@@ -1200,9 +1210,10 @@ and impl_cast_as_module : span:span -> state -> value:value -> impl:value -> uni
          Some current_impl)
 
 and cast_as_module_opt : span:span -> state -> value -> value option =
-  fun ~span:_ state value ->
+  fun ~span state value ->
   let _ : Value.shape = value |> await_fully_inferred in
-  state.cast_impls.as_module |> Types.ValueMap.find_opt value
+  state.cast_impls.as_module
+  |> Types.ValueMap.find_opt (Inference_impl.unite_value ~span) value
 
 and cast_as_module : span:span -> state -> value -> value =
   fun ~span state value ->
