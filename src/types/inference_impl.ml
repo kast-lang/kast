@@ -175,6 +175,7 @@ module VarScope = struct
     | BV_Instantiate x -> of_blocked_value_instantiate x
     | BV_ClaimRef x -> of_blocked_value x
     | BV_FieldRef x -> of_blocked_value_field_ref x
+    | BV_Cast { value; target } -> deepest (of_value value) (of_value target)
 
   and of_blocked_value_instantiate : blocked_value_instantiate -> var_scope =
     fun { generic; arg } -> deepest (of_blocked_value generic) (of_value arg)
@@ -405,6 +406,13 @@ module Impl = struct
       let b = normalize b in
       if not (Id.equal a.id b.id) then fail () else BV_Binding a
     | BV_Binding _, _ -> fail ()
+    | ( BV_Cast { value = value_a; target = target_a }
+      , BV_Cast { value = value_b; target = target_b } ) ->
+      BV_Cast
+        { value = unite_value ~span value_a value_b
+        ; target = unite_value ~span target_a target_b
+        }
+    | BV_Cast _, _ -> fail ()
     | ( BV_Instantiate { generic = generic_a; arg = arg_a }
       , BV_Instantiate { generic = generic_b; arg = arg_b } ) ->
       BV_Instantiate

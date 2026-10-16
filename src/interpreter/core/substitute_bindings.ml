@@ -11,6 +11,10 @@ let print_const s fmt _ = fprintf fmt "%s" s
 
 module Impl = struct
   module Interpreter = struct
+    let cast : (span:span -> interpreter_state -> value -> value -> value) option ref =
+      ref None
+    ;;
+
     let instantiate
       : (?result_ty:ty -> span -> interpreter_state -> value -> value -> value) option ref
       =
@@ -249,6 +253,11 @@ module Impl = struct
       let arg = sub_value ~state arg in
       let instantiate = !Interpreter.instantiate |> Option.get in
       instantiate ~result_ty:blocked.ty span state generic arg
+    | BV_Cast { value; target } ->
+      let value = sub_value ~state value in
+      let target = sub_value ~state target in
+      let cast = !Interpreter.cast |> Option.get in
+      cast ~span state value target
     | BV_Binding binding ->
       (match Scope.find_local_opt binding.name state.scope with
        | None ->

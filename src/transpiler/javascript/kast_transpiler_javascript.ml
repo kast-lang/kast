@@ -419,6 +419,7 @@ module Impl = struct
     fun value ->
     match value.shape with
     | BV_Binding binding -> transpile_binding ~span:None binding
+    | BV_Cast _ -> failwith __LOC__
     | BV_Instantiate _ -> failwith __LOC__
     | BV_ClaimRef _ -> failwith __LOC__
     | BV_FieldRef _ -> failwith __LOC__

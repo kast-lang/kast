@@ -1114,10 +1114,8 @@ and eval_expr_implcast : state -> expr -> Types.expr_impl_cast -> value =
       target);
   V_Unit |> Value.inferred ~span
 
-and eval_expr_cast : state -> expr -> Types.expr_cast -> value =
-  fun state expr { value; target } ->
-  let span = expr.data.span in
-  let value = eval state value in
+and cast : span:span -> state -> value -> value -> value =
+  fun ~span state value target ->
   let _ : Value.shape = value |> await_fully_inferred in
   Log.trace (fun log -> log "evaling cast %a as %a" Value.print value Value.print target);
   let target_impls =
@@ -1188,6 +1186,12 @@ and eval_expr_cast : state -> expr -> Types.expr_cast -> value =
       Value.print
       target;
     V_Error |> Value.inferred ~span
+
+and eval_expr_cast : state -> expr -> Types.expr_cast -> value =
+  fun state expr { value; target } ->
+  let span = expr.data.span in
+  let value = eval state value in
+  cast ~span state value target
 
 and await_fully_inferred value : Value.Shape.t =
   (* TODO actual impl *)
@@ -1635,5 +1639,6 @@ and fork (f : unit -> unit) : unit =
 let () =
   Substitute_bindings.Impl.Interpreter.instantiate := Some instantiate;
   Substitute_bindings.Impl.Interpreter.get_field := Some get_field;
-  Substitute_bindings.Impl.Interpreter.claim_ref := Some claim_ref
+  Substitute_bindings.Impl.Interpreter.claim_ref := Some claim_ref;
+  Substitute_bindings.Impl.Interpreter.cast := Some cast
 ;;

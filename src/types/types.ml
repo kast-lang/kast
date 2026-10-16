@@ -35,9 +35,15 @@ module rec TypesImpl : sig
 
   and blocked_value_shape =
     | BV_Binding of binding
+    | BV_Cast of blocked_value_cast
     | BV_Instantiate of blocked_value_instantiate
     | BV_ClaimRef of blocked_value
     | BV_FieldRef of blocked_value_field_ref
+
+  and blocked_value_cast =
+    { value : value
+    ; target : value
+    }
 
   and blocked_value_field_ref =
     { obj_ref : blocked_value
@@ -804,9 +810,15 @@ end = struct
 
   and blocked_value_shape =
     | BV_Binding of binding
+    | BV_Cast of blocked_value_cast
     | BV_Instantiate of blocked_value_instantiate
     | BV_ClaimRef of blocked_value
     | BV_FieldRef of blocked_value_field_ref
+
+  and blocked_value_cast =
+    { value : value
+    ; target : value
+    }
 
   and blocked_value_field_ref =
     { obj_ref : blocked_value

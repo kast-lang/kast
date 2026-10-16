@@ -141,6 +141,8 @@ module Impl = struct
     | BV_Binding binding -> print_binding fmt binding
     | BV_Instantiate { generic; arg } ->
       fprintf fmt "%a[%a]" print_blocked_value generic print_value arg
+    | BV_Cast { value; target } ->
+      fprintf fmt "%a as %a" print_value value print_value target
     | BV_FieldRef { obj_ref; member } ->
       fprintf fmt "(&%a.%a)" print_blocked_value obj_ref Tuple.Member.print member
     | BV_ClaimRef ref -> fprintf fmt "%a^" print_blocked_value ref

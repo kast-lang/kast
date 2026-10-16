@@ -115,6 +115,9 @@ module Impl = struct
 
   and complete_blocked_value_shape (shape : blocked_value_shape) =
     match shape with
+    | BV_Cast { value; target } ->
+      complete_value value;
+      complete_value target
     | BV_Binding binding -> complete_binding binding
     | BV_Instantiate { generic; arg } ->
       complete_blocked_value generic;
