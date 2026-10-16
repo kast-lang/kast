@@ -242,6 +242,9 @@ let init () =
               Int64.of_string_opt s |> Option.map (fun x : Value.shape -> V_Int64 x)
             | T_Float64 ->
               Float.of_string_opt s |> Option.map (fun x : Value.shape -> V_Float64 x)
+            | T_UInt32 ->
+              Option.bind (int_of_string_opt s) (fun x : Value.shape option ->
+                if x < 0 then None else Some (V_UInt32 (Int32.of_int x)))
             | _ ->
               Error.error caller "no idea how to parse %a" Ty.print result_ty;
               Some V_Error
