@@ -2478,19 +2478,23 @@ let impl_cast : core_syntax =
               (module C)
               target
           in
-          E_ImplCast
-            { value =
-                tuple_impl
-                  ~guaranteed_anonymous:true
-                  ~allow_toplevel_parens:true
-                  (module C)
-                  Expr
-                  value
-            ; target
-            ; impl = C.compile Expr impl
-            }
-          |> init_expr span C.state
-          |> Compiler.data_add Expr (target_expr, target) kind
+          let expr =
+            E_ImplCast
+              { value =
+                  tuple_impl
+                    ~guaranteed_anonymous:true
+                    ~allow_toplevel_parens:true
+                    (module C)
+                    Expr
+                    value
+              ; target
+              ; impl = C.compile Expr impl
+              }
+            |> init_expr span C.state
+            |> Compiler.data_add Expr (target_expr, target) kind
+          in
+          let _ : value = Interpreter.eval C.state.interpreter expr in
+          const_expr (V_Unit |> Value.inferred ~span) span C.state
         | _ ->
           error span "impl cast must be expr";
           init_error span C.state kind)
