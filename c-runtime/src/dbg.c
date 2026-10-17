@@ -15,10 +15,10 @@ void Kast_dbg_print(void* value, TypeInfo* T) {
     Kast_Formatter_println(&fmt);
 }
 
-void Byte_dbg_write(Byte value, Kast_Formatter* fmt) {
-    Kast_Formatter_printf(fmt, "0x%02X", value);
+void Byte_dbg_write(Byte* value, Kast_Formatter* fmt) {
+    Kast_Formatter_printf(fmt, "0x%02X", *value);
 }
 
 void Byte_dbg_write_type_erased(void* value, Kast_Formatter* fmt) {
-    Byte_dbg_write(*((Byte*)value), fmt);
+    Byte_dbg_write(((Byte*)value), fmt);
 }
