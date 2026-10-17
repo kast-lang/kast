@@ -30,4 +30,4 @@ if @eval (a + c != 255) then (
 	panic("@eval (a + c != 255)");
 );
 
-println!("all good");
+println!("all good \(69 :: Byte)");
