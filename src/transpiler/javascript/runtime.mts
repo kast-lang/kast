@@ -149,6 +149,7 @@ interface Kast<isNode> extends Backend<isNode> {
     Int32: Fn<[string], number>;
     Int64: Fn<[string], bigint>;
     Float64: Fn<[string], number>;
+    Byte: Fn<[string], number>;
   };
   types: {
     todo: (s: string) => Type;
@@ -156,6 +157,7 @@ interface Kast<isNode> extends Backend<isNode> {
     primitive: {
       Unit: Type;
       Bool: Type;
+      Byte: Type;
       Char: Type;
       Int32: Type;
       Int64: Type;
@@ -547,6 +549,7 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
     primitive: {
       Unit: newtype("Unit"),
       Bool: newtype("Bool"),
+      Byte: newtype("Byte"),
       Char: newtype("Char"),
       Int32: newtype("Int32"),
       Int64: newtype("Int64"),
@@ -670,6 +673,9 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
       Float64(ctx, s) {
         return parseFloat(s);
       },
+      Byte(ctx, s) {
+        return parseInt(s);
+      }
     },
     types,
     check_todo,

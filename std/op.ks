@@ -61,6 +61,14 @@ impl Float32 as Add = {
     )
 };
 
+impl Byte as Add = {
+    .add = (a, b) => @cfg (
+        | target.name == "interpreter" => (@native "+")(a, b)
+        | target.name == "c" => @native "\(a) + \(b)"
+        | target.name == "javascript" => @native "\(a)+\(b)"
+    )
+};
+
 const add = [T] (a :: T, b :: T) -> T => (
     (T as Add).add(a, b)
 );

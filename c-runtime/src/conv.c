@@ -16,6 +16,10 @@ String Int64_to_String(Int64 x) {
     return Kast_asprintf("%ld", x);
 }
 
+String Byte_to_String(Byte x) {
+    return Kast_asprintf("%hhu", x);
+}
+
 Int32 Int32_from_String(StringView s) {
     // TODO negative, failures
     Int32 result = 0;
@@ -38,6 +42,14 @@ Float64 Float64_from_String(StringView s) {
     char* cs = StringView_to_C_String(s);
     Float64 result = atof(cs);
     Kast_free(cs);
+    return result;
+}
+
+Byte Byte_from_String(StringView s) {
+    Byte result = 0;
+    for (size_t i = 0; i < s.length; i++) {
+        result = result * 10 + s.buf[i] - '0';
+    }
     return result;
 }
 

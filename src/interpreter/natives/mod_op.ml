@@ -1,8 +1,10 @@
 open Common
+open Std
 
 let init () =
   let bin_op
         name
+        (op_byte : Byte.t -> Byte.t -> Byte.t)
         (op_int32 : int32 -> int32 -> int32)
         (op_int64 : int64 -> int64 -> int64)
         (op_float : (float -> float -> float) option)
@@ -38,6 +40,7 @@ let init () =
                  (match op_float with
                   | Some op_float -> V_Float64 (op_float a b)
                   | None -> V_Error)
+               | V_Byte a, V_Byte b -> V_Byte (op_byte a b)
                | V_String a, V_String b -> V_String (a ^ b) (* TODO only for + *)
                | _ ->
                  Error.error caller "unexpected args for bin op";
@@ -52,21 +55,23 @@ let init () =
                name;
              V_Error |> Value.inferred ~span))
   in
-  [ bin_op "+" Int32.add Int64.add (Some Float.add)
-  ; bin_op "-" Int32.sub Int64.sub (Some Float.sub)
-  ; bin_op "*" Int32.mul Int64.mul (Some Float.mul)
-  ; bin_op "/" Int32.div Int64.div (Some Float.div)
-  ; bin_op "%" Int32.rem Int64.rem (Some Float.rem)
-  ; bin_op "bit_and" Int32.logand Int64.logand None
-  ; bin_op "bit_or" Int32.logor Int64.logor None
-  ; bin_op "bit_xor" Int32.logxor Int64.logxor None
+  [ bin_op "+" Byte.( + ) Int32.add Int64.add (Some Float.add)
+  ; bin_op "-" Byte.( - ) Int32.sub Int64.sub (Some Float.sub)
+  ; bin_op "*" Byte.( * ) Int32.mul Int64.mul (Some Float.mul)
+  ; bin_op "/" Byte.( / ) Int32.div Int64.div (Some Float.div)
+  ; bin_op "%" Byte.( mod ) Int32.rem Int64.rem (Some Float.rem)
+  ; bin_op "bit_and" Byte.logand Int32.logand Int64.logand None
+  ; bin_op "bit_or" Byte.logor Int32.logor Int64.logor None
+  ; bin_op "bit_xor" Byte.logxor Int32.logxor Int64.logxor None
   ; bin_op
       "bit_shift_left"
+      Byte.shift_left
       (fun a b -> Int32.shift_left a (Int32.to_int b))
       (fun a b -> Int64.shift_left a (Int64.to_int b))
       None
   ; bin_op
       "bit_shift_right"
+      Byte.shift_right
       (fun a b -> Int32.shift_right a (Int32.to_int b))
       (fun a b -> Int64.shift_right a (Int64.to_int b))
       None
@@ -76,6 +81,7 @@ let init () =
        | V_UInt32 x -> V_UInt32 (Int32.lognot x)
        | V_Int64 x -> V_Int64 (Int64.lognot x)
        | V_UInt64 x -> V_UInt64 (Int64.lognot x)
+       | V_Byte x -> V_Byte (x |> Byte.lognot)
        | value ->
          Error.error caller "bit_not doesnt work with %a" Value.Shape.print value;
          V_Error)

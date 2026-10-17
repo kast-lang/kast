@@ -8,6 +8,7 @@ use UInt64;
 use Int64;
 use Float32;
 use Float64;
+use Byte;
 use Char;
 use String;
 use String.ToString;

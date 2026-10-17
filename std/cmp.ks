@@ -214,6 +214,30 @@ impl Float64 as Ord = {
     )
 };
 
+impl Byte as Ord = {
+    .compare = (&a, &b) => @cfg (
+        | (@native "==")(target.name, "interpreter") => (@native "cmp")(a, b)
+        | (@native "==")(target.name, "c") => (
+            if @native "\(a) < \(b)" then (
+                :Less
+            ) else if @native "\(a) > \(b)" then (
+                :Greater
+            ) else (
+                :Equal
+            )
+        )
+        | (@native "==")(target.name, "javascript") => (
+            if @native "\(a) < \(b)" then (
+                :Less
+            ) else if @native "\(a) > \(b)" then (
+                :Greater
+            ) else (
+                :Equal
+            )
+        )
+    )
+};
+
 impl Char as Ord = {
     .compare = (&a, &b) => @cfg (
         | (@native "==")(target.name, "interpreter") => (@native "cmp")(a, b)

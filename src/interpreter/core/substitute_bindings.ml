@@ -113,8 +113,8 @@ module Impl = struct
     let result =
       match shape with
       | V_Unit | V_Bool _ | V_Int32 _ | V_UInt32 _ | V_Int64 _ | V_UInt64 _ | V_Float32 _
-      | V_Float64 _ | V_Char _ | V_String _ | V_StringView _ | V_Ast _ | V_CompilerScope _
-      | V_Error ->
+      | V_Float64 _ | V_Byte _ | V_Char _ | V_String _ | V_StringView _ | V_Ast _
+      | V_CompilerScope _ | V_Error ->
         original_value
       | V_Box boxed -> V_Box (sub_place ~state boxed) |> shaped
       | V_Ref _ -> original_value (* TODO ??? *)
@@ -445,8 +445,8 @@ module Impl = struct
     let result =
       match shape with
       | T_Unit | T_Bool | T_Int32 | T_UInt32 | T_Int64 | T_UInt64 | T_Float32 | T_Float64
-      | T_String | T_StringView | T_Char | T_Target | T_ContextTy | T_ImplicitContext
-      | T_CompilerScope | T_Error | T_Ast | T_Ty ->
+      | T_String | T_StringView | T_Byte | T_Char | T_Target | T_ContextTy
+      | T_ImplicitContext | T_CompilerScope | T_Error | T_Ast | T_Ty ->
         original_ty
       | T_Opaque ty -> T_Opaque (sub_ty_opaque ~state ty) |> shaped
       | T_Box boxed -> T_Box (sub_ty ~state boxed) |> shaped

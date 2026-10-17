@@ -72,6 +72,7 @@ module Impl = struct
          | V_UInt64 (_ : int64) -> ()
          | V_Float32 (_ : float) -> ()
          | V_Float64 (_ : float) -> ()
+         | V_Byte (_ : char) -> ()
          | V_Char (_ : Uchar.t) -> ()
          | V_Box boxed -> complete_place boxed
          | V_Ref { mut : bool = _; place } -> complete_place place
@@ -184,6 +185,7 @@ module Impl = struct
          | T_Float64 -> ()
          | T_String -> ()
          | T_StringView -> ()
+         | T_Byte -> ()
          | T_Char -> ()
          | T_Box boxed -> complete_ty boxed
          | T_Ref { mut; referenced } ->

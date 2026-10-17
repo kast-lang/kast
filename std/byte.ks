@@ -1,0 +1,3 @@
+impl Byte as module = (
+
+);
