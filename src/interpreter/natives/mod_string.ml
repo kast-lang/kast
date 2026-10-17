@@ -197,7 +197,13 @@ let init () =
           match arg |> Value.await_inferred with
           | V_Bool value -> Bool.to_string value
           | V_Char value -> String.from_single_utf8 value
-          | V_Int32 value | V_UInt32 value -> Int32.to_string value
+          | V_Int32 value -> Int32.to_string value
+          | V_UInt32 value ->
+            (match Int32.unsigned_to_int value with
+             | Some i -> string_of_int i
+             | None ->
+               Error.error caller "to_string: int isn't wide enough on this platform";
+               return (V_Error : Value.Shape.t))
           | V_Int64 value | V_UInt64 value -> Int64.to_string value
           | V_Float32 value | V_Float64 value -> Float.to_string value
           | V_Ty ty -> make_string "%a" Ty.print ty
@@ -242,6 +248,9 @@ let init () =
               Int64.of_string_opt s |> Option.map (fun x : Value.shape -> V_Int64 x)
             | T_Float64 ->
               Float.of_string_opt s |> Option.map (fun x : Value.shape -> V_Float64 x)
+            | T_UInt32 ->
+              Option.bind (int_of_string_opt s) (fun x : Value.shape option ->
+                if x < 0 then None else Some (V_UInt32 (Int32.of_int x)))
             | _ ->
               Error.error caller "no idea how to parse %a" Ty.print result_ty;
               Some V_Error
