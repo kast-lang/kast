@@ -20,6 +20,7 @@ let init () =
          | T_Float64 -> construct_variant ~span type_info_ty "Float64" None
          | T_String -> construct_variant ~span type_info_ty "String" None
          | T_StringView -> construct_variant ~span type_info_ty "StringView" None
+         | T_Byte -> construct_variant ~span type_info_ty "Byte" None
          | T_Char -> construct_variant ~span type_info_ty "Char" None
          | T_Box boxed ->
            construct_variant

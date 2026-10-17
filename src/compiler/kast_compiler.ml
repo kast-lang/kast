@@ -146,6 +146,14 @@ let rec compile : 'a. state -> 'a compiled_kind -> Ast.t -> 'a =
                      | T_Float64 ->
                        let value = Float.of_string raw in
                        V_Float64 value
+                     | T_Byte ->
+                       let value = int_of_string raw in
+                       (try V_Byte (Char.chr value) with
+                        | Invalid_argument _ ->
+                          Error.error
+                            span
+                            "Number literal inferred as Byte is outside range 0-255";
+                          V_Error)
                      | other ->
                        Error.error
                          span

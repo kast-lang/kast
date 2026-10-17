@@ -1,4 +1,5 @@
 include Format
+include Byte
 include Char
 include Uchar
 include String

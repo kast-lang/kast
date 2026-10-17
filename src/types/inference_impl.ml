@@ -87,7 +87,7 @@ module VarScope = struct
     fun shape ->
     match shape with
     | T_Unit | T_Bool | T_Int32 | T_UInt32 | T_Int64 | T_UInt64 | T_Float32 | T_Float64
-    | T_String | T_StringView | T_Char ->
+    | T_String | T_StringView | T_Byte | T_Char ->
       root ()
     | T_Box x -> of_ty x
     | T_Ref x -> of_ty_ref x
@@ -198,6 +198,7 @@ module VarScope = struct
     | V_UInt64 (_ : int64) -> root ()
     | V_Float32 (_ : float) -> root ()
     | V_Float64 (_ : float) -> root ()
+    | V_Byte (_ : char) -> root ()
     | V_Char (_ : Uchar.t) -> root ()
     | V_Box boxed -> of_place boxed
     | V_Ref x -> of_value_ref x
@@ -327,6 +328,8 @@ module Impl = struct
          | T_Float32, _ -> fail ()
          | T_Float64, T_Float64 -> T_Float64
          | T_Float64, _ -> fail ()
+         | T_Byte, T_Byte -> T_Byte
+         | T_Byte, _ -> fail ()
          | T_Char, T_Char -> T_Char
          | T_Char, _ -> fail ()
          | T_StringView, T_StringView -> T_StringView
@@ -766,6 +769,8 @@ module Impl = struct
          | V_Float32 _, _ -> fail ()
          | V_Float64 a, V_Float64 b when a = b -> V_Float64 a
          | V_Float64 _, _ -> fail ()
+         | V_Byte a, V_Byte b when a = b -> V_Byte a
+         | V_Byte _, _ -> fail ()
          | V_Char a, V_Char b when a = b -> V_Char a
          | V_Char _, _ -> fail ()
          | V_StringView a, V_StringView b when a = b -> V_StringView a
@@ -1004,6 +1009,7 @@ module Impl = struct
     | T_UInt64 -> None
     | T_Float32 -> None
     | T_Float64 -> None
+    | T_Byte -> None
     | T_Char -> None
     | T_String -> None
     | T_StringView -> None
@@ -1095,6 +1101,7 @@ module Impl = struct
       | V_UInt64 _ -> inferred_ty ~span T_UInt64
       | V_Float32 _ -> inferred_ty ~span T_Float32
       | V_Float64 _ -> inferred_ty ~span T_Float64
+      | V_Byte _ -> inferred_ty ~span T_Byte
       | V_Char _ -> inferred_ty ~span T_Char
       | V_String _ -> inferred_ty ~span T_String
       | V_StringView _ -> inferred_ty ~span T_StringView

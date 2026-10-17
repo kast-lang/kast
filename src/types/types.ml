@@ -65,6 +65,7 @@ module rec TypesImpl : sig
     | V_UInt64 of int64
     | V_Float32 of float
     | V_Float64 of float
+    | V_Byte of char
     | V_Char of Uchar.t
     | V_Ref of value_ref
     | V_Box of place
@@ -233,6 +234,7 @@ module rec TypesImpl : sig
     | T_Float64
     | T_String
     | T_StringView
+    | T_Byte
     | T_Char
     | T_Ref of ty_ref
     | T_Box of ty
@@ -840,6 +842,7 @@ end = struct
     | V_UInt64 of int64
     | V_Float32 of float
     | V_Float64 of float
+    | V_Byte of char
     | V_Char of Uchar.t
     | V_Ref of value_ref
     | V_Box of place
@@ -1008,6 +1011,7 @@ end = struct
     | T_Float64
     | T_String
     | T_StringView
+    | T_Byte
     | T_Char
     | T_Ref of ty_ref
     | T_Box of ty
