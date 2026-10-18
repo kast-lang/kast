@@ -132,6 +132,20 @@ String Kast_read_file(StringView path) {
     return result;
 }
 
+ArrayList_Byte Kast_read_file_bytes(StringView path) {
+    const String string = Kast_read_file(path);
+    const StringView str = String_as_StringView(&string);
+    const size_t length = String_length(str);
+
+    ArrayList_Byte bytes = ArrayList_Byte_with_capacity(&Byte_TypeInfo, length);
+    for (size_t i = 0; i < length; i++) {
+        ArrayList_Byte_push_back(&bytes, str.buf[i]);
+    }
+
+    String_drop(string);
+    return bytes;
+}
+
 String Kast_read_until(FILE* f, Char delimiter) {
     char* buf = NULL;
     size_t capacity = 0;

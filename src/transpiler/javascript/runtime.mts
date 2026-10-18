@@ -87,6 +87,7 @@ interface Backend<isNode> {
   fs: isNode extends true
     ? {
         read_file: Fn<[string], string>;
+        read_file_bytes: Fn<[string], number[]>;
       }
     : undefined;
   sys: isNode extends true
@@ -384,6 +385,9 @@ const Kast = await (async (): Promise<Kast<true> | Kast<false>> => {
         fs: {
           read_file(ctx, path: string) {
             return fs.readFileSync(path, "utf8");
+          },
+          read_file_bytes(ctx, path: string) {
+            return Array.from(fs.readFileSync(path));
           },
         },
         sys: {

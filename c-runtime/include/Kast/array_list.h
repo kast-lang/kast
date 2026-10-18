@@ -3,6 +3,7 @@
 
 #include "./__common__.h"
 #include "./claim.h"
+#include "./fmt.h"
 
 #define define_ArrayList(T)                                                    \
     typedef struct {                                                           \
@@ -11,7 +12,18 @@
         size_t capacity;                                                       \
         size_t length;                                                         \
         Kast_Claimed claimed;                                                  \
-    } ArrayList_##T
+    } ArrayList_##T;                                                           \
+    ArrayList_##T ArrayList_##T##_new(TypeInfo* T_TypeInfo);                   \
+    void ArrayList_##T##_dbg_write(ArrayList_##T* list, Kast_Formatter* fmt);  \
+    ArrayList_##T ArrayList_##T##_claim(ArrayList_##T* list);                  \
+    void ArrayList_##T##_drop(ArrayList_##T list);                             \
+    ArrayList_##T ArrayList_##T##_with_capacity(                               \
+        TypeInfo* T_TypeInfo,                                                  \
+        size_t capacity                                                        \
+    );                                                                         \
+    void ArrayList_##T##_reserve(ArrayList_##T* list, size_t capacity);        \
+    void ArrayList_##T##_push_back(ArrayList_##T* list, T x);                  \
+    T ArrayList_##T##_pop_back(ArrayList_##T* list)
 
 #define impl_ArrayList(T)                                                      \
     ArrayList_##T ArrayList_##T##_new(TypeInfo* T_TypeInfo) {                  \
@@ -91,5 +103,8 @@
     T ArrayList_##T##_pop_back(ArrayList_##T* list) {                          \
         return list->buf[--list->length];                                      \
     }
+
+// Required by Kast_read_file_bytes
+define_ArrayList(Byte);
 
 #endif
