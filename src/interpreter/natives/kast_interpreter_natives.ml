@@ -23,6 +23,7 @@ let init_natives () =
     ; "Float64", T_Float64
     ; "String", T_String
     ; "&str", T_StringView
+    ; "Byte", T_Byte
     ; "Char", T_Char
     ; "Type", T_Ty
     ; "Bool", T_Bool

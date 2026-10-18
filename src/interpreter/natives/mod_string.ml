@@ -196,6 +196,7 @@ let init () =
         let s =
           match arg |> Value.await_inferred with
           | V_Bool value -> Bool.to_string value
+          | V_Byte value -> value |> Char.code |> string_of_int
           | V_Char value -> String.from_single_utf8 value
           | V_Int32 value -> Int32.to_string value
           | V_UInt32 value ->
@@ -251,6 +252,10 @@ let init () =
             | T_UInt32 ->
               Option.bind (int_of_string_opt s) (fun x : Value.shape option ->
                 if x < 0 then None else Some (V_UInt32 (Int32.of_int x)))
+            | T_Byte ->
+              Option.bind (int_of_string_opt s) (fun x : Value.shape option ->
+                try Some (V_Byte (Char.chr x)) with
+                | Invalid_argument _ -> None)
             | _ ->
               Error.error caller "no idea how to parse %a" Ty.print result_ty;
               Some V_Error

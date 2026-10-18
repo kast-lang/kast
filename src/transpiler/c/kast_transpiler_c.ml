@@ -474,6 +474,7 @@ module Impl = struct
     | Types.T_Float64 -> copy
     | Types.T_String -> false
     | Types.T_StringView -> copy
+    | Types.T_Byte -> copy
     | Types.T_Char -> copy
     | Types.T_Ref _ -> copy
     | Types.T_Box _ -> false
@@ -536,6 +537,7 @@ module Impl = struct
                   { f = Pure_Native [ N_Raw "String_claim" ]
                   ; args = [ Pure_Copy (P_Ident arg_name) ]
                   }
+              | Types.T_Byte -> copy
               | Types.T_Char -> copy
               | Types.T_Box boxed ->
                 E_Apply
@@ -744,6 +746,7 @@ module Impl = struct
                  ; then_case = new_block (fun () -> printf "true" [])
                  ; else_case = Some (new_block (fun () -> printf "false" []))
                  })
+          | Types.T_Byte -> printf_primitive "%hhu"
           | Types.T_Int32 -> printf_primitive "%d"
           | Types.T_UInt32 -> printf_primitive "%u"
           | Types.T_Int64 -> printf_primitive "%lld"
@@ -963,6 +966,7 @@ module Impl = struct
                     { f = Pure_Native [ N_Raw "String_drop" ]
                     ; args = [ Pure_Copy (P_Ident var) ]
                     }))
+          | Types.T_Byte -> ()
           | Types.T_Char -> ()
           | Types.T_Box boxed ->
             insert_stmt
@@ -1300,6 +1304,7 @@ module Impl = struct
     | Types.T_Float64 -> runtime_defined "Float64"
     | Types.T_String -> runtime_defined "String"
     | Types.T_StringView -> runtime_defined "StringView"
+    | Types.T_Byte -> runtime_defined "Byte"
     | Types.T_Char -> runtime_defined "Char"
     | Types.T_Box boxed ->
       let boxed = transpile_ty boxed in
@@ -2047,6 +2052,7 @@ module Impl = struct
     | V_Int32 x | V_UInt32 x -> E_Pure (Pure_Literal (L_Int32 x))
     | V_Int64 x | V_UInt64 x -> E_Pure (Pure_Literal (L_Int64 x))
     | V_Float64 x | V_Float32 x -> E_Pure (Pure_Literal (L_Float64 x))
+    | V_Byte b -> E_Pure (Pure_Literal (L_Int32 (Int32.of_int (Char.code b))))
     | V_Char c -> E_Pure (Pure_Literal (L_Int32 (Int32.of_int (Uchar.to_int c))))
     | V_Box _ -> failwith __LOC__
     | V_Ref _ -> failwith __LOC__

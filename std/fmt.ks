@@ -37,6 +37,7 @@ include_ast Display_via_to_string(Int64);
 include_ast Display_via_to_string(UInt64);
 include_ast Display_via_to_string(Float32);
 include_ast Display_via_to_string(Float64);
+include_ast Display_via_to_string(Byte);
 include_ast Display_via_to_string(Char);
 include_ast Display_via_to_string(Type);
 

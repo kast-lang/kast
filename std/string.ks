@@ -315,6 +315,13 @@ impl String as module = (
             | target.name == "javascript" => (@native "Kast.parse.Float64")(s)
         )
     };
+    impl Byte as Parse = {
+        .parse = s => @cfg (
+            | target.name == "interpreter" => (@native "parse")(s)
+            | target.name == "c" => @native "Byte_from_String(\(s))"
+            | target.name == "javascript" => (@native "Kast.parse.Byte")(s)
+        )
+    };
     impl Bool as Parse = {
         .parse = s => if s == "true" then (
             true
@@ -348,6 +355,13 @@ impl String as module = (
         .to_string = String.from_str,
     };
     
+    impl Byte as ToString = {
+        .to_string = c => @cfg (
+            | target.name == "interpreter" => (@native "to_string")(c)
+            | target.name == "c" => @native "Byte_to_String(\(c))"
+            | target.name == "javascript" => (@native "Kast.String.to_string")(c)
+        )
+    };
     impl Char as ToString = {
         .to_string = c => @cfg (
             | target.name == "interpreter" => (@native "to_string")(c)

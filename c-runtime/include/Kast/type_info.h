@@ -38,6 +38,8 @@ void TypeInfo_drop(TypeInfo* T, void* value);
 
 void Kast_init_type_infos(void);
 
+void Byte_dbg_write(Byte* value, Kast_Formatter* fmt);
+
 extern TypeInfo Byte_TypeInfo;
 
 #endif
