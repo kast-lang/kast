@@ -63,6 +63,7 @@
             .buf = Kast_allocate_array(T_TypeInfo, capacity),                  \
             .capacity = capacity,                                              \
             .length = 0,                                                       \
+            .claimed = Kast_Claimed_init("ArrayList"),                         \
         };                                                                     \
     }                                                                          \
                                                                                \
