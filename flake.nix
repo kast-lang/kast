@@ -134,6 +134,7 @@
               postFixup = ''
                 rm -rf $out/lib
                 cp -r std $out/std
+                cp -r c-runtime $out/c-runtime
               '';
             });
           kast = default;
