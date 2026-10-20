@@ -94,8 +94,8 @@ type current_captured =
   }
 
 type unwind_ctx =
-  { mutable insert_unwind : unit -> unit
-  ; mutable cleanup_scope_without_unwind : unit -> unit
+  { mutable return : unit -> unit
+  ; mutable unwind : unit -> unit
   }
 
 type scope = { mutable ctx_place : C_ast.place_expr }
@@ -292,25 +292,32 @@ module Impl = struct
   and with_new_scope : 'a. (unit -> 'a) -> 'a =
     fun f ->
     let parent_unwind_ctx = Effect.perform GetUnwindCtx in
+    let end_of_scope_label = gen_name "scope_end" in
     let unwind_ctx : unwind_ctx =
-      { insert_unwind = parent_unwind_ctx.insert_unwind
-      ; cleanup_scope_without_unwind = (fun () -> ())
+      { return = (fun () -> insert_stmt (S_Goto { label = end_of_scope_label }))
+      ; unwind = parent_unwind_ctx.unwind
       }
     in
     let parent_scope = Effect.perform GetScope in
     let scope : scope = { ctx_place = parent_scope.ctx_place } in
     try
       let result = f () in
-      unwind_ctx.cleanup_scope_without_unwind ();
+      unwind_ctx.return ();
+      insert_stmt (S_GotoLabel end_of_scope_label);
       result
     with
     | effect GetScope, k -> Effect.continue k scope
     | effect GetUnwindCtx, k -> Effect.continue k unwind_ctx
 
-  and new_block ?(after_cleanup : (unit -> unit) option) (f : unit -> unit) : C_ast.block =
+  and new_block
+        ?(new_scope = true)
+        ?(after_cleanup : (unit -> unit) option)
+        (f : unit -> unit)
+    : C_ast.block
+    =
     let block = { stmts = [] } in
     try
-      with_new_scope f;
+      if new_scope then with_new_scope f else f ();
       (match after_cleanup with
        | None -> ()
        | Some f -> f ());
@@ -1584,17 +1591,23 @@ module Impl = struct
     | Types.P_Error -> failwith __LOC__
 
   and defer (f : unit -> unit) =
+    let deferred_label = gen_name "deferred" in
+    let deferred_unwind_label = gen_name "deferred_unwind" in
+    let skip_deferred_label = gen_name "skip_deferred" in
     let unwind_ctx = Effect.perform GetUnwindCtx in
-    let old_insert_unwind = unwind_ctx.insert_unwind in
-    unwind_ctx.insert_unwind
-    <- (fun () ->
-         f ();
-         old_insert_unwind ());
-    let old_cleanup_scope_without_unwind = unwind_ctx.cleanup_scope_without_unwind in
-    unwind_ctx.cleanup_scope_without_unwind
-    <- (fun () ->
-         f ();
-         old_cleanup_scope_without_unwind ())
+    let old_return = unwind_ctx.return in
+    let old_unwind = unwind_ctx.unwind in
+    insert_stmt (S_Goto { label = skip_deferred_label });
+    insert_stmt (S_GotoLabel deferred_label);
+    f ();
+    old_return ();
+    insert_stmt (S_GotoLabel deferred_unwind_label);
+    f ();
+    old_unwind ();
+    insert_stmt (S_GotoLabel skip_deferred_label);
+    unwind_ctx.return <- (fun () -> insert_stmt (S_Goto { label = deferred_label }));
+    unwind_ctx.unwind
+    <- (fun () -> insert_stmt (S_Goto { label = deferred_unwind_label }))
 
   and transpile_fn
         ~(is_closure : bool)
@@ -1699,18 +1712,23 @@ module Impl = struct
     in
     try
       let result_ty = (transpile_ty def.body.data.signature.ty).c_ty in
+      let result_var = gen_name "result" in
       let result_ty : C_ast.ty =
         match result_ty with
         | T_Unit -> T_Void
         | other -> other
       in
       let unwind_ctx : unwind_ctx =
-        { insert_unwind =
+        { return =
+            (fun () ->
+              match result_ty with
+              | T_Void -> insert_stmt S_ReturnVoid
+              | _ -> insert_stmt (S_Return (E_Pure (Pure_Copy (P_Ident result_var)))))
+        ; unwind =
             (fun () ->
               match result_ty with
               | T_Void -> insert_stmt S_ReturnVoid
               | _ -> insert_stmt (S_Return (uninitialized result_ty)))
-        ; cleanup_scope_without_unwind = (fun () -> ())
         }
       in
       try
@@ -1743,89 +1761,95 @@ module Impl = struct
           else args
         in
         let body : C_ast.block =
-          let result_var : C_ast.pure_expr option ref = ref None in
           let block =
-            new_block (fun () ->
-              let scope : scope = { ctx_place = P_Deref (Pure_Copy (P_Ident ctx_var)) } in
-              args_tuple_ty
-              |> Tuple.iter (fun member (field : Types.ty_tuple_field) ->
-                defer (fun () ->
-                  LazyNamed.force
-                    (transpile_ty field.ty).drop
-                    (Pure_Copy (P_Ident (member_name member)))));
-              try
-                captured_bindings
-                |> List.iter (fun (binding : binding) ->
-                  insert_stmt
-                    (S_Comment (make_string "captured %a" Binding.print binding)));
-                (match captured_ty_name with
-                 | Some captured_ty_name ->
-                   let_c_var
-                     (T_Ptr (T_Named captured_ty_name))
-                     typed_captured_arg_name
-                     (Some (E_Pure (Pure_Copy (P_Ident captured_arg_name))))
-                 | None -> ());
-                let arg_parts =
-                  match def.args.pattern.shape with
-                  | P_Tuple { parts; _ } -> parts
-                  | _ -> fail "fn args must be tuple"
-                in
-                let unnamed_idx = ref 0 in
-                arg_parts
-                |> List.iter (fun (part : pattern Types.tuple_part_of) ->
-                  match part with
-                  | Field { label; field; _ } ->
-                    let member =
-                      match label with
-                      | None ->
-                        let result = Tuple.Member.Index !unnamed_idx in
-                        unnamed_idx := !unnamed_idx + 1;
-                        result
-                      | Some label -> Tuple.Member.Name (Label.get_name label)
-                    in
-                    pattern_match field (P_Ident (member_name member))
-                  | Unpack packed ->
-                    let packed_ty =
-                      packed.data.signature.ty
-                      |> Ty.await_inferred
-                      |> Ty.Shape.expect_tuple
-                      |> Option.unwrap
-                    in
-                    let var = gen_name "packed" in
-                    let var_ty = transpile_ty packed.data.signature.ty in
-                    let_var packed.data.signature.ty var None;
-                    packed_ty.tuple
-                    |> Tuple.iter (fun packed_member _field ->
-                      let member =
-                        match packed_member with
-                        | Index _ ->
-                          let result = Tuple.Member.Index !unnamed_idx in
-                          unnamed_idx := !unnamed_idx + 1;
-                          result
-                        | Name name -> Name name
-                      in
-                      insert_stmt
-                        (S_Assign
-                           { assignee =
-                               P_Field
-                                 { obj = P_Ident var; field = member_name packed_member }
-                           ; value = E_Pure (Pure_Copy (P_Ident (member_name member)))
-                           }));
-                    pattern_match packed (P_Ident var));
-                unwind_ctx.cleanup_scope_without_unwind ();
-                match eval_expr def.body with
-                | None -> ()
-                | Some result ->
-                  (match result_ty with
-                   | T_Unit | T_Void -> insert_stmt (S_Expr result)
-                   | _ -> result_var := Some (make_pure result_ty result "fn_result"))
-              with
-              | effect GetScope, k -> Effect.continue k scope)
+            new_block
+              (fun () ->
+                 (match result_ty with
+                  | T_Void -> ()
+                  | _ -> let_c_var result_ty result_var None);
+                 let scope : scope =
+                   { ctx_place = P_Deref (Pure_Copy (P_Ident ctx_var)) }
+                 in
+                 args_tuple_ty
+                 |> Tuple.iter (fun member (field : Types.ty_tuple_field) ->
+                   defer (fun () ->
+                     LazyNamed.force
+                       (transpile_ty field.ty).drop
+                       (Pure_Copy (P_Ident (member_name member)))));
+                 try
+                   captured_bindings
+                   |> List.iter (fun (binding : binding) ->
+                     insert_stmt
+                       (S_Comment (make_string "captured %a" Binding.print binding)));
+                   (match captured_ty_name with
+                    | Some captured_ty_name ->
+                      let_c_var
+                        (T_Ptr (T_Named captured_ty_name))
+                        typed_captured_arg_name
+                        (Some (E_Pure (Pure_Copy (P_Ident captured_arg_name))))
+                    | None -> ());
+                   let arg_parts =
+                     match def.args.pattern.shape with
+                     | P_Tuple { parts; _ } -> parts
+                     | _ -> fail "fn args must be tuple"
+                   in
+                   let unnamed_idx = ref 0 in
+                   arg_parts
+                   |> List.iter (fun (part : pattern Types.tuple_part_of) ->
+                     match part with
+                     | Field { label; field; _ } ->
+                       let member =
+                         match label with
+                         | None ->
+                           let result = Tuple.Member.Index !unnamed_idx in
+                           unnamed_idx := !unnamed_idx + 1;
+                           result
+                         | Some label -> Tuple.Member.Name (Label.get_name label)
+                       in
+                       pattern_match field (P_Ident (member_name member))
+                     | Unpack packed ->
+                       let packed_ty =
+                         packed.data.signature.ty
+                         |> Ty.await_inferred
+                         |> Ty.Shape.expect_tuple
+                         |> Option.unwrap
+                       in
+                       let var = gen_name "packed" in
+                       let var_ty = transpile_ty packed.data.signature.ty in
+                       let_var packed.data.signature.ty var None;
+                       packed_ty.tuple
+                       |> Tuple.iter (fun packed_member _field ->
+                         let member =
+                           match packed_member with
+                           | Index _ ->
+                             let result = Tuple.Member.Index !unnamed_idx in
+                             unnamed_idx := !unnamed_idx + 1;
+                             result
+                           | Name name -> Name name
+                         in
+                         insert_stmt
+                           (S_Assign
+                              { assignee =
+                                  P_Field
+                                    { obj = P_Ident var
+                                    ; field = member_name packed_member
+                                    }
+                              ; value = E_Pure (Pure_Copy (P_Ident (member_name member)))
+                              }));
+                       pattern_match packed (P_Ident var));
+                   match eval_expr def.body with
+                   | None -> ()
+                   | Some result ->
+                     (match result_ty with
+                      | T_Unit | T_Void -> insert_stmt (S_Expr result)
+                      | _ ->
+                        insert_stmt
+                          (S_Assign { assignee = P_Ident result_var; value = result }))
+                 with
+                 | effect GetScope, k -> Effect.continue k scope)
+              ~after_cleanup:(fun () -> unwind_ctx.return ())
           in
           block
-          @ (!result_var
-             |> Option.map (fun result_expr -> C_ast.S_Return (E_Pure result_expr))
-             |> Option.to_list)
         in
         let name = gen_name "fn" in
         ctx.fns
@@ -2316,7 +2340,8 @@ module Impl = struct
       (S_If
          { cond = E_Native [ N_Raw "are_we_unwinding()" ]
          ; then_case =
-             new_block (fun () -> (Effect.perform GetUnwindCtx).insert_unwind ())
+             new_block ~new_scope:false (fun () ->
+               (Effect.perform GetUnwindCtx).unwind ())
          ; else_case = None
          });
     match result_ty with
@@ -2819,8 +2844,8 @@ module Impl = struct
         in
         let old_unwind_ctx = Effect.perform GetUnwindCtx in
         let unwind_ctx : unwind_ctx =
-          { insert_unwind = (fun () -> insert_stmt (S_Goto { label = label_on_unwind }))
-          ; cleanup_scope_without_unwind = (fun () -> ())
+          { unwind = (fun () -> insert_stmt (S_Goto { label = label_on_unwind }))
+          ; return = (fun () -> insert_stmt (S_Goto { label = label_result }))
           }
         in
         (try
@@ -2841,11 +2866,13 @@ module Impl = struct
                        [ Pure_Copy (P_Field { obj = P_Ident token_var; field = "raw" }) ]
                    }
              ; then_case =
-                 new_block (fun () ->
+                 new_block ~new_scope:false (fun () ->
                    insert_stmt (S_Native [ N_Raw "stop_unwinding()" ]);
                    insert_stmt (S_Goto { label = label_result }))
-             ; else_case = Some (new_block (fun () -> old_unwind_ctx.insert_unwind ()))
+             ; else_case =
+                 Some (new_block ~new_scope:false (fun () -> old_unwind_ctx.unwind ()))
              });
+        unwind_ctx.return ();
         insert_stmt (S_GotoLabel label_result);
         Some (claim_c result_place expr.data.signature.ty)
         (* let token_ident = gen_name "token" in *)
@@ -2877,7 +2904,7 @@ module Impl = struct
                            })
                     ]
                 }));
-        (Effect.perform GetUnwindCtx).insert_unwind ();
+        (Effect.perform GetUnwindCtx).unwind ();
         None
       | Types.E_InjectContext { context_ty; value } ->
         let value = transpile_expr value in
@@ -3162,10 +3189,12 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
   let ctx_var = Impl.gen_name "ctx" in
   let context_ty_def : C_ast.ty_def option ref = ref None in
   let unwind_ctx : unwind_ctx =
-    { insert_unwind =
+    { unwind =
         (fun () ->
           Impl.insert_stmt (S_Native [ N_Raw "exit_with_error(\"Unwinded from main\")" ]))
-    ; cleanup_scope_without_unwind = (fun () -> ())
+    ; return =
+        (fun () ->
+          Impl.insert_stmt (S_Return (E_Pure (Pure_Literal (L_Int32 (Int32.of_int 0))))))
     }
   in
   let scope : scope = { ctx_place = P_Ident ctx_var } in
@@ -3185,11 +3214,8 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
                Impl.insert_stmt
                  (S_Expr
                     (E_Apply { f = Pure_Copy (P_Ident "KAST_init_statics"); args = [] }));
-               Impl.execute_expr expr;
-               unwind_ctx.cleanup_scope_without_unwind ())
-            ~after_cleanup:(fun () ->
-              Impl.insert_stmt
-                (S_Return (E_Pure (Pure_Literal (L_Int32 (Int32.of_int 0))))))
+               Impl.execute_expr expr)
+            ~after_cleanup:(fun () -> unwind_ctx.return ())
       ; comment = None
       }
     in
