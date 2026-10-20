@@ -20,7 +20,7 @@ let runtime_defined_types_with_type_info =
   StringSet.of_list [ "String"; "StringView"; "Byte" ]
 ;;
 
-type block = { mutable stmts : C_ast.stmt list }
+type block = { stmts : C_ast.stmt Dynarray.t }
 
 module StringListMap = Map.Make (struct
     type t = string list
@@ -208,7 +208,7 @@ module Impl = struct
 
   and insert_stmt (stmt : C_ast.stmt) : unit =
     let block = Effect.perform GetCurrentBlock in
-    block.stmts <- block.stmts @ [ stmt ]
+    Dynarray.add_last block.stmts stmt
 
   and ty_to_string (ty : C_ast.ty) : string =
     let ctx = Effect.perform GetCtx in
@@ -315,13 +315,13 @@ module Impl = struct
         (f : unit -> unit)
     : C_ast.block
     =
-    let block = { stmts = [] } in
+    let block = { stmts = Dynarray.create () } in
     try
       if new_scope then with_new_scope f else f ();
       (match after_cleanup with
        | None -> ()
        | Some f -> f ());
-      block.stmts
+      block.stmts |> Dynarray.to_list
     with
     | effect GetCurrentBlock, k -> Effect.continue k block
 
@@ -1591,23 +1591,26 @@ module Impl = struct
     | Types.P_Error -> failwith __LOC__
 
   and defer (f : unit -> unit) =
-    let deferred_label = gen_name "deferred" in
-    let deferred_unwind_label = gen_name "deferred_unwind" in
-    let skip_deferred_label = gen_name "skip_deferred" in
-    let unwind_ctx = Effect.perform GetUnwindCtx in
-    let old_return = unwind_ctx.return in
-    let old_unwind = unwind_ctx.unwind in
-    insert_stmt (S_Goto { label = skip_deferred_label });
-    insert_stmt (S_GotoLabel deferred_label);
-    f ();
-    old_return ();
-    insert_stmt (S_GotoLabel deferred_unwind_label);
-    f ();
-    old_unwind ();
-    insert_stmt (S_GotoLabel skip_deferred_label);
-    unwind_ctx.return <- (fun () -> insert_stmt (S_Goto { label = deferred_label }));
-    unwind_ctx.unwind
-    <- (fun () -> insert_stmt (S_Goto { label = deferred_unwind_label }))
+    match new_block ~new_scope:false f with
+    | [] -> ()
+    | f_stmts ->
+      let deferred_label = gen_name "deferred" in
+      let deferred_unwind_label = gen_name "deferred_unwind" in
+      let skip_deferred_label = gen_name "skip_deferred" in
+      let unwind_ctx = Effect.perform GetUnwindCtx in
+      let old_return = unwind_ctx.return in
+      let old_unwind = unwind_ctx.unwind in
+      insert_stmt (S_Goto { label = skip_deferred_label });
+      insert_stmt (S_GotoLabel deferred_label);
+      f_stmts |> List.iter insert_stmt;
+      old_return ();
+      insert_stmt (S_GotoLabel deferred_unwind_label);
+      f_stmts |> List.iter insert_stmt;
+      old_unwind ();
+      insert_stmt (S_GotoLabel skip_deferred_label);
+      unwind_ctx.return <- (fun () -> insert_stmt (S_Goto { label = deferred_label }));
+      unwind_ctx.unwind
+      <- (fun () -> insert_stmt (S_Goto { label = deferred_unwind_label }))
 
   and transpile_fn
         ~(is_closure : bool)
@@ -3160,7 +3163,7 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
                   ; comment = None
                   } ))))
     ; fns = StringMap.empty
-    ; init_statics = { stmts = [] }
+    ; init_statics = { stmts = Dynarray.create () }
     ; includes = StringSet.of_list [ "Kast.h" ]
     ; contexts = Id.Map.empty
     ; queued_work = Queue.create ()
@@ -3222,7 +3225,7 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
     let init_statics : C_ast.fn_def =
       { args = []
       ; result_ty = T_Raw { c = "void"; is_primitive = true }
-      ; body = ctx.init_statics.stmts
+      ; body = ctx.init_statics.stmts |> Dynarray.to_list
       ; comment = None
       }
     in
