@@ -2112,34 +2112,36 @@ module Impl = struct
       in
       compound_literal (Value.Shape.ty_of shape) fields
     | V_List { ty = { element_ty }; elements } ->
+      let var = gen_name "list" in
       E_Block
-        (new_block (fun () ->
-           let var = gen_name "list" in
-           let kast_ty = Value.Shape.ty_of shape in
-           let ty = transpile_ty kast_ty in
-           let_var
-             kast_ty
-             var
-             (Some
-                (E_Native
-                   [ N_Raw (ty_to_string ty.c_ty)
-                   ; N_Raw "_new(&"
-                   ; N_Raw (type_info_name_for element_ty)
-                   ; N_Raw ")"
-                   ]))
-             ~drop:false;
-           elements
-           |> Dynarray.iter (fun element ->
-             insert_stmt
-               (S_Native
-                  [ N_Raw (ty_to_string ty.c_ty)
-                  ; N_Raw "_push_back("
-                  ; N_Interpolated (Pure_AddrOf (P_Ident var))
-                  ; N_Raw ", "
-                  ; N_Interpolated (Pure_Copy (transpile_place element))
-                  ; N_Raw ")"
-                  ]));
-           insert_stmt (S_Expr (E_Pure (Pure_Copy (P_Ident var))))))
+        (new_block
+           (fun () ->
+              let kast_ty = Value.Shape.ty_of shape in
+              let ty = transpile_ty kast_ty in
+              let_var
+                kast_ty
+                var
+                (Some
+                   (E_Native
+                      [ N_Raw (ty_to_string ty.c_ty)
+                      ; N_Raw "_new(&"
+                      ; N_Raw (type_info_name_for element_ty)
+                      ; N_Raw ")"
+                      ]))
+                ~drop:false;
+              elements
+              |> Dynarray.iter (fun element ->
+                insert_stmt
+                  (S_Native
+                     [ N_Raw (ty_to_string ty.c_ty)
+                     ; N_Raw "_push_back("
+                     ; N_Interpolated (Pure_AddrOf (P_Ident var))
+                     ; N_Raw ", "
+                     ; N_Interpolated (Pure_Copy (transpile_place element))
+                     ; N_Raw ")"
+                     ])))
+           ~after_cleanup:(fun () ->
+             insert_stmt (S_Expr (E_Pure (Pure_Copy (P_Ident var))))))
     | V_Variant { label; data; ty = _ } ->
       let ty = Value.Shape.ty_of shape in
       let fields : (string * C_ast.pure_expr) list =
