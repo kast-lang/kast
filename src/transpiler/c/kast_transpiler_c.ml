@@ -293,17 +293,22 @@ module Impl = struct
     fun f ->
     let parent_unwind_ctx = Effect.perform GetUnwindCtx in
     let end_of_scope_label = gen_name "scope_end" in
+    let end_of_scope_label_needed = ref true in
+    let simple_return =
+      fun () ->
+      if !end_of_scope_label_needed
+      then insert_stmt (S_Goto { label = end_of_scope_label })
+    in
     let unwind_ctx : unwind_ctx =
-      { return = (fun () -> insert_stmt (S_Goto { label = end_of_scope_label }))
-      ; unwind = parent_unwind_ctx.unwind
-      }
+      { return = simple_return; unwind = parent_unwind_ctx.unwind }
     in
     let parent_scope = Effect.perform GetScope in
     let scope : scope = { ctx_place = parent_scope.ctx_place } in
     try
       let result = f () in
+      end_of_scope_label_needed := not (Repr.phys_equal unwind_ctx.return simple_return);
       unwind_ctx.return ();
-      insert_stmt (S_GotoLabel end_of_scope_label);
+      if !end_of_scope_label_needed then insert_stmt (S_GotoLabel end_of_scope_label);
       result
     with
     | effect GetScope, k -> Effect.continue k scope
