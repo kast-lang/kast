@@ -8,24 +8,23 @@ const Msg = type {
     .params :: ArrayList.t[String],
     .trailing :: Option.t[String],
 };
-let rsplit_at = (s :: String, c :: Char) -> { String, String } => (
+let rsplit_at = (s :: &str, c :: Char) -> { &str, &str } => (
     let i = s |> String.last_index_of(c);
     {
         String.substring(s, 0, i),
         String.substring(s, i + 1, String.length(s) - i - 1),
     }
 );
-let parse_tags = (s :: String) -> OrdMap.t[String, String] => (
+let parse_tags = (s :: &str) -> OrdMap.t[String, String] => (
     let mut tags = OrdMap.new();
     for part in String.split(s, ';') do (
         dbg.print(part);
         let { key, value } = String.split_once(part, '=');
-        OrdMap.add(&mut tags, key, value);
+        OrdMap.add(&mut tags, String.from_str(key), String.from_str(value));
     );
-    
     tags
 );
-let parse_msg = (msg :: String) -> Msg => with_return (
+let parse_msg = (msg :: &str) -> Msg => with_return (
     let mut unparsed = msg;
     let mut tags = OrdMap.new();
     let mut prefix = :None;
@@ -39,17 +38,17 @@ let parse_msg = (msg :: String) -> Msg => with_return (
                 String.substring(s, 1, String.length(s) - 1)
             );
         ) else if first == ':' then (
-            prefix = :Some (String.substring(s, 1, String.length(s) - 1));
+            prefix = :Some String.from_str(String.substring(s, 1, String.length(s) - 1));
         ) else if &command |> Option.is_none then (
-            command = :Some s;
+            command = :Some String.from_str(s);
         ) else (
-            ArrayList.push_back(&mut params, s);
+            ArrayList.push_back(&mut params, String.from_str(s));
         );
     );
     loop (
         if (&command |> Option.is_some)
         and String.at(unparsed, 0) == ':' then (
-            trailing = :Some (String.substring(unparsed, 1, String.length(unparsed) - 1));
+            trailing = :Some String.from_str(String.substring(unparsed, 1, String.length(unparsed) - 1));
             break;
         );
         let space_idx = unparsed |> String.index_of(' ');
@@ -73,10 +72,14 @@ const User = newtype {
     .user :: String,
     .host :: String,
 };
-let parse_user = (s :: String) -> User => (
+let parse_user = (s :: &str) -> User => (
     let { before_at, host } = String.split_once(s, '@');
     let { nick, user } = String.split_once(before_at, '!');
-    { .nick, .user, .host }
+    {
+        .nick = String.from_str(nick),
+        .user = String.from_str(user),
+        .host = String.from_str(host),
+    }
 );
 
 let raw_msg = "@badge-info=subscriber/53;badges=broadcaster/1,subscriber/0,hornet/1;client-nonce=989c6a77f6844d258fbb16d0ce85967c;color=#FF69B4;display-name=kuviman;emotes=;first-msg=0;flags=;id=ed2b925a-2b35-4bb3-8fd9-cfaed01ed23d;mod=0;reply-parent-display-name=mynameistito_;reply-parent-msg-body=🤔\\s🤔;reply-parent-msg-id=12197a59-20d2-4051-a78a-6c078f9fd5f9;reply-parent-user-id=178668441;reply-parent-user-login=mynameistito_;reply-thread-parent-display-name=mynameistito_;reply-thread-parent-msg-id=12197a59-20d2-4051-a78a-6c078f9fd5f9;reply-thread-parent-user-id=178668441;reply-thread-parent-user-login=mynameistito_;returning-chatter=0;room-id=105277748;subscriber=1;tmi-sent-ts=1769459706619;turbo=0;user-id=105277748;user-type= :kuviman!kuviman@kuviman.tmi.twitch.tv PRIVMSG #kuviman :@mynameistito_ dsds";
