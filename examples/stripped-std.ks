@@ -30,7 +30,7 @@ const UnwindTokenImpl = [T] newtype {
     .value :: T,
 };
 
-@eval impl_native("backend.c.UnwindToken", UnwindTokenImpl);
+@eval impl_native("target.c.UnwindToken", UnwindTokenImpl);
 
 const from_never = [T] (_ :: Never) -> T => (
     @native "#unreachable"

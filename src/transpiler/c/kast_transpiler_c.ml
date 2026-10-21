@@ -1281,7 +1281,7 @@ module Impl = struct
     | T_UnwindToken { result } ->
       let impl =
         interpreter.natives.by_name
-        |> StringMap.find "backend.c.UnwindToken"
+        |> StringMap.find "target.c.UnwindToken"
         <| Ty.new_not_inferred ~scope:(Some interpreter.scope) ~span
       in
       let impl =

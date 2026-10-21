@@ -77,7 +77,7 @@ const sys = include "./sys.ks";
 const random = include "./random.ks";
 const repr = include "./repr.ks";
 
-const backend = include "./backend/_mod.ks";
+const target = include "./target/_mod.ks";
 
 include "./panic.ks";
 
