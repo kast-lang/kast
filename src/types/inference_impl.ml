@@ -90,6 +90,7 @@ module VarScope = struct
     | T_String | T_StringView | T_Byte | T_Char ->
       root ()
     | T_Box x -> of_ty x
+    | T_Rc x -> of_ty x
     | T_Ref x -> of_ty_ref x
     | T_Variant x -> of_ty_variant x
     | T_Tuple x -> of_ty_tuple x
@@ -338,6 +339,8 @@ module Impl = struct
          | T_String, _ -> fail ()
          | T_Box a, T_Box b -> T_Box (unite_ty ~span a b)
          | T_Box _, _ -> fail ()
+         | T_Rc a, T_Rc b -> T_Rc (unite_ty ~span a b)
+         | T_Rc _, _ -> fail ()
          | T_Ref a, T_Ref b -> T_Ref (unite_ty_ref ~span a b)
          | T_Ref _, _ -> fail ()
          | T_Tuple a, T_Tuple b -> T_Tuple (unite_ty_tuple ~span a b)
@@ -1015,6 +1018,7 @@ module Impl = struct
     | T_StringView -> None
     | T_Variant _ -> None
     | T_Box _ -> None
+    | T_Rc _ -> None
     | T_Ref _ -> None
     | T_Opaque _ -> None
     | T_Tuple ({ name = _; tuple } as ty) ->

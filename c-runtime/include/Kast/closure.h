@@ -8,7 +8,7 @@
 #define define_closure_type_C(name, Ret, ...)                                  \
     typedef struct {                                                           \
         void* captured;                                                        \
-        RefCounted_Unit* refcount;                                             \
+        RefCounted_Unit refcount;                                              \
         TypeInfo* captured_TypeInfo;                                           \
         Ret (*f)(void*, ##__VA_ARGS__);                                        \
     } name;                                                                    \
@@ -21,7 +21,7 @@
             return *place;                                                     \
         }                                                                      \
         return (name) {                                                        \
-            .refcount = RefCounted_Unit_claim(place->refcount),                \
+            .refcount = RefCounted_Unit_claim(&place->refcount),               \
             .captured = place->captured,                                       \
             .captured_TypeInfo = place->captured_TypeInfo,                     \
             .f = place->f,                                                     \

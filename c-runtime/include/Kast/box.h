@@ -2,6 +2,7 @@
 #define __KAST_BOX_H__
 
 #include "./__common__.h"
+#include "./dbg.h"
 
 #define define_Box(T)                                                          \
     typedef struct {                                                           \

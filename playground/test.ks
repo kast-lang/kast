@@ -1,4 +1,7 @@
-const mod = import "./test2.ks";
+use std.rc.Rc;
 
-let x = ({ Int32, Int32 } as mod.Add).add(1, 2);
-dbg.print(x);
+let x = Rc.new(String.from_str("im refcounted"));
+let y = x;
+let z = y;
+
+println!("x = \(x^), y = \(y^), z = \(z^)");

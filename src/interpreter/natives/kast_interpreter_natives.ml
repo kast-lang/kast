@@ -34,6 +34,7 @@ let init_natives () =
     [ ("UnwindToken", fun arg -> T_UnwindToken { result = arg })
     ; ("List", fun arg -> T_List { element_ty = arg })
     ; ("Box", fun arg -> T_Box arg)
+    ; ("Rc", fun arg -> T_Rc arg)
     ]
   in
   let types =

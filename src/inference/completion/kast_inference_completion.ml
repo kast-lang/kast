@@ -188,6 +188,7 @@ module Impl = struct
          | T_Byte -> ()
          | T_Char -> ()
          | T_Box boxed -> complete_ty boxed
+         | T_Rc inner -> complete_ty inner
          | T_Ref { mut; referenced } ->
            complete_is_mutable mut;
            complete_ty referenced

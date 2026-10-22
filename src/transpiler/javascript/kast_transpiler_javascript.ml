@@ -380,6 +380,7 @@ module Impl = struct
     | T_Byte -> primitive "Byte"
     | T_Char -> primitive "Char"
     | T_Box _ -> todo_ty __LOC__
+    | T_Rc _ -> todo_ty __LOC__
     | T_Ref _ -> todo_ty __LOC__
     | T_Variant { name; variants = _ } ->
       (match name |> OptionalName.await_inferred with

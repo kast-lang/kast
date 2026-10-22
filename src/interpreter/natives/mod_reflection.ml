@@ -28,6 +28,12 @@ let init () =
              type_info_ty
              "Box"
              (Some (fun _ -> V_Ty boxed |> Value.inferred ~span))
+         | T_Rc inner ->
+           construct_variant
+             ~span
+             type_info_ty
+             "Rc"
+             (Some (fun _ -> V_Ty inner |> Value.inferred ~span))
          | T_Ref { mut; referenced } ->
            construct_variant
              ~span

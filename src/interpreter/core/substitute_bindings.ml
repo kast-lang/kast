@@ -450,6 +450,7 @@ module Impl = struct
         original_ty
       | T_Opaque ty -> T_Opaque (sub_ty_opaque ~state ty) |> shaped
       | T_Box boxed -> T_Box (sub_ty ~state boxed) |> shaped
+      | T_Rc inner -> T_Rc (sub_ty ~state inner) |> shaped
       | T_Ref { mut; referenced } ->
         T_Ref { mut; referenced = sub_ty ~state referenced } |> shaped
       | T_Tuple t -> T_Tuple (sub_ty_tuple ~state t) |> shaped

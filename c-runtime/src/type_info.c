@@ -1,5 +1,6 @@
 #include <Kast/type_info.h>
 
+TypeInfo Unit_TypeInfo = TypeInfo_simple(primitive, Unit);
 TypeInfo Byte_TypeInfo = TypeInfo_simple(primitive, Byte);
 
 void Kast_init_type_infos(void) {}

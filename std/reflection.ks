@@ -38,6 +38,7 @@ const TypeInfo = newtype (
     | :Byte
     | :Char
     | :Box Type
+    | :Rc Type
     | :Ref TypeInfo_Ref
     | :Variant TypeInfo_Variant
     | :Tuple TypeInfo_Tuple

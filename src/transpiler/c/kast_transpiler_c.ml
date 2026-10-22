@@ -17,7 +17,7 @@ let debug = ref false
 let allocation_stats = ref false
 
 let runtime_defined_types_with_type_info =
-  StringSet.of_list [ "String"; "StringView"; "Byte" ]
+  StringSet.of_list [ "Unit"; "String"; "StringView"; "Byte" ]
 ;;
 
 type block = { stmts : C_ast.stmt Dynarray.t }
@@ -83,6 +83,7 @@ type ctx =
   ; runtime_defined_closure_types : string StringListMap.t
   ; runtime_defined_list_types : string StringMap.t
   ; runtime_defined_box_types : string StringMap.t
+  ; runtime_defined_rc_types : string StringMap.t
   ; init_statics : block
   ; queued_work : (unit -> unit) Queue.t
   }
@@ -399,6 +400,15 @@ module Impl = struct
                  ; N_Interpolated (Pure_AddrOf (transpile_place_expr expr))
                  ; N_Raw ")"
                  ])
+          | T_Rc inner_ty ->
+            P_Deref
+              (Pure_Native
+                 [ N_Raw "RefCounted_"
+                 ; N_Raw (ty_to_string (transpile_ty inner_ty).c_ty)
+                 ; N_Raw "_deref("
+                 ; N_Interpolated (Pure_AddrOf (transpile_place_expr expr))
+                 ; N_Raw ")"
+                 ])
           | _ -> P_Deref (Pure_Copy (transpile_place_expr expr)))
        | Types.PE_Temp expr ->
          let var = gen_name "temp" in
@@ -490,6 +500,7 @@ module Impl = struct
     | Types.T_Char -> copy
     | Types.T_Ref _ -> copy
     | Types.T_Box _ -> false
+    | Types.T_Rc _ -> false
     | Types.T_Variant ty ->
       ty.variants
       |> Row.await_inferred_to_list
@@ -551,6 +562,16 @@ module Impl = struct
                   }
               | Types.T_Byte -> copy
               | Types.T_Char -> copy
+              | Types.T_Rc inner ->
+                E_Apply
+                  { f =
+                      Pure_Native
+                        [ N_Raw "RefCounted_"
+                        ; N_Raw (ty_to_string (transpile_ty inner).c_ty)
+                        ; N_Raw "_claim"
+                        ]
+                  ; args = [ Pure_Copy (P_Ident arg_name) ]
+                  }
               | Types.T_Box boxed ->
                 E_Apply
                   { f =
@@ -786,6 +807,18 @@ module Impl = struct
                     { f = Pure_Native [ N_Raw "Char_dbg_write" ]
                     ; args = [ Pure_Copy (P_Ident var); Pure_Copy (P_Ident fmt_var) ]
                     }))
+          | Types.T_Rc inner ->
+            insert_stmt
+              (S_Expr
+                 (E_Apply
+                    { f =
+                        Pure_Native
+                          [ N_Raw "RefCounted_"
+                          ; N_Raw (ty_to_string (transpile_ty inner).c_ty)
+                          ; N_Raw "_dbg_write"
+                          ]
+                    ; args = [ Pure_Copy (P_Ident var); Pure_Copy (P_Ident fmt_var) ]
+                    }))
           | Types.T_Box boxed ->
             insert_stmt
               (S_Expr
@@ -980,6 +1013,18 @@ module Impl = struct
                     }))
           | Types.T_Byte -> ()
           | Types.T_Char -> ()
+          | Types.T_Rc inner ->
+            insert_stmt
+              (S_Expr
+                 (E_Apply
+                    { f =
+                        Pure_Native
+                          [ N_Raw "RefCounted_"
+                          ; N_Raw (ty_to_string (transpile_ty inner).c_ty)
+                          ; N_Raw "_drop"
+                          ]
+                    ; args = [ Pure_Copy (P_Ident var) ]
+                    }))
           | Types.T_Box boxed ->
             insert_stmt
               (S_Expr
@@ -1318,6 +1363,23 @@ module Impl = struct
     | Types.T_StringView -> runtime_defined "StringView"
     | Types.T_Byte -> runtime_defined "Byte"
     | Types.T_Char -> runtime_defined "Char"
+    | Types.T_Rc inner ->
+      let inner = transpile_ty inner in
+      let macro_arg = ty_to_string inner.c_ty in
+      (match ctx.runtime_defined_rc_types |> StringMap.find_opt macro_arg with
+       | Some name -> runtime_defined name
+       | None ->
+         T_Named
+           { name = "RefCounted_" ^ macro_arg
+           ; def =
+               make_with (fun () : C_ast.ty_def_shape ->
+                 TD_Raw
+                   { def = make_string "define_RefCounted(%s)" macro_arg
+                   ; impl = Some (make_string "impl_RefCounted(%s)" macro_arg)
+                   ; need_declared = [ T_Named macro_arg ]
+                   ; need_completed = []
+                   })
+           })
     | Types.T_Box boxed ->
       let boxed = transpile_ty boxed in
       let macro_arg = ty_to_string boxed.c_ty in
@@ -2565,7 +2627,7 @@ module Impl = struct
              insert_stmt
                (S_Assign
                   { assignee = P_Field { obj = P_Ident result_var; field = "refcount" }
-                  ; value = E_Native [ N_Raw "RefCounted_Unit_new(UNIT)" ]
+                  ; value = E_Native [ N_Raw "RefCounted_Unit_new(UNIT, &Unit_TypeInfo)" ]
                   }));
           insert_stmt
             (S_Assign
@@ -3095,6 +3157,7 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
   let runtime_defined_closure_types = ref StringListMap.empty in
   let runtime_defined_list_types = ref StringMap.empty in
   let runtime_defined_box_types = ref StringMap.empty in
+  let runtime_defined_rc_types = ref StringMap.empty in
   let process_c_runtime_file (source : string) =
     source
     |> String.split_on_char '\n'
@@ -3122,13 +3185,21 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
       let check_defined_box () =
         let* s = s |> String.strip_prefix ~prefix:"define_Box(" in
         let* arg = s |> String.strip_suffix ~suffix:");" in
-        runtime_defined_list_types
-        := !runtime_defined_list_types |> StringMap.add arg ("Box_" ^ arg);
+        runtime_defined_box_types
+        := !runtime_defined_box_types |> StringMap.add arg ("Box_" ^ arg);
+        Some ()
+      in
+      let check_defined_rc () =
+        let* s = s |> String.strip_prefix ~prefix:"define_RefCounted(" in
+        let* arg = s |> String.strip_suffix ~suffix:");" in
+        runtime_defined_rc_types
+        := !runtime_defined_rc_types |> StringMap.add arg ("Box_" ^ arg);
         Some ()
       in
       let _ : unit option = check_defined_closure () in
       let _ : unit option = check_defined_list () in
       let _ : unit option = check_defined_box () in
+      let _ : unit option = check_defined_rc () in
       ())
   in
   let rec walk_dir (dir : Included_dir.included_dir) =
@@ -3178,6 +3249,7 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
     ; runtime_defined_closure_types = !runtime_defined_closure_types
     ; runtime_defined_list_types = !runtime_defined_list_types
     ; runtime_defined_box_types = !runtime_defined_box_types
+    ; runtime_defined_rc_types = !runtime_defined_rc_types
     }
   in
   let captured_scope = Interpreter.Scope.init ~recursive:false ~parent:None ~span in

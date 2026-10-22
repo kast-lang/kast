@@ -238,6 +238,7 @@ module rec TypesImpl : sig
     | T_Char
     | T_Ref of ty_ref
     | T_Box of ty
+    | T_Rc of ty
     | T_Variant of ty_variant
     | T_Tuple of ty_tuple
     | T_List of ty_list
@@ -1015,6 +1016,7 @@ end = struct
     | T_Char
     | T_Ref of ty_ref
     | T_Box of ty
+    | T_Rc of ty
     | T_Variant of ty_variant
     | T_Tuple of ty_tuple
     | T_List of ty_list

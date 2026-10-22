@@ -242,6 +242,14 @@ and init_place_expr : span -> State.t -> Expr.Place.Shape.t -> Expr.Place.t =
           | T_Ref { mut = actual_mut; referenced } ->
             let _ : IsMutable.t = Inference_impl.unite_is_mutable ~span mut actual_mut in
             value_ty |> Inference.Ty.expect_inferred_as ~span referenced
+          | T_Rc inner ->
+            let _ : IsMutable.t =
+              Inference_impl.unite_is_mutable
+                ~span
+                mut
+                (IsMutable.new_inferred ~span true)
+            in
+            value_ty |> Inference.Ty.expect_inferred_as ~span inner
           | T_Box boxed ->
             let _ : IsMutable.t =
               Inference_impl.unite_is_mutable

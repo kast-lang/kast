@@ -216,6 +216,7 @@ module Impl = struct
     | T_String -> fprintf fmt "String"
     | T_StringView -> fprintf fmt "&str"
     | T_Box boxed -> fprintf fmt "Box[%a]" print_ty boxed
+    | T_Rc inner -> fprintf fmt "Rc[%a]" print_ty inner
     | T_Ref { mut; referenced } ->
       fprintf fmt "&%a%a" print_is_mutable mut print_ty referenced
     | T_Variant v -> print_ty_variant ~always_print_shape:always_print_named_shape fmt v
