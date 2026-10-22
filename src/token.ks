@@ -1,5 +1,6 @@
 use (import "./output.ks").*;
 use (import "./span.ks").*;
+use (import "./rc_str.ks").*;
 use std.rc.Rc;
 
 module:
@@ -21,7 +22,7 @@ const Token = (
         ansi.with_mode(
             :Dim,
             () => (
-                output.write(" at ");
+                write_str(" at ");
                 &self^.span |> Span.print;
             )
         );
@@ -31,20 +32,20 @@ const Token = (
 
     const RawStringPart = newtype (
         | :Escape {
-            .raw :: String,
+            .raw :: RcStr,
             .span :: Span,
         }
         | :Content {
-            .raw :: String,
+            .raw :: RcStr,
             .span :: Span,
         }
     );
 
     const InterpolatedStringPart = newtype (
         | :Content {
-            .raw :: String,
+            .raw :: RcStr,
             .raw_parts :: ArrayList.t[RawStringPart],
-            .contents :: String,
+            .contents :: RcStr,
             .span :: Span,
         }
         | :Interpolated {
@@ -56,25 +57,25 @@ const Token = (
     );
 
     const InterpolatedStringShape = newtype {
-        .delimiter :: String,
-        .raw :: String,
+        .delimiter :: RcStr,
+        .raw :: RcStr,
         .open :: Token.t,
         .parts :: ArrayList.t[InterpolatedStringPart],
         .close :: Token.t,
-        .stripped_indentation :: String,
+        .stripped_indentation :: RcStr,
     };
 
     const NumberToken = newtype {
-        .raw :: String,
+        .raw :: RcStr,
     };
 
     const StringToken = newtype {
-        .raw :: String,
+        .raw :: RcStr,
         .open :: Token.t,
         .raw_parts :: ArrayList.t[RawStringPart],
         .close :: Token.t,
-        .contents :: String,
-        .stripped_indentation :: String,
+        .contents :: RcStr,
+        .stripped_indentation :: RcStr,
     };
 
     const raw = (token :: &Token.t) -> &str => (
@@ -86,23 +87,23 @@ const Token = (
 
         const t = newtype (
             | :Comment {
-                .raw :: String,
+                .raw :: RcStr,
                 .ty :: (:Line | :Block),
             }
             | :Punct {
-                .raw :: String,
+                .raw :: RcStr,
             }
             | :Ident {
-                .raw :: String,
+                .raw :: RcStr,
                 .string :: Option.t[type { StringToken, .at_token :: Token.t }],
-                .name :: String,
+                .name :: RcStr,
             }
             | :String StringToken
             | :InterpolatedString InterpolatedStringShape
             | :Number NumberToken
             | :Eof
             | :Error {
-                .raw :: String,
+                .raw :: RcStr,
             }
         );
 
@@ -111,13 +112,13 @@ const Token = (
         );
 
         const raw = (self :: &Token.Shape.t) -> &str => match self^ with (
-            | :Punct { .raw = ref raw, ... } => raw |> as_str
-            | :Comment { .raw = ref raw, ... } => raw |> as_str
-            | :Ident { .raw = ref raw, ... } => raw |> as_str
-            | :String { .raw = ref raw, ... } => raw |> as_str
-            | :InterpolatedString { .raw = ref raw, ... } => raw |> as_str
-            | :Number { .raw = ref raw, ... } => raw |> as_str
-            | :Error { .raw = ref raw, ... } => raw |> as_str
+            | :Punct { .raw = ref raw, ... } => raw |> RcStr.as_str
+            | :Comment { .raw = ref raw, ... } => raw |> RcStr.as_str
+            | :Ident { .raw = ref raw, ... } => raw |> RcStr.as_str
+            | :String { .raw = ref raw, ... } => raw |> RcStr.as_str
+            | :InterpolatedString { .raw = ref raw, ... } => raw |> RcStr.as_str
+            | :Number { .raw = ref raw, ... } => raw |> RcStr.as_str
+            | :Error { .raw = ref raw, ... } => raw |> RcStr.as_str
             | :Eof => ""
         );
 
@@ -128,26 +129,24 @@ const Token = (
             let output = @current Output;
             match self^ with (
                 | :Comment { .raw = ref raw, ... } => (
-                    let raw = raw |> as_str;
-                    for c in String.iter(raw) do (
+                    for c in RcStr.iter(raw) do (
                         if c == '\n' then (
                             ansi.with_mode(
                                 :Cyan,
-                                () => output.write("\\n"),
+                                () => write_str("\\n"),
                             );
                         ) else (
                             ansi.with_mode(
                                 :Gray,
-                                () => output.write(&to_string(c) |> as_str),
+                                () => write_str(&to_string(c) |> as_str),
                             );
                         );
                     );
                 )
                 | :Punct { .raw = ref raw, ... } => (
-                    let raw = raw |> as_str;
                     ansi.with_mode(
                         :Magenta,
-                        () => output.write(raw),
+                        () => write(raw),
                     );
                 )
                 | :Ident {
@@ -155,30 +154,27 @@ const Token = (
                     .name = ref name,
                     ...
                 } => (
-                    let raw = raw |> as_str;
-                    let name = name |> as_str;
                     if not verbose or raw == name then (
                         ansi.with_mode(
                             :Under,
-                            () => output.write(raw),
+                            () => write(raw),
                         );
                     ) else (
                         ansi.with_mode(
                             :Under,
-                            () => output.write(raw),
+                            () => write(raw),
                         );
-                        output.write(" = ");
+                        write_str(" = ");
                         ansi.with_mode(
                             :Green,
-                            () => output.write(&String.escape(name) |> as_str),
+                            () => write_escaped(name),
                         );
                     );
                 )
                 | :Number { .raw = ref raw, ... } => (
-                    let raw = raw |> as_str;
                     ansi.with_mode(
                         :Italic,
-                        () => output.write(raw),
+                        () => write(raw),
                     );
                 )
                 | :String {
@@ -186,23 +182,21 @@ const Token = (
                     .contents = ref contents,
                     ...
                 } => (
-                    let raw = raw |> as_str;
-                    let contents = contents |> as_str;
                     ansi.with_mode(
                         :Green,
-                        () => output.write(raw),
+                        () => write(raw),
                     );
                     if verbose then (
-                        output.write(" {\n");
+                        write_str(" {\n");
                         output.inc_indentation();
-                        output.write(".contents = ");
+                        write_str(".contents = ");
                         ansi.with_mode(
                             :Green,
-                            () => output.write(&String.escape(contents) |> as_str),
+                            () => write_escaped(contents),
                         );
-                        output.write("\n");
+                        write_str("\n");
                         output.dec_indentation();
-                        output.write("}");
+                        write_str("}");
                     );
                 )
                 | :InterpolatedString {
@@ -210,22 +204,21 @@ const Token = (
                     .parts = ref parts,
                     ...
                 } => (
-                    let delimiter = delimiter |> as_str;
                     if verbose then (
                         ansi.with_mode(
                             :Green,
                             () => (
-                                output.write(delimiter);
-                                output.write("interpolated");
-                                output.write(delimiter);
+                                write(delimiter);
+                                write_str("interpolated");
+                                write(delimiter);
                             ),
                         );
-                        output.write(" {\n");
+                        write_str(" {\n");
                         output.inc_indentation();
                     ) else (
                         ansi.with_mode(
                             :Green,
-                            () => output.write(delimiter),
+                            () => write(delimiter),
                         );
                     );
                     for part in parts |> ArrayList.iter do (
@@ -235,31 +228,29 @@ const Token = (
                                 .contents = ref contents,
                                 ...
                             } => (
-                                let raw = raw |> as_str;
-                                let contents = contents |> as_str;
                                 if verbose then (
                                     ansi.with_mode(
                                         :Green,
                                         () => (
-                                            output.write(delimiter);
-                                            output.write(raw);
-                                            output.write(delimiter);
+                                            write(delimiter);
+                                            write(raw);
+                                            write(delimiter);
                                         ),
                                     );
-                                    output.write(" {\n");
+                                    write_str(" {\n");
                                     output.inc_indentation();
-                                    output.write(".contents = ");
+                                    write_str(".contents = ");
                                     ansi.with_mode(
                                         :Green,
-                                        () => output.write(&String.escape(contents) |> as_str),
+                                        () => write_escaped(contents),
                                     );
-                                    output.write("\n");
+                                    write_str("\n");
                                     output.dec_indentation();
-                                    output.write("}");
+                                    write_str("}");
                                 ) else (
                                     ansi.with_mode(
                                         :Green,
-                                        () => output.write(raw),
+                                        () => write(raw),
                                     );
                                 );
                             )
@@ -270,62 +261,61 @@ const Token = (
                                 if verbose then (
                                     ansi.with_mode(
                                         :Cyan,
-                                        () => output.write("\\"),
+                                        () => write_str("\\"),
                                     );
-                                    output.write(" {\n");
+                                    write_str(" {\n");
                                     output.inc_indentation();
                                     for token in tokens |> ArrayList.iter do (
                                         Token.Shape.print_impl(&token^.shape^, .verbose);
-                                        output.write("\n");
+                                        write_str("\n");
                                     );
                                     output.dec_indentation();
-                                    output.write("}");
+                                    write_str("}");
                                 ) else (
                                     ansi.with_mode(
                                         :Cyan,
-                                        () => output.write("\\("),
+                                        () => write_str("\\("),
                                     );
                                     let mut first = true;
                                     for token in tokens |> ArrayList.iter do (
                                         if first then (
                                             first = false;
                                         ) else (
-                                            output.write(" ");
+                                            write_str(" ");
                                         );
                                         Token.Shape.print_impl(&token^.shape^, .verbose);
                                     );
                                     ansi.with_mode(
                                         :Cyan,
-                                        () => output.write(")"),
+                                        () => write_str(")"),
                                     );
                                 );
                             )
                         );
                         if verbose then (
-                            output.write("\n");
+                            write_str("\n");
                         );
                     );
                     if verbose then (
                         output.dec_indentation();
-                        output.write("}");
+                        write_str("}");
                     ) else (
                         ansi.with_mode(
                             :Green,
-                            () => output.write(delimiter),
+                            () => write(delimiter),
                         );
                     );
                 )
                 | :Error { .raw = ref raw, ... } => (
-                    let raw = raw |> as_str;
                     ansi.with_mode(
                         :Red,
-                        () => output.write(raw),
+                        () => write(raw),
                     );
                 )
                 | :Eof => (
                     ansi.with_mode(
                         :Italic,
-                        () => output.write("<eof>"),
+                        () => write_str("<eof>"),
                     );
                 )
             );

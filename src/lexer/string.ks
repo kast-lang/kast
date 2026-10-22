@@ -3,20 +3,20 @@ use (import "./common.ks").*;
 const Delim = newtype {
     .c1 :: Char,
     .c2 :: Option.t[Char],
-    .raw :: String,
+    .raw :: RcStr,
 };
 
-const new_delim = (s :: &str) -> Delim => (
-    if String.length(s) > 2 then (
+const new_delim = (s :: &RcStr) -> Delim => (
+    if RcStr.length(s) > 2 then (
         panic("at most 2 char delim please");
     );
-    let c1 = String.at(s, 0);
-    let c2 = if String.length(s) > 1 then (
-        :Some String.at(s, 1)
+    let c1 = RcStr.at(s, 0);
+    let c2 = if RcStr.length(s) > 1 then (
+        :Some RcStr.at(s, 1)
     ) else (
         :None
     );
-    { .c1, .c2, .raw = String.from_str(s) }
+    { .c1, .c2, .raw = s^ }
 );
 
 const next_is_delim = (delim :: &Delim) -> Bool => (
@@ -34,17 +34,24 @@ const consume_delim = (delim :: &Delim) -> Token.t => (
     let lexer = ctx.lexer;
     let reader = &mut lexer^.reader;
     let start = reader^.position;
-    for _ in String.iter(&delim^.raw |> as_str) do (
+    for _ in RcStr.iter(&delim^.raw) do (
         reader |> Reader.advance;
     );
     {
-        .shape = Rc.new(:Punct { .raw = String.clone(&delim^.raw) }),
+        .shape = Rc.new(:Punct { .raw = delim^.raw }),
         .span = {
             .start,
             .end = reader^.position,
             .path = lexer^.source.path,
         },
     }
+);
+
+const empty_str = () -> RcStr => (
+    let ctx = @current Context;
+    let lexer = ctx.lexer;
+    let reader = &mut lexer^.reader;
+    RcStr.substring(&reader^.contents, 0, 0)
 );
 
 module:
@@ -75,11 +82,11 @@ const read_string_impl = (
         .start = reader^.position,
         .raw_parts = ArrayList.new(),
         .raw_content_part = reset_raw_content_part(),
-        .contents = String.from_str(""),
+        .contents = std.StringBuilder.new(),
     };
     let mut content_part = reset_content_part();
     let add_char = (c :: Char) => (
-        content_part.contents = String.concat_owned(content_part.contents, to_string(c));
+        &mut content_part.contents |> std.StringBuilder.add_char(c);
     );
 
     let finish_raw_content_part = () => (
@@ -87,7 +94,7 @@ const read_string_impl = (
         let end = reader^.position.string_encoding_index;
         if start != end then (
             let part :: Token.RawStringPart = :Content {
-                .raw = String.from_str(String.substring(&reader^.contents^ |> as_str, start, end - start)),
+                .raw = RcStr.substring(&reader^.contents, start, end - start),
                 .span = {
                     .start = content_part.raw_content_part.start,
                     .end = reader^.position,
@@ -101,7 +108,8 @@ const read_string_impl = (
 
     let finish_content_part = () => with_return (
         finish_raw_content_part();
-        if &content_part.contents |> as_str |> String.length == 0 then return;
+        let contents = RcStr.from_String(content_part.contents |> std.StringBuilder.into_string);
+        if &contents |> RcStr.length == 0 then return;
         &mut parts
             |> ArrayList.push_back(
                 :Content {
@@ -114,27 +122,31 @@ const read_string_impl = (
                     .raw = (
                         let start = content_part.start.string_encoding_index;
                         let end = reader^.position.string_encoding_index;
-                        String.from_str(String.substring(&reader^.contents^ |> as_str, start, end - start))
+                        RcStr.substring(&reader^.contents, start, end - start)
                     ),
-                    .contents = content_part.contents,
+                    .contents,
                 }
             );
         content_part = reset_content_part();
     );
     let stripped_indentation = if strip_indentation then (
-        let mut indentation = String.from_str("");
+        let mut start = reader^.position.string_encoding_index;
+        let mut end = start;
         while Reader.peek(&reader^) is :Some c do (
+            reader |> Reader.advance;
             if c == '\n' then (
-                indentation = String.from_str("")
+                start = reader^.position.string_encoding_index;
+                end = start;
             ) else if Char.is_whitespace(c) then (
-                indentation = String.concat_owned(indentation, to_string(c));
+                end = reader^.position.string_encoding_index;
             ) else (
                 break;
             );
-            reader |> Reader.advance;
         );
-        indentation
-    ) else String.from_str("");
+        RcStr.substring(&reader^.contents, start, end)
+    ) else (
+        empty_str()
+    );
     while Reader.peek(&reader^) is :Some c do unwindable outer_loop_body (
         if c == '\n' then (
             if not multiline then (
@@ -143,7 +155,7 @@ const read_string_impl = (
             if strip_indentation then (
                 add_char('\n');
                 reader |> Reader.advance;
-                for expected in String.iter(&stripped_indentation |> as_str) do (
+                for expected in RcStr.iter(&stripped_indentation) do (
                     if next_is_delim(delim) then break;
                     if &reader^ |> next_is('\n') then (
                         break;
@@ -168,7 +180,13 @@ const read_string_impl = (
                 # "hello, \(user.name)"
                 finish_content_part();
                 let open_token = {
-                    .shape = Rc.new(:Punct { .raw = String.from_str("\\(") }),
+                    .shape = Rc.new(:Punct {
+                        .raw = RcStr.substring(
+                            &reader^.contents,
+                            escape_start.string_encoding_index,
+                            2,
+                        ),
+                    }),
                     .span = {
                         .start = reader^.position,
                         .end = (
@@ -200,7 +218,13 @@ const read_string_impl = (
                     );
                     if c == ')' and bracket_balance == 0 then (
                         let close_token = {
-                            .shape = Rc.new(:Punct { .raw = String.from_str(")") }),
+                            .shape = Rc.new(:Punct {
+                                .raw = RcStr.substring(
+                                    &reader^.contents,
+                                    reader^.position.string_encoding_index,
+                                    1,
+                                ),
+                            }),
                             .span = Span.single_char(
                                 .position = reader^.position,
                                 .char = :Some ')',
@@ -320,14 +344,14 @@ const read_string_impl = (
                     error_at_current_position("Expected }")
                 );
                 Reader.advance(reader);
-                if hex_code |> String.length == 0 then (
+                if &hex_code |> RcStr.length == 0 then (
                     error_with_span(hex_code_span, "This escape must have at least 1 hex digit");
                 );
-                if hex_code |> String.length > 6 then (
+                if &hex_code |> RcStr.length > 6 then (
                     error_with_span(hex_code_span, "This escape must have at most 6 hex digits");
                 );
                 let mut code = 0;
-                for c in String.iter(hex_code) do (
+                for c in RcStr.iter(&hex_code) do (
                     code = code * 16 + Char.to_digit_radix(c, 16);
                 );
                 add_char(Char.from_code(code));
@@ -341,7 +365,7 @@ const read_string_impl = (
                 .raw = (
                     let start = escape_start.string_encoding_index;
                     let end = reader^.position.string_encoding_index;
-                    String.from_str(String.substring(&reader^.contents^ |> as_str, start, end - start))
+                    RcStr.substring(&reader^.contents, start, end - start)
                 ),
                 .span = {
                     .start = escape_start,
@@ -366,8 +390,8 @@ const read_string_impl = (
                         .path = lexer^.source.path,
                     ),
                     .raw_parts = ArrayList.new(),
-                    .raw = String.from_str(""),
-                    .contents = String.from_str(""),
+                    .raw = empty_str(),
+                    .contents = empty_str(),
                 }
             );
     );
@@ -383,7 +407,7 @@ const read_string_impl = (
     let raw = (
         let start = start.string_encoding_index;
         let end = reader^.position.string_encoding_index;
-        String.from_str(String.substring(&reader^.contents^ |> as_str, start, end - start))
+        RcStr.substring(&reader^.contents, start, end - start)
     );
     if &parts |> ArrayList.length == 1 then (
         if (&parts |> ArrayList.at(0))^ is :Content { .raw_parts, .contents, ... } then (
@@ -398,7 +422,7 @@ const read_string_impl = (
         );
     );
     :Some :InterpolatedString {
-        .delimiter = String.clone(&delim^.raw),
+        .delimiter = delim^.raw,
         .raw,
         .open = open_token,
         .close = close_token,
@@ -409,21 +433,21 @@ const read_string_impl = (
 
 const read_string :: ReadFn = () => with_return (
     if read_string_impl(
-        .delim = &new_delim("''"),
+        .delim = &new_delim(&RcStr.from_String(String.from_str("''"))),
         .multiline = true,
         .strip_indentation = true,
     ) is :Some token then (
         return :Some token;
     );
     if read_string_impl(
-        .delim = &new_delim("'"),
+        .delim = &new_delim(&RcStr.from_String(String.from_str("'"))),
         .multiline = false,
         .strip_indentation = false,
     ) is :Some token then (
         return :Some token;
     );
     if read_string_impl(
-        .delim = &new_delim("\""),
+        .delim = &new_delim(&RcStr.from_String(String.from_str("\""))),
         .multiline = false,
         .strip_indentation = false,
     ) is :Some token then (

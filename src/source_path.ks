@@ -1,5 +1,6 @@
 use (import "../deps/uri/src/lib.ks").*;
 use (import "./output.ks").*;
+use (import "./rc_str.ks").*;
 use std.rc.Rc;
 
 module:
@@ -7,7 +8,7 @@ module:
 const SourcePath = newtype (
     | :Stdin
     | :Uri Rc.t[Uri]
-    | :Special Rc.t[String]
+    | :Special RcStr
 );
 
 impl SourcePath as module = (
@@ -15,17 +16,17 @@ impl SourcePath as module = (
 
     const parse = (s :: &str) -> SourcePath => (
         let mut uri :: Uri = String.parse(s);
-        if &uri.scheme |> as_str == "kast" then (
+        if &uri.scheme |> String.as_str == "kast" then (
             match std.sys.get_env("KAST_PATH") with (
                 | :Some kast_path => (
                     # TODO resolve to absolute
-                    let mut new_uri = Uri.spec_path("file", &kast_path |> as_str);
+                    let mut new_uri = Uri.spec_path("file", &kast_path |> String.as_str);
                     new_uri.path = String.concat_owned(new_uri.path, uri.path);
                     uri = new_uri;
                 )
                 | :None => panic("KAST_PATH not set")
             )
-        ) else if &uri.scheme |> as_str == "" then (
+        ) else if &uri.scheme |> String.as_str == "" then (
             uri.scheme = String.from_str("file");
         );
         :Uri Rc.new(uri)
@@ -41,8 +42,8 @@ impl SourcePath as module = (
     const file_path = (path :: &SourcePath) -> Option.t[&str] => (
         match path^ with (
             | :Uri uri => (
-                if &uri^.scheme |> as_str == "file" then (
-                    :Some (&uri^.path |> as_str)
+                if &uri^.scheme |> String.as_str == "file" then (
+                    :Some (&uri^.path |> String.as_str)
                 ) else (
                     :None
                 )
@@ -55,14 +56,14 @@ impl SourcePath as module = (
         | :Stdin => (
             write_str("<stdin>");
         )
-        | :Uri uri => if &uri^.scheme |> as_str == "file" then (
+        | :Uri uri => if &uri^.scheme |> String.as_str == "file" then (
             # TODO relative to cwd?
-            write_str(&uri^.path |> as_str);
+            write_str(&uri^.path |> String.as_str);
         ) else (
-            write_str(&Uri.to_string(&uri^) |> as_str);
+            write_str(&Uri.to_string(&uri^) |> String.as_str);
         )
-        | :Special name => (
-            write_str(&name^ |> as_str);
+        | :Special ref name => (
+            write(name);
         )
     );
 );

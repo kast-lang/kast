@@ -2,12 +2,12 @@ use (import "../deps/uri/src/lib.ks").*;
 use (import "./position.ks").*;
 use (import "./span.ks").*;
 use (import "./source_path.ks").*;
-use std.rc.Rc;
+use (import "./rc_str.ks").*;
 
 module:
 
 const Source = newtype {
-    .contents :: Rc.t[String],
+    .contents :: RcStr,
     .path :: SourcePath,
 };
 
@@ -17,14 +17,14 @@ impl Source as module = (
     const read = (path :: &SourcePath) -> Source => (
         let contents = match path^ with (
             | :Stdin => std.io.stdin.read_to_end()
-            | :Uri uri => if &uri^.scheme |> as_str == "file" then (
-                std.fs.read_file(&uri^.path |> as_str)
+            | :Uri uri => if &uri^.scheme |> String.as_str == "file" then (
+                std.fs.read_file(&uri^.path |> String.as_str)
             ) else (
-                panic_fmt!("Unsupported uri scheme \(String.escape(&uri^.scheme |> as_str))")
+                panic_fmt!("Unsupported uri scheme \(String.escape(&uri^.scheme |> String.as_str))")
             )
         );
         {
-            .contents = Rc.new(contents),
+            .contents = RcStr.from_String(contents),
             .path = path^,
         }
     );
@@ -33,7 +33,7 @@ impl Source as module = (
         .start = Position.beginning(),
         .end = (
             let mut position = Position.beginning();
-            for c in String.iter(&self^.contents^ |> as_str) do (
+            for c in RcStr.iter(&self^.contents) do (
                 &mut position |> Position.advance(c);
             );
             position

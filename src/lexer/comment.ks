@@ -12,7 +12,7 @@ const read_line_comment :: ReadFn = () => with_return (
     reader |> Reader.read_while(c => c != '\n');
     let end = reader^.position.string_encoding_index;
     :Some :Comment {
-        .raw = String.from_str(String.substring(&reader^.contents^ |> as_str, start, end - start)),
+        .raw = RcStr.substring(&reader^.contents, start, end - start),
         .ty = :Line,
     }
 );
@@ -46,7 +46,7 @@ const read_block_comment :: ReadFn = () => with_return (
     );
     let end = reader^.position.string_encoding_index;
     :Some :Comment {
-        .raw = String.from_str(String.substring(&reader^.contents^ |> as_str, start, end - start)),
+        .raw = RcStr.substring(&reader^.contents, start, end - start),
         .ty = :Block,
     }
 );

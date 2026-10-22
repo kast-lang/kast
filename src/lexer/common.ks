@@ -8,6 +8,7 @@ use (import "../position.ks").*;
 use (import "../output.ks").*;
 use (import "../diagnostic.ks").*;
 use (import "../token.ks").*;
+use (import "../rc_str.ks").*;
 use std.rc.Rc;
 
 const is_hex_digit = (c :: Char) -> Bool => (
@@ -84,7 +85,7 @@ const expected = [T] (expected :: &str) -> T => (
         | :Some c => to_string(c)
         | :None => String.from_str("<eof>")
     );
-    error_at_current_position(&format!("Expected \(expected), got \(got)") |> as_str)
+    error_at_current_position(&format!("Expected \(expected), got \(got)") |> String.as_str)
 );
 
 const unexpected_char = [T] (message :: &str) -> T => (

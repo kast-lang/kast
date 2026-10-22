@@ -1,3 +1,5 @@
+use (import "./rc_str.ks").*;
+
 module:
 
 const OutputT = newtype {
@@ -12,6 +14,15 @@ const Stderr = @context OutputT;
 
 const write_str = (s :: &str) => (
     (@current Output).write(s);
+);
+
+const write = (s :: &RcStr) => (
+    write_str(RcStr.as_str(s));
+);
+
+const write_escaped = (s :: &RcStr) => (
+    let escaped = String.escape(s |> RcStr.as_str);
+    write_str(&escaped |> as_str);
 );
 
 const new_std_output = (write :: &str -> (), .color :: Bool) -> OutputT => (

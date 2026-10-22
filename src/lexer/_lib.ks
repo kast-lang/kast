@@ -54,7 +54,7 @@ impl Lexer as module = (
                     let start = start.string_encoding_index;
                     let end = reader^.position.string_encoding_index;
                     return :Error {
-                        .raw = String.from_str(String.substring(&reader^.contents^ |> as_str, start, end - start)),
+                        .raw = RcStr.substring(&reader^.contents, start, end - start),
                     }
                 ),
             };
