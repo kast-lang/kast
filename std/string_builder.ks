@@ -9,6 +9,10 @@ const StringBuilder = (
         .result = String.from_str(""),
     };
 
+    const add_char = (self :: &mut StringBuilder.t, c :: Char) => (
+        self |> add_String(String.to_string(c));
+    );
+
     const add_str = (self :: &mut StringBuilder.t, s :: &str) => (
         self |> add_String(String.from_str(s));
     );
