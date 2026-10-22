@@ -6,12 +6,7 @@
 #include "./mem.h"
 
 #define define_RefCounted(T)                                                   \
-    typedef struct {                                                           \
-        size_t ref_count;                                                      \
-        TypeInfo* T_TypeInfo;                                                  \
-        T value;                                                               \
-    } RefCountedData_##T;                                                      \
-    typedef RefCountedData_##T* RefCounted_##T;                                \
+    typedef struct RefCountedData_##T* RefCounted_##T;                         \
     RefCounted_##T RefCounted_##T##_new(T value, TypeInfo* T_TypeInfo);        \
     T* RefCounted_##T##_deref(RefCounted_##T* rc);                             \
     RefCounted_##T RefCounted_##T##_claim(RefCounted_##T* rc);                 \
@@ -19,6 +14,11 @@
     void RefCounted_##T##_dbg_write(RefCounted_##T* rc, Kast_Formatter* fmt);
 
 #define impl_RefCounted(T)                                                     \
+    typedef struct RefCountedData_##T {                                        \
+        size_t ref_count;                                                      \
+        TypeInfo* T_TypeInfo;                                                  \
+        T value;                                                               \
+    } RefCountedData_##T;                                                      \
     RefCounted_##T RefCounted_##T##_new(T value, TypeInfo* T_TypeInfo) {       \
         RefCounted_##T rc;                                                     \
         rc = Kast_allocate_raw(sizeof(*rc));                                   \
