@@ -2,29 +2,30 @@ use (import "../deps/uri/src/lib.ks").*;
 use (import "./position.ks").*;
 use (import "./span.ks").*;
 use (import "./source_path.ks").*;
+use std.rc.Rc;
 
 module:
 
 const Source = newtype {
-    .contents :: String,
+    .contents :: Rc.t[String],
     .path :: SourcePath,
 };
 
 impl Source as module = (
     module:
 
-    const read = (path :: SourcePath) -> Source => (
-        let contents = match path with (
+    const read = (path :: &SourcePath) -> Source => (
+        let contents = match path^ with (
             | :Stdin => std.io.stdin.read_to_end()
-            | :Uri uri => if uri.scheme == "file" then (
-                std.fs.read_file(uri.path)
+            | :Uri uri => if &uri^.scheme |> as_str == "file" then (
+                std.fs.read_file(&uri^.path |> as_str)
             ) else (
-                panic("unsupported uri scheme " + String.escape(uri.scheme))
+                panic_fmt!("Unsupported uri scheme \(String.escape(&uri^.scheme |> as_str))")
             )
         );
         {
-            .contents,
-            .path,
+            .contents = Rc.new(contents),
+            .path = path^,
         }
     );
 
@@ -32,7 +33,7 @@ impl Source as module = (
         .start = Position.beginning(),
         .end = (
             let mut position = Position.beginning();
-            for c in String.iter(self^.contents) do (
+            for c in String.iter(&self^.contents^ |> as_str) do (
                 &mut position |> Position.advance(c);
             );
             position

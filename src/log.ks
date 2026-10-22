@@ -46,7 +46,7 @@ const Log = (
         );
     );
 
-    const with_level_msg = (level :: Level, message :: String) => (
+    const with_level_msg = (level :: Level, message :: &str) => (
         with_level(level, () => (@current Output).write(message));
     );
 

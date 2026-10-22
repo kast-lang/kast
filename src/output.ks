@@ -2,7 +2,7 @@ module:
 
 const OutputT = newtype {
     .color :: Bool,
-    .write :: String -> (),
+    .write :: &str -> (),
     .inc_indentation :: () -> (),
     .dec_indentation :: () -> (),
 };
@@ -10,44 +10,53 @@ const Output = @context OutputT;
 const Stdout = @context OutputT;
 const Stderr = @context OutputT;
 
-const new_std_output = (write :: String -> (), .color :: Bool) -> OutputT => (
+const write_str = (s :: &str) => (
+    (@current Output).write(s);
+);
+
+const new_std_output = (write :: &str -> (), .color :: Bool) -> OutputT => (
     let indentation_string = if color then "│   " else "    ";
     new_output(.write, .indentation_string, .color)
 );
 
 const output_to_string = (f :: () -> ()) -> String => (
-    let mut result = "";
+    let mut result = std.StringBuilder.new();
     with Output = new_output(
         .write = s => (
-            result += s;
+            &mut result |> std.StringBuilder.add_str(s);
         ),
         .indentation_string = "    ",
         .color = false,
     );
     f();
-    result
+    result |> std.StringBuilder.into_string
 );
 
 const new_output = (
-    .write :: String -> (),
-    .indentation_string :: String,
+    .write :: &str -> (),
+    .indentation_string :: &str,
     .color :: Bool,
 ) -> OutputT => (
-    let mut indentation = 0;
+    let indentation_string = String.from_str(indentation_string);
+    let indentation = std.rc.Rc.new(0);
     let mut started_line = false;
-    let write = mut s => (
+    let write = @move mut s => (
         loop (
             if s == "" then break;
             let i = s |> String.index_of('\n');
             if not started_line and i != 0 then (
                 if (@current Output).color then (
-                    write("\x1b[" + ansi.Mode.open_code(:Dim) + "m");
+                    write("\x1b[");
+                    write(ansi.Mode.open_code(:Dim));
+                    write("m");
                 );
-                for _ in 0..indentation do (
-                    write(indentation_string);
+                for _ in 0..indentation^ do (
+                    write(&indentation_string |> as_str);
                 );
                 if (@current Output).color then (
-                    write("\x1b[" + ansi.Mode.close_code(:Dim) + "m");
+                    write("\x1b[");
+                    write(ansi.Mode.close_code(:Dim));
+                    write("m");
                 );
             );
             if i < 0 then (
@@ -63,11 +72,11 @@ const new_output = (
     );
     {
         .color,
-        .inc_indentation = () => (
-            indentation += 1;
+        .inc_indentation = @move () => (
+            indentation^ += 1;
         ),
-        .dec_indentation = () => (
-            indentation -= 1;
+        .dec_indentation = @move () => (
+            indentation^ -= 1;
         ),
         .write,
     }
@@ -106,7 +115,7 @@ const ansi = (
     impl Mode as module = (
         module:
 
-        const open_code = (self :: Mode) -> String => match self with (
+        const open_code = (self :: Mode) -> &str => match self with (
             | :Bold => "1"
             | :Dim => "2"
             | :Italic => "3"
@@ -133,7 +142,7 @@ const ansi = (
             | :GrayBg => "100"
         );
 
-        const close_code = (self :: Mode) -> String => match self with (
+        const close_code = (self :: Mode) -> &str => match self with (
             | :Bold => "22"
             | :Dim => "22"
             | :Italic => "23"
@@ -161,7 +170,7 @@ const ansi = (
         );
     );
 
-    const write_code = (code :: String) => (
+    const write_code = (code :: &str) => (
         let output = @current Output;
         if output.color then (
             output.write("\x1b[");

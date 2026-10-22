@@ -14,7 +14,7 @@ const read_hex_number :: ReadFn = () => with_return (
     reader |> Reader.read_while(is_hex_digit);
     let end = reader^.position.string_encoding_index;
     :Some :Number {
-        .raw = String.substring(reader^.contents, start, end - start),
+        .raw = String.from_str(String.substring(&reader^.contents^ |> as_str, start, end - start)),
     }
 );
 
@@ -44,6 +44,6 @@ const read_number :: ReadFn = () => with_return (
     );
     let end = reader^.position.string_encoding_index;
     :Some :Number {
-        .raw = String.substring(reader^.contents, start, end - start),
+        .raw = String.from_str(String.substring(&reader^.contents^ |> as_str, start, end - start)),
     }
 );

@@ -8,20 +8,13 @@ build continuous="" main="src/cli/_main.ks" name="kast":
     # flock --exclusive target 
     time ${KAST_BIN:-kast-bootstrap} compile \
         {{continuous}} \
-        --js-ref-vars false \
-        --async never \
-        --use-numbers-instead-of-symbols false \
-        --target js \
-        --output target/{{name}}-tmp.mjs \
-        --post-compile-cmd 'just post-build target/{{name}}-tmp.mjs target/{{name}}.mjs' \
+        --target c \
+        --output target/{{name}}.c \
+        --post-compile-cmd 'just post-build target/{{name}}.c target/{{name}}.exe' \
         {{main}}
 
 post-build src out:
-    #!/usr/bin/env bash
-    (
-        echo 'const fs = await import("node:fs");'
-        cat {{src}}
-    ) > {{out}}
+    ${KAST_BIN:-kast-bootstrap} cc {{src}} -o {{out}}
 
 raylib-to-c:
     kast mini \
@@ -99,4 +92,4 @@ test:
     fd --exclude '**/doesnt-parse/*' --type file --extension ks --exec-batch kast mini parse > /dev/null
 
 lsp-stress-test:
-    kast-bootstrap --target js lsp-stress-test/main.ks | kast lsp
+    kast-bootstrap run --target js lsp-stress-test/main.ks | kast lsp

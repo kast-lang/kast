@@ -3,12 +3,12 @@ use (import "../token_stream.ks").*;
 use (import "../source.ks").*;
 use (import "../source_path.ks").*;
 use (import "../lexer/_lib.ks").*;
-use (import "../syntax_parser.ks").*;
-use (import "../syntax_ruleset.ks").*;
-use (import "../parser.ks").*;
-use (import "../compiler/_lib.ks").*;
-use (import "../interpreter/_lib.ks").*;
-use (import "../hir/_lib.ks").*;
+# use (import "../syntax_parser.ks").*;
+# use (import "../syntax_ruleset.ks").*;
+# use (import "../parser.ks").*;
+# use (import "../compiler/_lib.ks").*;
+# use (import "../interpreter/_lib.ks").*;
+# use (import "../hir/_lib.ks").*;
 
 module:
 
@@ -20,22 +20,22 @@ const Common = (
         .ext :: Option.t[String],
     };
 
-    const path_arg_for_syntax = (path :: String, .@"syntax" :: Option.t[Syntax]) -> String => (
+    const path_arg_for_syntax = (path :: &str, .@"syntax" :: Option.t[type (&Syntax)]) -> &str => (
         let ext = match @"syntax" with (
             | :None => :Some "ks"
-            | :Some s => s.ext
+            | :Some s => &s^.ext |> Option.as_ref |> Option.map(as_str)
         );
         path_arg(path, .ext)
     );
 
-    const path_arg = (path :: String, .ext :: Option.t[String]) -> String => (
+    const path_arg = (path :: &str, .ext :: Option.t[&str]) -> &str => (
         let fail = () => (
-            let mut message = "Expected a path";
+            let mut message = String.from_str("Expected a path");
             if ext is :Some ext then (
-                message += " with ." + ext + " extension";
+                message = format!("\(message) with .\(ext) extension");
             );
-            message += ", got " + String.escape(path);
-            Diagnostic.abort(message)
+            message = format!("\(message), got \(String.escape(path))");
+            Diagnostic.abort(&message |> as_str)
         );
         if String.length(path) == 0 then fail();
         if path |> String.at(0) == '-' then fail();
@@ -84,7 +84,7 @@ const Common = (
                 ) else if mode == "json" then (
                     :Json
                 ) else (
-                    Diagnostic.abort("Unknown output mode " + String.escape(mode))
+                    Diagnostic.abort(&format!("Unknown output mode \(String.escape(mode))") |> as_str)
                 );
                 args^.output_mode = mode;
                 arg_idx^ += 2;
@@ -109,7 +109,7 @@ const Common = (
                 arg_idx^ += 2;
                 return;
             );
-            Diagnostic.abort("Unexpected arg " + arg);
+            Diagnostic.abort(&format!("Unexpected arg \(arg)") |> as_str);
         );
     );
 
@@ -121,9 +121,10 @@ const Common = (
         )
     );
 
+    @comment_out(
     const default_syntax_ruleset = () -> SyntaxRuleset.t => (
         let ruleset_path = "kast:///std/syntax.ks";
-        let mut lexer = Lexer.new(Source.read(SourcePath.parse(ruleset_path)));
+        let mut lexer = Lexer.new(Source.read(&SourcePath.parse(ruleset_path)));
         let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
         SyntaxParser.parse_syntax_ruleset(&mut token_stream)
     );
@@ -154,5 +155,6 @@ const Common = (
             Compiler.compile[Expr](&parsed.ast, .expected_ty = :None);
         );
         f()
+    );
     );
 );

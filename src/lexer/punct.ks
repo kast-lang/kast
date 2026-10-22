@@ -29,7 +29,7 @@ const read_punct :: ReadFn = () => with_return (
     );
     let end = reader^.position.string_encoding_index;
     :Some :Punct {
-        .raw = String.substring(reader^.contents, start, end - start),
+        .raw = String.from_str(String.substring(&reader^.contents^ |> as_str, start, end - start)),
     }
 );
 
@@ -44,6 +44,6 @@ const read_raw_keyword :: ReadFn = () => with_return (
     let _ = read_ident();
     let end = reader^.position.string_encoding_index;
     :Some :Punct {
-        .raw = String.substring(reader^.contents, start, end - start),
+        .raw = String.from_str(String.substring(&reader^.contents^ |> as_str, start, end - start)),
     }
 );

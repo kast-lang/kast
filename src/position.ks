@@ -54,10 +54,10 @@ impl Position as module = (
         new_pos
     );
 
-    const print = (self :: Position) => (
+    const print = (self :: &Position) => (
         let output = @current Output;
-        output.write(to_string(self.line + 1));
+        output.write(&to_string(self^.line + 1) |> as_str);
         output.write(".");
-        output.write(to_string(self.column.display_width + 1));
+        output.write(&to_string(self^.column.display_width + 1) |> as_str);
     );
 );

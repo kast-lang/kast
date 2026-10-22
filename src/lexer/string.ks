@@ -6,7 +6,7 @@ const Delim = newtype {
     .raw :: String,
 };
 
-const new_delim = (s :: String) -> Delim => (
+const new_delim = (s :: &str) -> Delim => (
     if String.length(s) > 2 then (
         panic("at most 2 char delim please");
     );
@@ -16,29 +16,29 @@ const new_delim = (s :: String) -> Delim => (
     ) else (
         :None
     );
-    { .c1, .c2, .raw = s }
+    { .c1, .c2, .raw = String.from_str(s) }
 );
 
-const next_is_delim = (delim :: Delim) -> Bool => (
+const next_is_delim = (delim :: &Delim) -> Bool => (
     let ctx = @current Context;
     let reader = &ctx.lexer^.reader;
-    if delim.c2 is :Some c2 then (
-        reader |> next_two_are(delim.c1, c2)
+    if delim^.c2 is :Some c2 then (
+        reader |> next_two_are(delim^.c1, c2)
     ) else (
-        reader |> next_is(delim.c1)
+        reader |> next_is(delim^.c1)
     )
 );
 # assumes we already checked that next_is_delim
-const consume_delim = (delim :: Delim) -> Token.t => (
+const consume_delim = (delim :: &Delim) -> Token.t => (
     let ctx = @current Context;
     let lexer = ctx.lexer;
     let reader = &mut lexer^.reader;
     let start = reader^.position;
-    for _ in String.iter(delim.raw) do (
+    for _ in String.iter(&delim^.raw |> as_str) do (
         reader |> Reader.advance;
     );
     {
-        .shape = :Punct { .raw = delim.raw },
+        .shape = Rc.new(:Punct { .raw = String.clone(&delim^.raw) }),
         .span = {
             .start,
             .end = reader^.position,
@@ -50,7 +50,7 @@ const consume_delim = (delim :: Delim) -> Token.t => (
 module:
 
 const read_string_impl = (
-    .delim :: Delim,
+    .delim :: &Delim,
     .multiline :: Bool,
     .strip_indentation :: Bool,
 ) -> Option.t[Token.Shape.t] => with_return (
@@ -63,26 +63,31 @@ const read_string_impl = (
     let start = reader^.position;
     let open_token = consume_delim(delim);
     let mut parts = ArrayList.new();
-    let reset_raw_content_part = () => {
+    let reset_raw_content_part = () -> { .start :: Position } => {
         .start = reader^.position,
     };
-    let reset_content_part = () => {
+    let reset_content_part = () -> {
+        .start :: _,
+        .raw_parts :: _,
+        .raw_content_part :: _,
+        .contents :: _,
+    } => {
         .start = reader^.position,
         .raw_parts = ArrayList.new(),
         .raw_content_part = reset_raw_content_part(),
-        .contents = "",
+        .contents = String.from_str(""),
     };
     let mut content_part = reset_content_part();
     let add_char = (c :: Char) => (
-        content_part.contents += to_string(c);
+        content_part.contents = String.concat_owned(content_part.contents, to_string(c));
     );
 
-    let finish_raw_content_part = () => {
+    let finish_raw_content_part = () => (
         let start = content_part.raw_content_part.start.string_encoding_index;
         let end = reader^.position.string_encoding_index;
         if start != end then (
             let part :: Token.RawStringPart = :Content {
-                .raw = String.substring(reader^.contents, start, end - start),
+                .raw = String.from_str(String.substring(&reader^.contents^ |> as_str, start, end - start)),
                 .span = {
                     .start = content_part.raw_content_part.start,
                     .end = reader^.position,
@@ -92,11 +97,11 @@ const read_string_impl = (
             &mut content_part.raw_parts |> ArrayList.push_back(part);
         );
         content_part.raw_content_part = reset_raw_content_part();
-    };
+    );
 
     let finish_content_part = () => with_return (
         finish_raw_content_part();
-        if content_part.contents |> String.length == 0 then return;
+        if &content_part.contents |> as_str |> String.length == 0 then return;
         &mut parts
             |> ArrayList.push_back(
                 :Content {
@@ -109,7 +114,7 @@ const read_string_impl = (
                     .raw = (
                         let start = content_part.start.string_encoding_index;
                         let end = reader^.position.string_encoding_index;
-                        String.substring(reader^.contents, start, end - start)
+                        String.from_str(String.substring(&reader^.contents^ |> as_str, start, end - start))
                     ),
                     .contents = content_part.contents,
                 }
@@ -117,21 +122,20 @@ const read_string_impl = (
         content_part = reset_content_part();
     );
     let stripped_indentation = if strip_indentation then (
-        let mut indentation = "";
+        let mut indentation = String.from_str("");
         while Reader.peek(&reader^) is :Some c do (
             if c == '\n' then (
-                indentation = ""
+                indentation = String.from_str("")
             ) else if Char.is_whitespace(c) then (
-                indentation += to_string(c);
+                indentation = String.concat_owned(indentation, to_string(c));
             ) else (
                 break;
             );
             reader |> Reader.advance;
         );
         indentation
-    ) else "";
-    while Reader.peek(&reader^) is :Some c do (
-        const outer_loop_body = @current std.LoopBody;
+    ) else String.from_str("");
+    while Reader.peek(&reader^) is :Some c do unwindable outer_loop_body (
         if c == '\n' then (
             if not multiline then (
                 break;
@@ -139,7 +143,7 @@ const read_string_impl = (
             if strip_indentation then (
                 add_char('\n');
                 reader |> Reader.advance;
-                for expected in String.iter(stripped_indentation) do (
+                for expected in String.iter(&stripped_indentation |> as_str) do (
                     if next_is_delim(delim) then break;
                     if &reader^ |> next_is('\n') then (
                         break;
@@ -164,7 +168,7 @@ const read_string_impl = (
                 # "hello, \(user.name)"
                 finish_content_part();
                 let open_token = {
-                    .shape = :Punct { .raw = "\\(" },
+                    .shape = Rc.new(:Punct { .raw = String.from_str("\\(") }),
                     .span = {
                         .start = reader^.position,
                         .end = (
@@ -196,7 +200,7 @@ const read_string_impl = (
                     );
                     if c == ')' and bracket_balance == 0 then (
                         let close_token = {
-                            .shape = :Punct { .raw = ")" },
+                            .shape = Rc.new(:Punct { .raw = String.from_str(")") }),
                             .span = Span.single_char(
                                 .position = reader^.position,
                                 .char = :Some ')',
@@ -218,10 +222,10 @@ const read_string_impl = (
                             );
                         Reader.advance(reader);
                         content_part = reset_content_part();
-                        unwind (@binding outer_loop_body) ();
+                        unwind outer_loop_body ();
                     );
                     let token = ctx.next_token();
-                    let token_raw = Token.raw(token);
+                    let token_raw = Token.raw(&token);
                     if token_raw == "(" then (
                         bracket_balance += 1;
                     ) else if token_raw == ")" then (
@@ -251,7 +255,7 @@ const read_string_impl = (
                 '"'
             ) else if c == 'x' then (
                 Reader.advance(reader);
-                let { c1, c2 } = unwindable chars (
+                let { c1, c2 } :: { _, _ } = unwindable chars (
                     let error_position :: Position = with_return (
                         let mut pos = reader^.position;
                         let c1 = Reader.peek(&reader^)
@@ -329,7 +333,7 @@ const read_string_impl = (
                 add_char(Char.from_code(code));
                 continue
             ) else (
-                error_at_current_position("Unexpected escape char " + to_string(c))
+                error_at_current_position(&format!("Unexpected escape char \(c)") |> as_str)
             );
             add_char(c);
             Reader.advance(reader);
@@ -337,7 +341,7 @@ const read_string_impl = (
                 .raw = (
                     let start = escape_start.string_encoding_index;
                     let end = reader^.position.string_encoding_index;
-                    String.substring(reader^.contents, start, end - start)
+                    String.from_str(String.substring(&reader^.contents^ |> as_str, start, end - start))
                 ),
                 .span = {
                     .start = escape_start,
@@ -362,8 +366,8 @@ const read_string_impl = (
                         .path = lexer^.source.path,
                     ),
                     .raw_parts = ArrayList.new(),
-                    .raw = "",
-                    .contents = "",
+                    .raw = String.from_str(""),
+                    .contents = String.from_str(""),
                 }
             );
     );
@@ -379,7 +383,7 @@ const read_string_impl = (
     let raw = (
         let start = start.string_encoding_index;
         let end = reader^.position.string_encoding_index;
-        String.substring(reader^.contents, start, end - start)
+        String.from_str(String.substring(&reader^.contents^ |> as_str, start, end - start))
     );
     if &parts |> ArrayList.length == 1 then (
         if (&parts |> ArrayList.at(0))^ is :Content { .raw_parts, .contents, ... } then (
@@ -394,32 +398,32 @@ const read_string_impl = (
         );
     );
     :Some :InterpolatedString {
-        .delimiter = delim.raw,
+        .delimiter = String.clone(&delim^.raw),
         .raw,
         .open = open_token,
-        .parts,
         .close = close_token,
+        .parts,
         .stripped_indentation,
     }
 );
 
 const read_string :: ReadFn = () => with_return (
     if read_string_impl(
-        .delim = new_delim("''"),
+        .delim = &new_delim("''"),
         .multiline = true,
         .strip_indentation = true,
     ) is :Some token then (
         return :Some token;
     );
     if read_string_impl(
-        .delim = new_delim("'"),
+        .delim = &new_delim("'"),
         .multiline = false,
         .strip_indentation = false,
     ) is :Some token then (
         return :Some token;
     );
     if read_string_impl(
-        .delim = new_delim("\""),
+        .delim = &new_delim("\""),
         .multiline = false,
         .strip_indentation = false,
     ) is :Some token then (

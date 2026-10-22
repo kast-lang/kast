@@ -21,7 +21,7 @@ const Tuple = (
 
     const Member = newtype (
         | :Index Int32
-        | :Name String
+        | :Name &str
     );
 
     const get = [T] (
@@ -47,19 +47,22 @@ const Tuple = (
 
     const get_named = [T] (
         self :: &Tuple.t[T],
-        name :: String,
+        name :: &str,
     ) -> &T => (
-        match &self^.named |> OrdMap.get(name) with (
+        # TODO no allocating String
+        match &self^.named |> OrdMap.get(&String.from_str(name)) with (
             | :Some value => value
-            | :None => panic("tuple doesnt have field " + String.escape(name))
+            | :None => panic_fmt!("tuple doesnt have field \(String.escape(name))")
         )
     );
 
     const has_named = [T] (
         self :: &Tuple.t[T],
-        name :: String,
+        name :: &str,
     ) -> Bool => (
-        match &self^.named |> OrdMap.get(name) with (
+        # TODO no allocating String
+        let name = String.from_str(name);
+        match &self^.named |> OrdMap.get(&name) with (
             | :Some _ => true
             | :None => false
         )
@@ -88,14 +91,15 @@ const Tuple = (
 
     const get_named_opt = [T] (
         self :: &Tuple.t[T],
-        name :: String,
+        name :: &str,
     ) -> Option.t[type (&T)] => (
-        &self^.named |> OrdMap.get(name)
+        let name = String.from_str(name);
+        &self^.named |> OrdMap.get(&name)
     );
 
     const add = [T] (
         self :: &mut Tuple.t[T],
-        name :: Option.t[String],
+        name :: Option.t[&str],
         value :: T,
     ) => (
         match name with (
@@ -106,10 +110,11 @@ const Tuple = (
 
     const add_named = [T] (
         self :: &mut Tuple.t[T],
-        name :: String,
+        name :: &str,
         value :: T,
     ) => (
-        &mut self^.named |> OrdMap.add(name, value);
+        let name = String.from_str(name);
+        &mut self^.named |> OrdMap.add(String.clone(&name), value);
         &mut self^.name_order |> ArrayList.push_back(name);
     );
 
@@ -141,12 +146,7 @@ const Tuple = (
             );
             let length = &$self.unnamed |> ArrayList.length;
             if length != N then (
-                panic(
-                    "Expected "
-                    + to_string(N)
-                    + "unnamed fields, got "
-                    + to_string(length)
-                );
+                panic_fmt!("Expected \(N) unnamed fields, got \(length)");
             );
             { $(array_to_tuple(`($self.unnamed), N)) }
         )
@@ -164,12 +164,12 @@ const Tuple = (
 
     const print = [T] (
         self :: &Tuple.t[T],
-        .open :: String,
-        .delimiter :: String,
-        .before_field_name :: String,
-        .after_field_name :: String,
+        .open :: &str,
+        .delimiter :: &str,
+        .before_field_name :: &str,
+        .after_field_name :: &str,
         .print_value :: &T -> (),
-        .close :: String,
+        .close :: &str,
     ) => (
         let output = @current Output;
         output.write(open);
@@ -180,9 +180,9 @@ const Tuple = (
             output.write(delimiter);
             output.write("\n");
         );
-        for &name in &self^.name_order |> ArrayList.iter do (
+        for name in &self^.name_order |> ArrayList.iter do (
             output.write(before_field_name);
-            output.write(name);
+            output.write(name |> as_str);
             output.write(after_field_name);
             print_value(&self^.named |> OrdMap.get(name) |> Option.unwrap);
             output.write(delimiter);
@@ -199,7 +199,8 @@ const Tuple = (
                 consumer({ :Index index, element });
             );
             for name in self.name_order |> ArrayList.into_iter do (
-                let element = &mut self.named |> OrdMap.remove(name) |> Option.unwrap;
+                let element = &mut self.named |> OrdMap.remove(&name) |> Option.unwrap;
+                let name = &name |> as_str;
                 consumer({ :Name name, element });
             );
         ),
@@ -210,8 +211,9 @@ const Tuple = (
             for { index, element } in &self^.unnamed |> ArrayList.iter |> std.iter.enumerate do (
                 consumer({ :Index index, element });
             );
-            for &name in &self^.name_order |> ArrayList.iter do (
+            for name in &self^.name_order |> ArrayList.iter do (
                 let element = &self^.named |> OrdMap.get(name) |> Option.unwrap;
+                let name = name |> as_str;
                 consumer({ :Name name, element });
             );
         ),

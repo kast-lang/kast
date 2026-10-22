@@ -2,11 +2,13 @@ module:
 
 use (import "../reader.ks").*;
 use (import "../source.ks").*;
+use (import "../source_path.ks").*;
 use (import "../span.ks").*;
 use (import "../position.ks").*;
 use (import "../output.ks").*;
 use (import "../diagnostic.ks").*;
 use (import "../token.ks").*;
+use std.rc.Rc;
 
 const is_hex_digit = (c :: Char) -> Bool => (
     ('0' <= c and c <= '9')
@@ -76,16 +78,16 @@ const error_token = [T] message -> T => (
     error_with_span(span, message)
 );
 
-const expected = [T] expected -> T => (
+const expected = [T] (expected :: &str) -> T => (
     let ctx = @current Context;
     let got = match Reader.peek(&ctx.reader^) with (
         | :Some c => to_string(c)
-        | :None => "<eof>"
+        | :None => String.from_str("<eof>")
     );
-    error_at_current_position("Expected " + expected + ", got " + got)
+    error_at_current_position(&format!("Expected \(expected), got \(got)") |> as_str)
 );
 
-const unexpected_char = [T] (message :: String) -> T => (
+const unexpected_char = [T] (message :: &str) -> T => (
     let ctx = @current Context;
     let lexer = ctx.lexer;
     let char = Reader.peek(&lexer^.reader);

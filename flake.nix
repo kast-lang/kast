@@ -57,6 +57,7 @@
         devShells.default = mkShell {
           packages = [
             (pkgs.writeShellScriptBin "kast-bootstrap" ''
+              export KAST_PATH=${kast-bootstrap}
               systemd-run --quiet --user --scope -p MemoryMax=20G \
                 ${kast-bootstrap}/bin/kast "$@"
             '')
@@ -79,11 +80,12 @@
             emscripten
             caddy
             valgrind
+            libbacktrace
+            libunwind
           ];
           shellHook = ''
             echo Hello from Kast dev shell
             export KAST_PATH=$(pwd)/kast_path
-            export KAST_STD=$(pwd)/deps/bootstrap/std
           '';
           # Since I dont have cmake or whatever
           CLANGD_FLAGS = "--query-driver=${pkgs.clang}/bin/clang*";
@@ -91,6 +93,15 @@
             "${inputs.kast.packages.${system}.js-runtime}/runtime.mjs";
           RAYLIB = "${raylib}";
           RAYLIB_WEB = "${inputs.self.packages.${system}.raylib-web}/libraylib.web.a";
+          CFLAGS = ''
+            -Wfatal-errors
+            -Wmissing-field-initializers
+            -O1
+            -lbacktrace -lunwind -g -rdynamic
+            -fsanitize=address,undefined,leak
+            -pthread
+            -DKAST_DEBUG
+          '';
         };
       });
 }

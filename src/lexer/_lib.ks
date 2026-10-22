@@ -54,7 +54,7 @@ impl Lexer as module = (
                     let start = start.string_encoding_index;
                     let end = reader^.position.string_encoding_index;
                     return :Error {
-                        .raw = String.substring(reader^.contents, start, end - start),
+                        .raw = String.from_str(String.substring(&reader^.contents^ |> as_str, start, end - start)),
                     }
                 ),
             };
@@ -70,6 +70,6 @@ impl Lexer as module = (
         );
         let end = reader^.position;
         let span = { .start, .end, .path = ctx.lexer^.source.path };
-        { .shape, .span }
+        { .shape = Rc.new(shape), .span }
     );
 );

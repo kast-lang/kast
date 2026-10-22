@@ -2,13 +2,13 @@ use (import "./common.ks").*;
 use (import "../diagnostic.ks").*;
 use (import "../output.ks").*;
 use (import "../log.ks").*;
-use (import "../serialize.ks").*;
+# use (import "../serialize.ks").*;
 use (import "../source.ks").*;
 use (import "../source_path.ks").*;
 use (import "../token.ks").*;
 use (import "../token_stream.ks").*;
 use (import "../lexer/_lib.ks").*;
-use (import "../json/_lib.ks").*;
+# use (import "../json/_lib.ks").*;
 
 module:
 
@@ -25,7 +25,7 @@ const Tokenize = (
         const parse = start_index -> t => (
             let mut paths = ArrayList.new();
             for i in start_index..std.sys.argc() do (
-                &mut paths |> ArrayList.push_back(std.sys.argv_at(i));
+                &mut paths |> ArrayList.push_back(String.from_str(std.sys.argv_at(i)));
             );
             {
                 .paths,
@@ -34,11 +34,15 @@ const Tokenize = (
     );
 
     const run = (common_args :: Common.Args.t, args :: Args.t) => (
-        let process = (path :: SourcePath) => (
+        let process = (path :: &SourcePath) => (
             Log.info(
                 () => ansi.with_mode(
                     :Bold,
-                    () => (@current Output).write("Lexing " + to_string(path) + "\n\n"),
+                    () => (
+                        write_str("Lexing ");
+                        SourcePath.print(path);
+                        write_str("\n\n");
+                    ),
                 ),
             );
             match common_args.output_mode with (
@@ -46,9 +50,9 @@ const Tokenize = (
                     let mut lexer = Lexer.new(Source.read(path));
                     loop (
                         let token = &mut lexer |> Lexer.next;
-                        token |> Token.print_impl(.verbose = true);
+                        &token |> Token.print_impl(.verbose = true);
                         (@current Output).write("\n");
-                        if token.shape is :Eof then break;
+                        if token.shape^ is :Eof then break;
                     );
                 )
                 | :Json => (
@@ -59,7 +63,7 @@ const Tokenize = (
                     loop (
                         let token = &mut lexer |> Lexer.next;
                         &mut json_tokens |> ArrayList.push_back(Serialize.as_json(token));
-                        if token.shape is :Eof then break;
+                        if token.shape^ is :Eof then break;
                     );
                     let json = :Array json_tokens;
                     Json.print(&json);
@@ -67,10 +71,11 @@ const Tokenize = (
             );
         );
         if &args.paths |> ArrayList.length == 0 then (
-            process(:Stdin);
+            process(&(:Stdin));
         );
         for path in args.paths |> ArrayList.into_iter do (
-            process(SourcePath.parse(path));
+            let path = &path |> as_str;
+            process(&SourcePath.parse(path));
         );
     );
 );

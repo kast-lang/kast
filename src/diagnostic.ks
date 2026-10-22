@@ -6,10 +6,10 @@ module:
 const Diagnostic = (
     module:
 
-    const AbortHandlerT = type (String -> Never);
+    const AbortHandlerT = type (&str -> Never);
     const AbortHandler = @context AbortHandlerT;
 
-    const default_abort_handler = (msg :: String) -> Never => (
+    const default_abort_handler = (msg :: &str) -> Never => (
         with Output = (@current Stderr);
         ansi.with_mode(
             :Red,
@@ -23,7 +23,7 @@ const Diagnostic = (
     );
     ## Similar to panic but we don't care about stacktrace in this case
     ## Use for errors that are targeted at user
-    const abort = [T] (msg :: String) -> T => (
+    const abort = [T] (msg :: &str) -> T => (
         (@current AbortHandler)(msg) |> from_never
     );
 
@@ -68,13 +68,13 @@ const Diagnostic = (
         .unwind_on_error :: () -> Never,
     };
 
-    const print = (diagnostic :: Diagnostic.t) => (
+    const print = (diagnostic :: &Diagnostic.t) => (
         with Output = (@current Stderr);
         let output = @current Output;
         ansi.with_mode(
             :Red,
             () => (
-                let source_name :: Option.t[String] = match diagnostic.source with (
+                let source_name :: Option.t[&str] = match diagnostic^.source with (
                     | :Internal => :Some "Internal"
                     | :Lexer => :Some "Lexer"
                     | :Parser => :Some "Parser"
@@ -91,20 +91,20 @@ const Diagnostic = (
                         output.write("Error at ");
                     )
                 );
-                diagnostic.span |> Span.print;
+                &diagnostic^.span |> Span.print;
                 output.write(":\n");
-                diagnostic.message();
-                for info in diagnostic.related |> ArrayList.into_iter do (
+                diagnostic^.message();
+                for info in &diagnostic^.related |> ArrayList.iter do (
                     output.write("\n");
                     ansi.with_mode(
                         :Dim,
                         () => (
                             output.write("Note: at ");
-                            Span.print(info.span);
+                            Span.print(&info^.span);
                             output.write("\n");
                         ),
                     );
-                    info.message();
+                    info^.message();
                 );
                 output.write("\n\n");
             ),
@@ -114,7 +114,7 @@ const Diagnostic = (
     const default_handler = (.stop_on_error :: Bool) -> Handler => {
         .stop_on_error,
         .handle = (diagnostic :: Diagnostic.t) => (
-            print(diagnostic);
+            print(&diagnostic);
             if stop_on_error then (
                 std.sys.exit(-1);
             );

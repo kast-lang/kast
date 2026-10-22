@@ -1,3 +1,5 @@
+dbg.print(__FILE__);
+dbg.print(std.path.dirname(__FILE__));
 std.sys.chdir(std.path.dirname(__FILE__));
 
 let initialize = std.fs.read_file("initialize.json");
@@ -12,8 +14,15 @@ const write_message = (content :: String) => (
     std.io.stdout.write(content);
 );
 
+const get_time = () -> Float64 => (
+    @native "performance.now()"
+);
+
 const sleep = (.millis :: Float64) => (
-    @native "await new Promise(resolve => setTimeout(resolve, \(millis)))"
+    # @native "await new Promise(resolve => setTimeout(resolve, \(millis)))"
+    let start = get_time();
+    let finish = start + millis / 1000;
+    while get_time() < finish do ();
 );
 
 write_message(initialize);

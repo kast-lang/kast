@@ -30,7 +30,7 @@ const TokenStream = (
         self :: &mut TokenStream.t,
         { .id } :: Recording,
     ) -> ArrayList.t[Token.t] => (
-        match &mut self^.recordings |> OrdMap.remove(id) with (
+        match &mut self^.recordings |> OrdMap.remove(&id) with (
             | :Some tokens => tokens
             | :None => panic("Recording not found")
         )

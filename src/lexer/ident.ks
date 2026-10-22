@@ -16,9 +16,9 @@ const read_ident :: ReadFn = () => with_return (
     Reader.advance(reader);
     reader |> Reader.read_while(c => Char.is_ascii_alphanumeric(c) or c == '_');
     let end = reader^.position.string_encoding_index;
-    let raw = String.substring(reader^.contents, start, end - start);
+    let raw = String.from_str(String.substring(&reader^.contents^ |> as_str, start, end - start));
     :Some :Ident {
-        .raw,
+        .raw = String.clone(&raw),
         .string = :None,
         .name = raw,
     }
@@ -32,7 +32,7 @@ const read_raw_ident :: ReadFn = () => with_return (
         return :None;
     );
     let at_token :: Token.t = {
-        .shape = :Punct { .raw = "@" },
+        .shape = Rc.new(:Punct { .raw = String.from_str("@") }),
         .span = Span.single_char(
             .position = reader^.position,
             .char = :Some '@',
@@ -54,11 +54,11 @@ const read_raw_ident :: ReadFn = () => with_return (
         .end,
         .path = lexer^.source.path,
     };
-    let raw = String.substring(
-        reader^.contents,
+    let raw = String.from_str(String.substring(
+        &reader^.contents^ |> as_str,
         start.string_encoding_index,
         end.string_encoding_index - start.string_encoding_index,
-    );
+    ));
     let string = match string_token with (
         | :String string => string
         | :InterpolatedString _ => (

@@ -1,16 +1,17 @@
 use (import "./position.ks").*;
+use std.rc.Rc;
 
 module:
 
 const Reader = newtype {
-    .contents :: String,
+    .contents :: Rc.t[String],
     .position :: Position,
 };
 
 impl Reader as module = (
     module:
 
-    const new = (contents :: String) -> Reader => {
+    const new = (contents :: Rc.t[String]) -> Reader => {
         .contents,
         .position = Position.beginning(),
     };
@@ -19,13 +20,13 @@ impl Reader as module = (
         if reader^.position.string_encoding_index == 0 then (
             :None
         ) else (
-            :Some (reader^.contents |> String.at(reader^.position.string_encoding_index - 1))
+            :Some (&reader^.contents^ |> as_str |> String.at(reader^.position.string_encoding_index - 1))
         )
     );
 
     const peek = (reader :: &Reader) -> Option.t[Char] => (
-        if reader^.position.string_encoding_index < reader^.contents |> String.length then (
-            :Some (reader^.contents |> String.at(reader^.position.string_encoding_index))
+        if reader^.position.string_encoding_index < &reader^.contents^ |> as_str |> String.length then (
+            :Some (&reader^.contents^ |> as_str |> String.at(reader^.position.string_encoding_index))
         ) else (
             :None
         )
@@ -35,8 +36,8 @@ impl Reader as module = (
         match peek(reader) with (
             | :Some peek => (
                 let next_index = reader^.position.string_encoding_index + Char.string_encoding_len(peek);
-                if next_index < reader^.contents |> String.length then (
-                    :Some (reader^.contents |> String.at(next_index))
+                if next_index < &reader^.contents^ |> as_str |> String.length then (
+                    :Some (&reader^.contents^ |> as_str |> String.at(next_index))
                 ) else (
                     :None
                 )
@@ -50,13 +51,13 @@ impl Reader as module = (
         &mut reader^.position |> Position.advance(c);
     );
 
-    const read_while = (reader :: &mut Reader, f :: Char -> Bool) -> String => (
+    const read_while = (reader :: &mut Reader, f :: Char -> Bool) -> &str => (
         let start = reader^.position.string_encoding_index;
         while peek(&reader^) is :Some c do (
             if not f(c) then break;
             advance(reader);
         );
         let end = reader^.position.string_encoding_index;
-        reader^.contents |> String.substring(start, end - start)
+        &reader^.contents^ |> as_str |> String.substring(start, end - start)
     );
 );

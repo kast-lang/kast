@@ -2,19 +2,19 @@ use (import "../diagnostic.ks").*;
 use (import "../log.ks").*;
 use (import "../output.ks").*;
 use (import "../id.ks").*;
-use (import "../lsp/_lib.ks").*;
+# use (import "../lsp/_lib.ks").*;
 use (import "./common.ks").*;
-use (import "./format.ks").*;
-use (import "./highlight.ks").*;
-use (import "./parse_json.ks").*;
-use (import "./parse_syntax_rules.ks").*;
-use (import "./parse_syntax_ruleset.ks").*;
-use (import "./parse.ks").*;
-use (import "./repl.ks").*;
-use (import "./run.ks").*;
-use (import "./structural_find_and_replace.ks").*;
+# use (import "./format.ks").*;
+# use (import "./highlight.ks").*;
+# use (import "./parse_json.ks").*;
+# use (import "./parse_syntax_rules.ks").*;
+# use (import "./parse_syntax_ruleset.ks").*;
+# use (import "./parse.ks").*;
+# use (import "./repl.ks").*;
+# use (import "./run.ks").*;
+# use (import "./structural_find_and_replace.ks").*;
 use (import "./tokenize.ks").*;
-use (import "./mini.ks").*;
+# use (import "./mini.ks").*;
 
 with IdGenCtx = IdGen.new();
 
@@ -34,17 +34,17 @@ const Args = (
 
     const Subcommand = newtype (
         | :Tokenize Tokenize.Args.t
-        | :ParseSyntaxRules ParseSyntaxRules.Args.t
-        | :ParseSyntaxRuleset ParseSyntaxRuleset.Args.t
-        | :Parse Parse.Args.t
-        | :ParseJson ParseJson.Args.t
-        | :Highlight Highlight.Args.t
-        | :Format Format.Args.t
-        | :Lsp Lsp.CliArgs.t
-        | :StructuralFindAndReplace StructuralFindAndReplace.Args.t
-        | :Repl Repl.Args.t
-        | :Run Run.Args.t
-        | :Mini Mini.Args.t
+        # | :ParseSyntaxRules ParseSyntaxRules.Args.t
+        # | :ParseSyntaxRuleset ParseSyntaxRuleset.Args.t
+        # | :Parse Parse.Args.t
+        # | :ParseJson ParseJson.Args.t
+        # | :Highlight Highlight.Args.t
+        # | :Format Format.Args.t
+        # | :Lsp Lsp.CliArgs.t
+        # | :StructuralFindAndReplace StructuralFindAndReplace.Args.t
+        # | :Repl Repl.Args.t
+        # | :Run Run.Args.t
+        # | :Mini Mini.Args.t
     );
 
     const t = newtype {
@@ -61,6 +61,7 @@ const Args = (
                 if arg == "lex" or arg == "tokenize" then (
                     unwind subcommand (:Tokenize Tokenize.Args.parse(i + 1));
                 );
+                @comment_out (
                 if arg == "parse-syntax-rules" then (
                     unwind subcommand (:ParseSyntaxRules ParseSyntaxRules.Args.parse(i + 1));
                 );
@@ -94,9 +95,11 @@ const Args = (
                 if arg == "mini" then (
                     unwind subcommand (:Mini Mini.Args.parse(i + 1));
                 );
+                );
                 &mut common |> Common.Args.parse_arg(&mut i);
             );
-            :Repl Repl.Args.default()
+            panic("default is repl commented out")
+            # :Repl Repl.Args.default()
         );
         {
             .subcommand,
@@ -120,15 +123,15 @@ with Output = (@current Stdout);
 with Diagnostic.HandlerContext = Diagnostic.default_handler(.stop_on_error = common_args.stop_on_error);
 match subcommand with (
     | :Tokenize args => Tokenize.run(common_args, args)
-    | :ParseSyntaxRules args => ParseSyntaxRules.run(common_args, args)
-    | :ParseSyntaxRuleset args => ParseSyntaxRuleset.run(common_args, args)
-    | :Parse args => Parse.run(common_args, args)
-    | :ParseJson args => ParseJson.run(common_args, args)
-    | :Highlight args => Highlight.run(common_args, args)
-    | :Format args => Format.run(common_args, args)
-    | :Lsp args => Lsp.run(args)
-    | :StructuralFindAndReplace args => StructuralFindAndReplace.run(common_args, args)
-    | :Repl args => Repl.run(common_args, args)
-    | :Run args => Run.run(common_args, args)
-    | :Mini args => Mini.run(common_args, args)
+    # | :ParseSyntaxRules args => ParseSyntaxRules.run(common_args, args)
+    # | :ParseSyntaxRuleset args => ParseSyntaxRuleset.run(common_args, args)
+    # | :Parse args => Parse.run(common_args, args)
+    # | :ParseJson args => ParseJson.run(common_args, args)
+    # | :Highlight args => Highlight.run(common_args, args)
+    # | :Format args => Format.run(common_args, args)
+    # | :Lsp args => Lsp.run(args)
+    # | :StructuralFindAndReplace args => StructuralFindAndReplace.run(common_args, args)
+    # | :Repl args => Repl.run(common_args, args)
+    # | :Run args => Run.run(common_args, args)
+    # | :Mini args => Mini.run(common_args, args)
 );
