@@ -6,6 +6,7 @@ use (import "./syntax_ruleset.ks").*;
 use (import "./token.ks").*;
 use (import "./token_stream.ks").*;
 use (import "./log.ks").*;
+use (import "./rc_str.ks").*;
 
 const report_error_and_unwind = [T] (span :: Span, message :: () -> ()) -> T => (
     let diagnostic = {
@@ -25,22 +26,21 @@ const SyntaxParser = (
 
     const expect_and_advance = (
         tokens :: &mut TokenStream.t,
-        expected_raw :: String,
+        expected_raw :: &str,
     ) => (
         let actual = &tokens^ |> TokenStream.peek;
-        let actual_raw = actual.shape |> Token.Shape.raw;
+        let actual_raw = &actual |> Token.raw;
         if actual_raw != expected_raw then (
             report_error_and_unwind(
                 actual.span,
                 () => (
-                    let output = @current Output;
-                    output.write("Expected ");
+                    write_str("Expected ");
                     ansi.with_mode(
                         :Magenta,
-                        () => output.write(expected_raw),
+                        () => write_str(expected_raw),
                     );
-                    output.write(", got ");
-                    actual.shape |> Token.Shape.print;
+                    write_str(", got ");
+                    &actual.shape^ |> Token.Shape.print;
                 ),
             );
         ) else (
@@ -50,10 +50,10 @@ const SyntaxParser = (
 
     const peek_is = (
         tokens :: &mut TokenStream.t,
-        raw :: String,
+        raw :: &str,
     ) -> Bool => (
         let peek = &tokens^ |> TokenStream.peek;
-        peek.shape |> Token.Shape.raw == raw
+        &peek |> Token.raw == raw
     );
 
     const SyntaxCommand = newtype (
@@ -84,16 +84,15 @@ const SyntaxParser = (
         report_error_and_unwind(
             peek.span,
             () => (
-                let output = @current Output;
-                output.write("Expected wrap mode (never/always/if_any/if_any_assoc), got ");
-                peek.shape |> Token.Shape.print;
+                write_str("Expected wrap mode (never/always/if_any/if_any_assoc), got ");
+                &peek.shape^ |> Token.Shape.print;
             ),
         )
     );
 
     const read_group = (
         token_stream :: &mut TokenStream.t,
-        .name :: Option.t[String],
+        .name :: Option.t[RcStr],
         .rule_priority :: SyntaxRule.Priority,
     ) -> SyntaxRule.Group => with_return (
         let first_token = &token_stream^ |> TokenStream.peek;
@@ -140,16 +139,15 @@ const SyntaxParser = (
         token_stream :: &mut TokenStream.t,
     ) -> SyntaxRule.Priority => (
         let peek = &token_stream^ |> TokenStream.peek;
-        if peek.shape is :Number { .raw, ... } then (
+        if peek.shape^ is :Number { .raw, ... } then (
             token_stream |> TokenStream.advance;
-            raw |> parse
+            &raw |> RcStr.as_str |> parse
         ) else (
             report_error_and_unwind(
                 peek.span,
                 () => (
-                    let output = @current Output;
-                    output.write("Expected syntax rule priority (number token), got ");
-                    peek.shape |> Token.Shape.print;
+                    write_str("Expected syntax rule priority (number token), got ");
+                    &peek.shape^ |> Token.Shape.print;
                 ),
             )
         )
@@ -169,8 +167,7 @@ const SyntaxParser = (
                     report_error_and_unwind(
                         peek.span,
                         () => (
-                            let output = @current Output;
-                            output.write("\"<-\" can only be specified in beginning of the rule");
+                            write_str("\"<-\" can only be specified in beginning of the rule");
                         ),
                     );
                 );
@@ -179,9 +176,9 @@ const SyntaxParser = (
             );
         );
         let peek = &token_stream^ |> TokenStream.peek;
-        match peek.shape with (
+        match peek.shape^ with (
             | :Ident { .name, ... } => (
-                let name = if name == "_" then (
+                let name = if &name |> RcStr.as_str == "_" then (
                     :None
                 ) else (
                     :Some name
@@ -218,9 +215,8 @@ const SyntaxParser = (
                         report_error_and_unwind(
                             peek.span,
                             () => (
-                                let output = @current Output;
-                                output.write("Expected priority filter (\"any\" or \">\" or \">=\"), got ");
-                                peek.shape |> Token.Shape.print;
+                                write_str("Expected priority filter (\"any\" or \">\" or \">=\"), got ");
+                                &peek.shape^ |> Token.Shape.print;
                             ),
                         )
                     )
@@ -235,22 +231,21 @@ const SyntaxParser = (
                 };
             )
             | :String { .contents, ... } => (
-                if String.is_whitespace(contents) then (
+                if String.is_whitespace(&contents |> RcStr.as_str) then (
                     let no_wrap = contents;
                     token_stream |> TokenStream.advance;
                     let wrap = if token_stream |> peek_is("/") then (
                         token_stream |> TokenStream.advance;
                         let peek = &token_stream^ |> TokenStream.peek;
-                        if peek.shape is :String { .contents, ... } then (
+                        if peek.shape^ is :String { .contents, ... } then (
                             token_stream |> TokenStream.advance;
                             contents
                         ) else (
                             report_error_and_unwind(
                                 peek.span,
                                 () => (
-                                    let output = @current Output;
-                                    output.write("Expected whitespace when wrapped (string token), got ");
-                                    peek.shape |> Token.Shape.print;
+                                    write_str("Expected whitespace when wrapped (string token), got ");
+                                    &peek.shape^ |> Token.Shape.print;
                                 ),
                             )
                         )
@@ -265,9 +260,8 @@ const SyntaxParser = (
                 report_error_and_unwind(
                     peek.span,
                     () => (
-                        let output = @current Output;
-                        output.write("Expected syntax rule part, got ");
-                        peek.shape |> Token.Shape.print;
+                        write_str("Expected syntax rule part, got ");
+                        &peek.shape^ |> Token.Shape.print;
                     ),
                 )
             )
@@ -281,18 +275,17 @@ const SyntaxParser = (
     ) -> SyntaxRule.t => (
         let { .start = span_start, .path, ... } = (&token_stream^ |> TokenStream.peek).span;
 
-        let name :: String = (
+        let name :: RcStr = (
             let peek = &token_stream^ |> TokenStream.peek;
-            if peek.shape is :String { .contents, ... } then (
+            if peek.shape^ is :String { .contents, ... } then (
                 token_stream |> TokenStream.advance;
                 contents
             ) else (
                 report_error_and_unwind(
                     peek.span,
                     () => (
-                        let output = @current Output;
-                        output.write("Expected syntax rule name (string token), got ");
-                        peek.shape |> Token.Shape.print;
+                        write_str("Expected syntax rule name (string token), got ");
+                        &peek.shape^ |> Token.Shape.print;
                     ),
                 )
             )
@@ -316,9 +309,8 @@ const SyntaxParser = (
                 report_error_and_unwind(
                     peek.span,
                     () => (
-                        let output = @current Output;
-                        output.write("Expected \";\" to finish rule, got ");
-                        peek.shape |> Token.Shape.print;
+                        write_str("Expected \";\" to finish rule, got ");
+                        &peek.shape^ |> Token.Shape.print;
                     ),
                 )
             );
@@ -372,15 +364,15 @@ const SyntaxParser = (
             with Diagnostic.UnwindableHandler = {
                 .unwind_on_error = () => (
                     if token_stream^.index == index_before then (
-                        Log.debug_msg("skipping " + String.escape(Token.raw(peek)));
+                        Log.debug_msg(&format!("skipping \(String.escape(Token.raw(&peek)))") |> as_str);
                         token_stream |> TokenStream.advance;
                     );
                     continue
                 ),
             };
-            Log.trace_msg("parse_syntax_rules: peek = " + String.escape(Token.raw(peek)));
-            if peek.shape is :Eof then break;
-            if peek.shape is :Comment _ then (
+            Log.trace_msg(&format!("parse_syntax_rules: peek = \(String.escape(Token.raw(&peek)))") |> as_str);
+            if peek.shape^ is :Eof then break;
+            if peek.shape^ is :Comment _ then (
                 token_stream |> TokenStream.advance;
                 continue;
             );
@@ -390,7 +382,7 @@ const SyntaxParser = (
                     Log.debug_msg("parsed from_scratch");
                 )
                 | :Rule rule => (
-                    Log.debug_msg("parsed rule " + String.escape(rule.name));
+                    Log.debug_msg(&format!("parsed rule \(String.escape(&rule.name |> RcStr.as_str))") |> as_str);
                     &mut result |> ArrayList.push_back(rule);
                 )
             );

@@ -7,7 +7,7 @@ use (import "./common.ks").*;
 # use (import "./format.ks").*;
 # use (import "./highlight.ks").*;
 # use (import "./parse_json.ks").*;
-# use (import "./parse_syntax_rules.ks").*;
+use (import "./parse_syntax_rules.ks").*;
 # use (import "./parse_syntax_ruleset.ks").*;
 # use (import "./parse.ks").*;
 # use (import "./repl.ks").*;
@@ -34,7 +34,7 @@ const Args = (
 
     const Subcommand = newtype (
         | :Tokenize Tokenize.Args.t
-        # | :ParseSyntaxRules ParseSyntaxRules.Args.t
+        | :ParseSyntaxRules ParseSyntaxRules.Args.t
         # | :ParseSyntaxRuleset ParseSyntaxRuleset.Args.t
         # | :Parse Parse.Args.t
         # | :ParseJson ParseJson.Args.t
@@ -61,10 +61,10 @@ const Args = (
                 if arg == "lex" or arg == "tokenize" then (
                     unwind subcommand (:Tokenize Tokenize.Args.parse(i + 1));
                 );
-                @comment_out (
                 if arg == "parse-syntax-rules" then (
                     unwind subcommand (:ParseSyntaxRules ParseSyntaxRules.Args.parse(i + 1));
                 );
+                @comment_out (
                 if arg == "parse-syntax-ruleset" then (
                     unwind subcommand (:ParseSyntaxRuleset ParseSyntaxRuleset.Args.parse(i + 1));
                 );
@@ -123,7 +123,7 @@ with Output = (@current Stdout);
 with Diagnostic.HandlerContext = Diagnostic.default_handler(.stop_on_error = common_args.stop_on_error);
 match subcommand with (
     | :Tokenize args => Tokenize.run(common_args, args)
-    # | :ParseSyntaxRules args => ParseSyntaxRules.run(common_args, args)
+    | :ParseSyntaxRules args => ParseSyntaxRules.run(common_args, args)
     # | :ParseSyntaxRuleset args => ParseSyntaxRuleset.run(common_args, args)
     # | :Parse args => Parse.run(common_args, args)
     # | :ParseJson args => ParseJson.run(common_args, args)

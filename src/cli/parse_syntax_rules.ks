@@ -21,7 +21,7 @@ const ParseSyntaxRules = (
         const parse = start_index -> t => (
             let mut paths = ArrayList.new();
             for i in start_index..std.sys.argc() do (
-                &mut paths |> ArrayList.push_back(std.sys.argv_at(i));
+                &mut paths |> ArrayList.push_back(String.from_str(std.sys.argv_at(i)));
             );
             {
                 .paths,
@@ -33,9 +33,13 @@ const ParseSyntaxRules = (
         let process = (path :: SourcePath) => (
             ansi.with_mode(
                 :Bold,
-                () => (@current Output).write("Parsing syntax rules from " + to_string(path) + "\n\n"),
+                () => (
+                    write_str("Parsing syntax rules from ");
+                    SourcePath.print(&path);
+                    write_str("\n\n");
+                ),
             );
-            let mut lexer = Lexer.new(Source.read(path));
+            let mut lexer = Lexer.new(Source.read(&path));
             let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
             let rules = SyntaxParser.parse_syntax_rules(&mut token_stream);
             dbg.print(rules);
@@ -44,7 +48,7 @@ const ParseSyntaxRules = (
             process(:Stdin);
         );
         for path in args.paths |> ArrayList.into_iter do (
-            process(SourcePath.parse(path));
+            process(SourcePath.parse(&path |> as_str));
         );
     )
 );

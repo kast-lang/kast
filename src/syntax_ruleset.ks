@@ -2,6 +2,7 @@ use (import "./log.ks").*;
 use (import "./output.ks").*;
 use (import "./diagnostic.ks").*;
 use (import "./syntax_rule.ks").*;
+use (import "./rc_str.ks").*;
 use std.collections.OrdMap;
 use std.collections.OrdSet;
 
@@ -11,24 +12,24 @@ const SyntaxRuleset = (
     module:
 
     const t = newtype {
-        .keywords :: OrdSet.t[String],
+        .keywords :: OrdSet.t[RcStr],
         .root :: Node,
-        .syntax_keyword :: Option.t[String],
+        .syntax_keyword :: Option.t[RcStr],
     };
 
     const EdgeKey = newtype (
-        | :Keyword String
+        | :Keyword RcStr
         | :Value
     );
 
-    const compare_edge_key = (a :: EdgeKey, b :: EdgeKey) -> std.cmp.Ordering => (
-        match { a, b } with (
-            | { :Keyword a, :Keyword b } => std.cmp.default_compare(a, b)
+    impl EdgeKey as std.cmp.Ord = {
+        .compare = (a, b) => match { a^, b^ } with (
+            | { :Keyword a, :Keyword b } => std.cmp.default_compare(&a, &b)
             | { :Keyword _, :Value } => :Less
             | { :Value, :Keyword _ } => :Greater
             | { :Value, :Value } => :Equal
-        )
-    );
+        ),
+    };
 
     const Edge = newtype {
         .key :: EdgeKey,
@@ -41,7 +42,7 @@ const SyntaxRuleset = (
 
     const EdgeMap = OrdMap.t[EdgeKey, Edge];
     const new_edge_map = () -> EdgeMap => (
-        OrdMap.new_with_compare(compare_edge_key)
+        OrdMap.new()
     );
 
     const Node = newtype {
@@ -57,7 +58,7 @@ const SyntaxRuleset = (
     const new = () -> SyntaxRuleset.t => {
         .keywords = OrdSet.new(),
         .root = new_node(),
-        .syntax_keyword = :Some "@syntax",
+        .syntax_keyword = :Some RcStr.from_String(String.from_str("@syntax")),
     };
 
     const Context = @context type {
@@ -154,19 +155,17 @@ const SyntaxRuleset = (
                         .source = :Other,
                         .span = rule.span,
                         .message = () => (
-                            let output = @current Output;
-                            output.write("Conflicting syntax rules ");
-                            output.write(String.escape(existing_rule.name));
-                            output.write(" and ");
-                            output.write(String.escape(rule.name));
+                            write_str("Conflicting syntax rules ");
+                            write_escaped(&existing_rule.name);
+                            write_str(" and ");
+                            write_escaped(&rule.name);
                         ),
                         .related = (
                             let mut related = ArrayList.new();
                             let existing_rule_info = {
                                 .span = existing_rule.span,
                                 .message = () => (
-                                    let output = @current Output;
-                                    output.write("Existing rule is defined here");
+                                    write_str("Existing rule is defined here");
                                 ),
                             };
                             &mut related |> ArrayList.push_back(existing_rule_info);
@@ -175,7 +174,7 @@ const SyntaxRuleset = (
                     };
                     Diagnostic.report(diagnostic);
                 );
-                Log.debug_msg("Added rule " + rule.name);
+                Log.debug_msg(&format!("Added rule \(rule.name)") |> as_str);
                 node^.terminal = :Some rule;
             ),
         );
@@ -190,30 +189,30 @@ const SyntaxRuleset = (
         if node^.terminal is :Some rule then (
             ansi.with_mode(
                 :Green,
-                () => output.write(String.escape(rule.name)),
+                () => write_escaped(&rule.name),
             );
-            output.write("\n");
+            write_str("\n");
         );
         for &{ .key = _, .value = ref edge } in &node^.next |> OrdMap.iter do (
             match edge^.key with (
-                | :Keyword keyword => (
+                | :Keyword ref keyword => (
                     ansi.with_mode(
                         :Magenta,
-                        () => output.write(keyword),
+                        () => write(keyword),
                     );
                 )
                 | :Value => (
                     ansi.with_mode(
                         :Yellow,
-                        () => output.write("<value>"),
+                        () => write_str("<value>"),
                     );
                 )
             );
-            output.write(" {\n");
+            write_str(" {\n");
             output.inc_indentation();
             print_node(&edge^.target);
             output.dec_indentation();
-            output.write("}\n");
+            write_str("}\n");
         );
     );
 );

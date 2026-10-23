@@ -1,4 +1,5 @@
 use (import "./span.ks").*;
+use (import "./rc_str.ks").*;
 
 module:
 
@@ -6,7 +7,7 @@ const SyntaxRule = (
     module:
 
     const t = newtype {
-        .name :: String,
+        .name :: RcStr,
         .priority :: Priority,
         .parts :: ArrayList.t[Part],
         .span :: Span,
@@ -48,33 +49,33 @@ const SyntaxRule = (
         a :: PriorityFilter,
         b :: PriorityFilter,
     ) -> std.cmp.Ordering => with_return (
-        match std.cmp.default_compare(priority_filter_tag_idx(a), priority_filter_tag_idx(b)) with (
+        match std.cmp.default_compare(&priority_filter_tag_idx(a), &priority_filter_tag_idx(b)) with (
             | :Equal => ()
             | ordering => return ordering
         );
         match { a, b } with (
             | { :Any, :Any } => :Equal
-            | { :GreaterOrEqual a, :GreaterOrEqual b } => std.cmp.default_compare(a, b)
-            | { :Greater a, :Greater b } => std.cmp.default_compare(a, b)
+            | { :GreaterOrEqual a, :GreaterOrEqual b } => std.cmp.default_compare(&a, &b)
+            | { :Greater a, :Greater b } => std.cmp.default_compare(&a, &b)
             | _ => panic("unreachable")
         )
     );
 
     const Part = newtype (
         | :Value {
-            .name :: Option.t[String],
+            .name :: Option.t[RcStr],
             .priority_filter :: PriorityFilter,
         }
-        | :Keyword String
+        | :Keyword RcStr
         | :Group Group
         | :Whitespace {
-            .wrap :: String,
-            .no_wrap :: String,
+            .wrap :: RcStr,
+            .no_wrap :: RcStr,
         }
     );
 
     const Group = newtype {
-        .name :: Option.t[String],
+        .name :: Option.t[RcStr],
         .parts :: ArrayList.t[Part],
         .quantifier :: Quantifier,
         .wrap_mode :: Option.t[WrapMode],
