@@ -1,5 +1,6 @@
 #include <Kast/string.h>
 #include <Kast/type_info.h>
+#include <ctype.h>
 
 TypeInfo String_TypeInfo = {
     .name = "String",
@@ -44,6 +45,14 @@ size_t Char_string_encoding_len(Char c) {
     return Char_utf8_len(c);
 }
 
+bool Char_is_control(Char c) {
+    return (0 <= c && c <= 0x1f) || (0x7f <= c && c <= 0x9f);
+}
+
+bool Char_is_print(Char c) {
+    return !Char_is_control(c);
+}
+
 void utf8_char_encode_step(char** s, Char c) {
     size_t bytes = Char_utf8_len(c);
     for (size_t i = bytes - 1;; i--) {
@@ -63,12 +72,57 @@ void utf8_char_encode_step(char** s, Char c) {
     *s += bytes;
 }
 
+void Char_write_maybe_escape(Char c, char quote_char, Kast_Formatter* fmt) {
+    switch (c) {
+        case '0':
+            Kast_Formatter_printf(fmt, "\\0");
+            break;
+        case '\\':
+            Kast_Formatter_printf(fmt, "\\\\");
+            break;
+        case '\n':
+            Kast_Formatter_printf(fmt, "\\n");
+            break;
+        case '\r':
+            Kast_Formatter_printf(fmt, "\\r");
+            break;
+        case '\b':
+            Kast_Formatter_printf(fmt, "\\b");
+            break;
+        case '\t':
+            Kast_Formatter_printf(fmt, "\\t");
+            break;
+        case '\f':
+            Kast_Formatter_printf(fmt, "\\f");
+            break;
+        default: {
+            if (c == (Char)quote_char) {
+                Kast_Formatter_printf(fmt, "\\%c", quote_char);
+            } else if (Char_is_print(c)) {
+                char s[4];
+                char* out = s;
+                utf8_char_encode_step(&out, c);
+                size_t byte_length = out - s;
+                Kast_Formatter_printf(fmt, "%.*s", (int)byte_length, s);
+            } else {
+                if (c <= 0xFF) {
+                    Kast_Formatter_printf(fmt, "\\x%02X", c);
+                } else if (c <= 0xFFFF) {
+                    Kast_Formatter_printf(fmt, "\\x%04X", c);
+                } else if (c <= 0xFFFFFF) {
+                    Kast_Formatter_printf(fmt, "\\x%06X", c);
+                } else {
+                    Kast_Formatter_printf(fmt, "\\x%08X", c);
+                }
+            }
+        }
+    }
+}
+
 void Char_dbg_write(Char* c, Kast_Formatter* fmt) {
-    char s[4];
-    char* out = s;
-    utf8_char_encode_step(&out, *c);
-    size_t byte_length = out - s;
-    Kast_Formatter_printf(fmt, "'%.*s'", byte_length, s);
+    Kast_Formatter_printf(fmt, "'");
+    Char_write_maybe_escape(*c, '\'', fmt);
+    Kast_Formatter_printf(fmt, "'");
 }
 
 size_t Char_utf8_length_based_on_first_byte(char byte) {
@@ -188,7 +242,8 @@ int StringView_cmp(StringView a, StringView b) {
 }
 
 void String_dbg_write(String* s, Kast_Formatter* fmt) {
-    Kast_Formatter_printf(fmt, "\"%.*s\"", s->length, s->buf);
+    StringView view = {.length = s->length, .buf = s->buf};
+    StringView_dbg_write(&view, fmt);
 }
 
 void String_dbg_write_type_erased(void* s, Kast_Formatter* fmt) {
@@ -196,7 +251,13 @@ void String_dbg_write_type_erased(void* s, Kast_Formatter* fmt) {
 }
 
 void StringView_dbg_write(StringView* s, Kast_Formatter* fmt) {
-    Kast_Formatter_printf(fmt, "\"%.*s\"", s->length, s->buf);
+    Kast_Formatter_printf(fmt, "\"");
+    const char* decoder = s->buf;
+    while ((size_t)(decoder - s->buf) < s->length) {
+        Char c = utf8_char_decode_step(&decoder);
+        Char_write_maybe_escape(c, '"', fmt);
+    }
+    Kast_Formatter_printf(fmt, "\"");
 }
 
 void StringView_dbg_write_type_erased(void* s, Kast_Formatter* fmt) {
