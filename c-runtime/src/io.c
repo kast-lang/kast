@@ -92,7 +92,7 @@ String Kast_read_exactly(FILE* f, size_t size) {
     char* buf = Kast_allocate_raw(size);
     size_t read = 0;
     while (read < size) {
-        size_t new_read = fread(buf, 1, size - read, f);
+        size_t new_read = fread(buf + read, 1, size - read, f);
         if (!new_read) {
             break;
         }
@@ -102,9 +102,40 @@ String Kast_read_exactly(FILE* f, size_t size) {
     return String_from_raw_parts(buf, size);
 }
 
+String Kast_read_to_end_slowly(FILE* f) {
+    char* buf = NULL;
+    size_t capacity = 0;
+    size_t length = 0;
+    for (;;) {
+        if (length >= capacity) {
+            size_t new_capacity = capacity * 2;
+            if (new_capacity == 0) {
+                new_capacity = 4;
+            }
+            buf = Kast_reallocate_array(
+                &Byte_TypeInfo,
+                buf,
+                capacity,
+                new_capacity
+            );
+            capacity = new_capacity;
+        }
+        size_t new_read = fread(buf + length, 1, capacity - length, f);
+        if (new_read == 0) {
+            break;
+        }
+        length += new_read;
+    }
+    check_ferror(f);
+    return String_from_raw_parts(buf, length);
+}
+
 String Kast_read_to_end(FILE* f) {
     int res = fseek(f, 0, SEEK_END);
     if (res < 0) {
+        if (errno == ESPIPE) {
+            return Kast_read_to_end_slowly(f);
+        }
         exit_errno("Kast_read_to_end.fseek(1)");
     }
     long size = ftell(f);
