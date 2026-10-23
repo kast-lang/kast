@@ -46,8 +46,17 @@ const Tokenize = (
                 ),
             );
             match common_args.output_mode with (
+                | :None => (
+                    let source = Source.read(path);
+                    let mut lexer = Lexer.new(source);
+                    loop (
+                        let token = &mut lexer |> Lexer.next;
+                        if token.shape^ is :Eof then break;
+                    );
+                )
                 | :Human => (
-                    let mut lexer = Lexer.new(Source.read(path));
+                    let source = Source.read(path);
+                    let mut lexer = Lexer.new(source);
                     loop (
                         let token = &mut lexer |> Lexer.next;
                         &token |> Token.print_impl(.verbose = true);

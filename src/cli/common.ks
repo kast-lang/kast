@@ -59,6 +59,7 @@ const Common = (
 
         const t = newtype {
             .output_mode :: (
+                | :None
                 | :Human
                 | :Json
             ),
@@ -81,6 +82,8 @@ const Common = (
                 let mode = std.sys.argv_at(arg_idx^ + 1);
                 let mode = if mode == "human" then (
                     :Human
+                ) else if mode == "none" then (
+                    :None
                 ) else if mode == "json" then (
                     :Json
                 ) else (

@@ -32,15 +32,11 @@ impl Position as module = (
     };
 
     const advance = (pos :: &mut Position, c :: Char) => (
-        # TODO proper copy in kast
-        pos^ = { ...pos^ };
         pos^.string_encoding_index += Char.string_encoding_len(c);
         if c == '\n' then (
             pos^.line += 1;
             pos^.column = PositionColumn.zero();
         ) else (
-            # TODO proper copy in kast
-            pos^.column = { ...pos^.column };
             # TODO should be unicode width?
             # https://www.unicode.org/reports/tr11/
             pos^.column.display_width += Char.utf16_len(c);
