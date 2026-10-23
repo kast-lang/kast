@@ -46,6 +46,12 @@ impl RcStr as module = (
     );
 );
 
+impl RcStr as std.fmt.Display = {
+    .display = (self, fmt) => (
+        fmt^.write_str(self |> RcStr.as_str);
+    ),
+};
+
 impl RcStr as std.cmp.Ord = {
     .compare = (a, b) => std.cmp.default_compare(&(a |> RcStr.as_str), &(b |> RcStr.as_str)),
 };

@@ -3,6 +3,7 @@ use (import "./output.ks").*;
 use (import "./diagnostic.ks").*;
 use (import "./syntax_rule.ks").*;
 use (import "./rc_str.ks").*;
+use std.rc.Rc;
 use std.collections.OrdMap;
 use std.collections.OrdSet;
 
@@ -23,7 +24,7 @@ const SyntaxRuleset = (
     );
 
     impl EdgeKey as std.cmp.Ord = {
-        .compare = (a, b) => match { a^, b^ } with (
+        .compare = (a, b) => match ({ a^, b^ } :: { _, _ }) with (
             | { :Keyword a, :Keyword b } => std.cmp.default_compare(&a, &b)
             | { :Keyword _, :Value } => :Less
             | { :Value, :Keyword _ } => :Greater
@@ -46,7 +47,7 @@ const SyntaxRuleset = (
     );
 
     const Node = newtype {
-        .terminal :: Option.t[SyntaxRule.t],
+        .terminal :: Option.t[Rc.t[SyntaxRule.t]],
         .next :: EdgeMap,
     };
 
@@ -123,18 +124,18 @@ const SyntaxRuleset = (
                     let node = follow_edge(node, :Keyword keyword, .value_priority = :Any);
                     continuation(node);
                 )
-                | :Value value => (
-                    let node = follow_edge(node, :Value, .value_priority = value.priority_filter);
+                | :Value ref value => (
+                    let node = follow_edge(node, :Value, .value_priority = value^.priority_filter);
                     continuation(node);
                 )
-                | :Group group => (
-                    match group.quantifier with (
+                | :Group ref group => (
+                    match group^.quantifier with (
                         | :None => (
-                            follow_parts(node, &group.parts, .continuation);
+                            follow_parts(node, &group^.parts, .continuation);
                         )
                         | :Optional => (
                             continuation(node);
-                            follow_parts(node, &group.parts, .continuation);
+                            follow_parts(node, &group^.parts, .continuation);
                         )
                     )
                 )
@@ -144,26 +145,27 @@ const SyntaxRuleset = (
     );
 
     const add = (self :: &mut SyntaxRuleset.t, rule :: SyntaxRule.t) => (
-        with Context = { .ruleset = self, .rule = &rule };
+        let rule = Rc.new(rule);
+        with Context = { .ruleset = self, .rule = &rule^ };
         follow_parts(
             &mut self^.root,
-            &rule.parts,
+            &rule^.parts,
             .continuation = node => (
                 if node^.terminal is :Some existing_rule then (
                     let diagnostic = {
                         .severity = :Error,
                         .source = :Other,
-                        .span = rule.span,
+                        .span = rule^.span,
                         .message = () => (
                             write_str("Conflicting syntax rules ");
-                            write_escaped(&existing_rule.name);
+                            write_escaped(&existing_rule^.name);
                             write_str(" and ");
-                            write_escaped(&rule.name);
+                            write_escaped(&rule^.name);
                         ),
                         .related = (
                             let mut related = ArrayList.new();
                             let existing_rule_info = {
-                                .span = existing_rule.span,
+                                .span = existing_rule^.span,
                                 .message = () => (
                                     write_str("Existing rule is defined here");
                                 ),
@@ -174,7 +176,7 @@ const SyntaxRuleset = (
                     };
                     Diagnostic.report(diagnostic);
                 );
-                Log.debug_msg(&format!("Added rule \(rule.name)") |> as_str);
+                Log.debug_msg(&format!("Added rule \(rule^.name)") |> as_str);
                 node^.terminal = :Some rule;
             ),
         );
@@ -189,7 +191,7 @@ const SyntaxRuleset = (
         if node^.terminal is :Some rule then (
             ansi.with_mode(
                 :Green,
-                () => write_escaped(&rule.name),
+                () => write_escaped(&rule^.name),
             );
             write_str("\n");
         );
