@@ -133,17 +133,17 @@ const read_string_impl = (
         let mut start = reader^.position.string_encoding_index;
         let mut end = start;
         while Reader.peek(&reader^) is :Some c do (
-            reader |> Reader.advance;
             if c == '\n' then (
-                start = reader^.position.string_encoding_index;
+                start = reader^.position.string_encoding_index + 1;
                 end = start;
             ) else if Char.is_whitespace(c) then (
-                end = reader^.position.string_encoding_index;
+                end = reader^.position.string_encoding_index + 1;
             ) else (
                 break;
             );
+            reader |> Reader.advance;
         );
-        RcStr.substring(&reader^.contents, start, end)
+        RcStr.substring(&reader^.contents, start, end - start)
     ) else (
         empty_str()
     );

@@ -233,7 +233,7 @@ const Token = (
                                         :Green,
                                         () => (
                                             write(delimiter);
-                                            write(raw);
+                                            write_escaped_contents(raw, .delimiter);
                                             write(delimiter);
                                         ),
                                     );

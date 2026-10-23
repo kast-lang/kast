@@ -25,6 +25,14 @@ const write_escaped = (s :: &RcStr) => (
     write_str(&escaped |> as_str);
 );
 
+const write_escaped_contents = (s :: &RcStr, .delimiter :: &RcStr) => (
+    let escaped = String.escape_contents(
+        s |> RcStr.as_str,
+        .delimiter = delimiter |> RcStr.as_str,
+    );
+    write_str(&escaped |> as_str);
+);
+
 const new_std_output = (write :: &str -> (), .color :: Bool) -> OutputT => (
     let indentation_string = if color then "│   " else "    ";
     new_output(.write, .indentation_string, .color)
