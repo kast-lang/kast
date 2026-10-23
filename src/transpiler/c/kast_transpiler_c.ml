@@ -2407,7 +2407,7 @@ module Impl = struct
     let apply_expr : C_ast.expr = E_Apply { f; args } in
     (match result_ty with
      | T_Unit | T_Void -> insert_stmt (S_Expr apply_expr)
-     | _ -> let_var f_ty.result result_var (Some apply_expr));
+     | _ -> let_var ~drop:false f_ty.result result_var (Some apply_expr));
     insert_stmt
       (S_If
          { cond = E_Native [ N_Raw "are_we_unwinding()" ]
@@ -2418,7 +2418,7 @@ module Impl = struct
          });
     match result_ty with
     | T_Unit | T_Void -> None
-    | _ -> Some (claim_c (P_Ident result_var) f_ty.result)
+    | _ -> Some (E_Pure (Pure_Copy (P_Ident result_var)))
 
   and context_ty_name ({ id; ty } : Types.value_context_ty) : string = failwith __LOC__
   (* let name = gen_name "context" in *)
@@ -2560,10 +2560,11 @@ module Impl = struct
           (fun acc e ->
              (match acc with
               | None -> ()
-              | Some prev -> insert_stmt (S_Expr prev));
-             eval_expr e)
+              | Some prev -> execute_expr prev);
+             Some e)
           None
           list
+        |> Option.and_then eval_expr
       | Types.E_Stmt { expr } ->
         execute_expr expr;
         None
