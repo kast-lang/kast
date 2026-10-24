@@ -6,6 +6,7 @@ use (import "../lexer/_lib.ks").*;
 use (import "../token_stream.ks").*;
 use (import "../syntax_parser.ks").*;
 use (import "../syntax_ruleset.ks").*;
+use std.rc.Rc;
 
 module:
 
@@ -45,7 +46,7 @@ const ParseSyntaxRuleset = (
             let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
             let rules = SyntaxParser.parse_syntax_rules(&mut token_stream);
             for &rule in ArrayList.iter(&rules) do (
-                &mut ruleset |> SyntaxRuleset.add(rule);
+                &mut ruleset |> SyntaxRuleset.add(Rc.new(rule));
             );
         );
         if &args.paths |> ArrayList.length == 0 then (

@@ -1,10 +1,11 @@
 @syntax from_scratch;
+
 @syntax "core:module" 0 @wrap always = "module" ":" "\n" _ ->;
 @syntax "core:then" 0 @wrap always = _ ";" "\n" _ ->;
 @syntax "core:stmt" 0 @wrap always = _ ";";
 @syntax "core:use .*" 1 @wrap never = "use" " " _ ".*";
 @syntax "core:use" 1 @wrap never = "use" " " _;
-@syntax "core:impl syntax" 1 @wrap never = "impl" " " "syntax" " " "(" pattern:any ")" " " "=" " " impl;
+@syntax "core:impl syntax" 1 @wrap never = "impl" " " "syntax" " " name " " "=" " " impl;
 @syntax "core:impl_cast" 1 @wrap never = "impl" " " value " " "as" " " target " " "=" " " impl;
 @syntax "core:impl_as_module" 1 @wrap never = "impl" " " value " " "as" " " "module" " " "=" " " impl;
 @syntax "core:assign" 2 @wrap never = assignee " " "=" " " value;
@@ -15,9 +16,11 @@
 @syntax "div_assign" 2 @wrap never = _ " " "/=" " " _;
 @syntax "rem_assign" 2 @wrap never = _ " " "%=" " " _;
 @syntax "core:let" 3 @wrap never = "let" " " pattern;
+@syntax "core:let &context" 3 @wrap never = "let" " " "&" "@context" " " "=" " " _;
 @syntax "let rec" 3 @wrap never = "let" " " "rec" " " pattern " " "=" " " value;
 # @syntax "let else" 3 @wrap never = "let" " " pattern " " "=" " " value " " "else" " " else_case;
 
+@syntax "core:empty_variant" 5000 @wrap never = "@empty_variant";
 @syntax "core:leading union" 3.99 @wrap never = "|" " " _;
 @syntax "core:union" 4 @wrap if_any_assoc = <- _ " "/"\n" "|" " " _;
 
@@ -30,19 +33,20 @@
 @syntax "core:field init" 6 @wrap never = "." label type=(" " "::" " " _)? value=(" " "=" " " _)?;
 
 @syntax "core:type ascribe" 6.2 @wrap never = expr " " "::" " " type;
-@syntax "prefix type ascribe" 6.2 @wrap never = _=(@wrap if_any "(" "::" " "/"\n\t" type:any ""/"\n\\" ")") " " expr;
+@syntax "prefix type ascribe" 6.2 @wrap never = _=(@wrap if_any "(" "::" " "/"\n\t" type:any ""/"\\\n" ")") " " expr;
 
-@syntax "core:generic" 6.5 @wrap never = "[" ""/"\n\t" args:any ""/"\n\\" "]" " " body ->;
-@syntax "generic_non_dependent" 6.5 @wrap never = "[" ""/"\n\t" args:any ""/"\n\\" "]" " " "->" " " body ->;
-@syntax "core:fn_type" 6.5 @wrap never = async=("async" _=("=" value)? " ")? args " " context=("with" " " _ " ")? result=("->" " " _ _=(" " "with" " " context " ")?);
+@syntax "core:generic" 6.5 @wrap never = "[" ""/"\n\t" arg:any ""/"\\\n" "]" " " body ->;
+@syntax "generic_non_dependent" 6.5 @wrap never = "[" ""/"\n\t" arg:any ""/"\\\n" "]" " " "->" " " body ->;
+@syntax "core:fn_type" 6.5 @wrap never = raw_fn=("fn" " ")? call_convention=("@call" " " _: >= 5000 " ")? async=("async" _=("=" value)? " ")? arg " " context=("with" " " _ " ")? result=("->" " " _ _=(" " "with" " " context " ")?);
 
-@syntax "core:fn" 7 @wrap never = async=("async" _=("=" value)? " ")? args " " context=("with" " " _ " ")? result_type=("->" " " _ " " _=("with" " " context " ")?)? "=>" " " body;
+@syntax "core:fn" 7 @wrap never = move=("@move" " ")? raw_fn=("fn" " ")? call_convention=("@call" " " _: >= 5000 " ")? async=("async" _=("=" value)? " ")? arg " " context=("with" " " _ " ")? result=("->" " " _ " " _=("with" " " context " ")?)? "=>" " " body;
+@syntax "comptime_only" 7.1 @wrap never = "@comptime_only" " " _;
 
 @syntax "if_without_else" 7.5 @wrap never = "if" " " cond " " "then" " " then_case;
 @syntax "core:if" 7.5 @wrap never = "if" " " cond " " "then" " " then_case " " "else" " " else_case ->;
 @syntax "if_is" 7.5 @wrap never = "if" " " value " " "is" " " pattern " " "then" " " body;
 @syntax "if_is_else" 7.5 @wrap never = "if" " " value " " "is" " " pattern " " "then" " " body " " "else" " " else_body ->;
-@syntax "core:match" 7.5 @wrap if_any = "match" " " value " " "with" " " "(" " "/"\n\t" branches:any " "/"\n\\" ")";
+@syntax "core:match" 7.5 @wrap if_any = "match" " " value " " "with" " " "(" " "/"\n\t" branches:any " "/"\\\n" ")";
 @syntax "while" 7.5 @wrap never = "while" " " cond " " "do" " " body;
 @syntax "while_is" 7.5 @wrap never = "while" " " value " " "is" " " pattern " " "do" " " body;
 @syntax "for" 7.5 @wrap never = "for" " " pattern " " "in" " " iterable " " "do" " " body;
@@ -60,7 +64,9 @@
 @syntax "core:include" 9 @wrap never = "include" " " path;
 @syntax "core:include_ast" 9 @wrap never = "include_ast" " " _;
 @syntax "create_context_type" 9 @wrap never = "@context" " " type;
+@syntax "core:context" 9 @wrap never = "@context";
 @syntax "core:comptime" 9 @wrap never = "@eval" " " _;
+@syntax "core:comptime_fork" 9 @wrap never = "@exec_fork" " " _;
 @syntax "core:no_hygiene" 9 @wrap never = "@no_hygiene" " " _;
 @syntax "core:binding" 9 @wrap never = "@binding" " " _;
 @syntax "core:native" 9 @wrap never = "@native" " " _;
@@ -77,7 +83,7 @@
 @syntax ">" 14 @wrap never = _ " " ">" " " _;
 
 @syntax "|>" 14.5 @wrap if_any_assoc = <- arg " "/"\n\t" "|>" " " f ""/"\\";
-@syntax "|>()" 14.5 @wrap if_any_assoc = <- first_arg " "/"\n\t" "|>" " " f _=(@wrap if_any "(" ""/"\n\t" args:any ""/"\n\\" ")") ""/"\\";
+@syntax "|>()" 14.5 @wrap if_any_assoc = <- first_arg " "/"\n\t" "|>" " " f _=(@wrap if_any "(" ""/"\n\t" args:any ""/"\\\n" ")") ""/"\\";
 @syntax "<|" 14.5 @wrap if_any_assoc = <- f " "/"\n\t" "<|" " " arg ""/"\\";
 
 @syntax "+" 15 @wrap if_any_assoc = <- _ " "/"\n" "+" " " _;
@@ -94,31 +100,35 @@
 @syntax "core:cast" 60.5 @wrap never = value " " "as" " " target;
 @syntax "core:ref" 61 @wrap never = "&" _ ->;
 @syntax "core:ref_mut" 61 @wrap never = "&" "mut" " " _ ->;
-@syntax "core:instantiate_generic" 70 @wrap never = <- generic _=("[" ""/"\n\t" args:any ""/"\n\\" "]");
+@syntax "&str" 61 @wrap never = "&" "str";
+@syntax "core:instantiate_generic" 70 @wrap never = <- generic _=("[" ""/"\n\t" arg:any ""/"\\\n" "]");
 @syntax "core:." 70 @wrap never = <- obj ""/"\n\t" "." field ""/"\\";
+@syntax "index" 70 @wrap never = <- obj "." "[" index:any "]";
 @syntax "core:deref" 70 @wrap never = <- _ "^";
-@syntax "core:apply" 70 @wrap never = <- f _=(@wrap if_any "(" ""/"\n\t" args:any ""/"\n\\" ")");
-@syntax "invoke_macro" 70 @wrap never = <- macro "!" _=(@wrap if_any "(" ""/"\n\t" ast:any ""/"\n\\" ")");
+@syntax "core:apply" 70 @wrap never = <- f _=(@wrap if_any "(" ""/"\n\t" arg:any ""/"\\\n" ")");
+@syntax "invoke_macro" 70 @wrap never = <- macro "!" _=(@wrap if_any "(" ""/"\n\t" ast:any ""/"\\\n" ")");
 @syntax "core:mut" 500 @wrap never = "mut" " " _;
 @syntax "core:type expr" 500 @wrap never = "type" " " _;
-@syntax "core:type" 500 @wrap never = "type";
 @syntax "core:newtype" 500 @wrap never = "newtype" " " _;
 @syntax "core:typeof" 500 @wrap never = "typeof" " " _;
 # @syntax "core:type" 500 @wrap never = "type";
-@syntax "true" 500 @wrap never = "true";
-@syntax "false" 500 @wrap never = "false";
-@syntax "loop" 500 @wrap if_any = "loop" " " "(" " "/"\n\t" _:any " "/"\n\\" ")";
+@syntax "core:true" 500 @wrap never = "true";
+@syntax "core:false" 500 @wrap never = "false";
+@syntax "loop" 500 @wrap if_any = "loop" " " "(" " "/"\n\t" _:any " "/"\\\n" ")";
 @syntax "core:by_ref" 500 @wrap never = "ref" " " _;
 @syntax "core:by_ref_mut" 500 @wrap never = "ref" " " "mut" " " _;
 @syntax "opaque_type" 500 @wrap never = "@opaque_type";
-@syntax "core:loop" 500 @wrap if_any = "@loop" " " "(" " "/"\n\t" _:any " "/"\n\\" ")";
-@syntax "core:scope" 1000 @wrap if_any = "(" ""/"\n\t" _:any ""/"\n\\" ")";
-@syntax "core:record" 1000 @wrap if_any = "{" " "/"\n\t" _:any " "/"\n\\" "}";
+@syntax "opaque_type_with_arg" 500 @wrap never = "@opaque_type" " " native_name;
+@syntax "core:unsafe_copy" 500 @wrap never = "@unsafe_copy" " " _;
+@syntax "claim" 500 @wrap never = "@claim" " " _;
+@syntax "core:auto_instantiate" 500 @wrap never = "@auto_instantiate" " " _;
+@syntax "core:loop" 500 @wrap if_any = "@loop" " " "(" " "/"\n\t" _:any " "/"\\\n" ")";
+@syntax "core:scope" 1000 @wrap if_any = "(" ""/"\n\t" _:any ""/"\\\n" ")";
+@syntax "core:record" 1000 @wrap if_any = "{" " "/"\n\t" _:any " "/"\\\n" "}";
 @syntax "core:placeholder" 1000 @wrap never = "_";
-@syntax "core:quote" 1000 @wrap if_any = "`" "(" ""/"\n\t" _:any ""/"\n\\" ")";
-@syntax "core:unquote" 1000 @wrap never = "\\" _ ->;
-@syntax "old unquote" 1000 @wrap never = "$" _ ->;
-@syntax "core:target_dependent" 1000 @wrap always = "@cfg" " " "(" ""/"\n\t" branches:any ""/"\n\\" ")";
+@syntax "core:quote" 1000 @wrap if_any = "`" "(" ""/"\n\t" _:any ""/"\\\n" ")";
+@syntax "core:unquote" 1000 @wrap never = "$" _ ->;
+@syntax "core:target_dependent" 1000 @wrap always = "@cfg" " " "(" ""/"\n\t" branches:any ""/"\\\n" ")";
 @syntax "core:__FILE__" 1000 @wrap never = "__FILE__";
 @syntax "core:current_compiler_scope" 1000 @wrap never = "@current_scope";
-
+@syntax "comment_out" 1000 @wrap if_any = "@comment_out" " " "(" ""/"\n\t" _:any ""/"\\\n" ")";

@@ -144,8 +144,7 @@ const SyntaxRuleset = (
         iter_cps_from(0, parts, .node, .consumer = follow_part, .continuation);
     );
 
-    const add = (self :: &mut SyntaxRuleset.t, rule :: SyntaxRule.t) => (
-        let rule = Rc.new(rule);
+    const add = (self :: &mut SyntaxRuleset.t, rule :: Rc.t[SyntaxRule.t]) => (
         with Context = { .ruleset = self, .rule = &rule^ };
         follow_parts(
             &mut self^.root,

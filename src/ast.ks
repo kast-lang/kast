@@ -3,6 +3,8 @@ use (import "./span.ks").*;
 use (import "./token.ks").*;
 use (import "./syntax_rule.ks").*;
 use (import "./tuple.ks").*;
+use (import "./rc_str.ks").*;
+use std.rc.Rc;
 
 module:
 
@@ -37,9 +39,9 @@ const MakeAstModule = (
 
         const InterpolatedStringPart = newtype (
             | :Content {
-                .raw :: String,
+                .raw :: RcStr,
                 .raw_parts :: ArrayList.t[Token.RawStringPart],
-                .contents :: String,
+                .contents :: RcStr,
                 .span :: Span,
             }
             | :Interpolated {
@@ -57,14 +59,14 @@ const MakeAstModule = (
                 | :Empty
                 | :Token Token.t
                 | :InterpolatedString {
-                    .delimiter :: String,
+                    .delimiter :: RcStr,
                     .open :: Token.t,
                     .parts :: ArrayList.t[InterpolatedStringPart],
                     .close :: Token.t,
-                    .stripped_indentation :: String,
+                    .stripped_indentation :: RcStr,
                 }
                 | :Rule {
-                    .rule :: SyntaxRule.t,
+                    .rule :: Rc.t[SyntaxRule.t],
                     .root :: Group,
                 }
                 | :Syntax {
@@ -81,7 +83,7 @@ const MakeAstModule = (
 
         const SyntaxCommandShape = newtype (
             | :FromScratch
-            | :Rule SyntaxRule.t
+            | :Rule Rc.t[SyntaxRule.t]
         );
 
         const SyntaxCommand = newtype {
@@ -98,36 +100,36 @@ const MakeAstModule = (
         const Part = newtype (
             | :Ignored Token.t
             | :Keyword Token.t
-            | :Value Ast.t
-            | :Group Group
+            | :Value Rc.t[Ast.t]
+            | :Group Rc.t[Group]
         );
 
         const part_span = (self :: &Part) -> Span => match self^ with (
             | :Ignored token => token.span
             | :Keyword token => token.span
-            | :Value ref ast => t_span(ast)
-            | :Group group => group.span
+            | :Value ref ast => t_span(&ast^^)
+            | :Group ref group => group^^.span
         );
 
         const Child = newtype (
-            | :Value Ast.t
-            | :Group Group
+            | :Value Rc.t[Ast.t]
+            | :Group Rc.t[Group]
         );
 
-        const unwrap_child_group = (self :: Child) -> Ast.Group => match self with (
+        const unwrap_child_group = (self :: &Child) -> &Ast.Group => match self^ with (
             | :Value _ => panic("expected group ast child, got value")
-            | :Group group => group
+            | :Group ref group => &group^^
         );
 
-        const unwrap_child_value = (self :: Child) -> Ast.t => match self with (
-            | :Value value => value
+        const unwrap_child_value = (self :: &Child) -> &Ast.t => match self^ with (
+            | :Value ref value => &value^^
             | :Group _ => panic("expected value ast child, got group")
         );
 
         const print_child = (self :: &Child) => (
             match self^ with (
-                | :Value ref ast => print(ast)
-                | :Group ref group => print_group(group)
+                | :Value ref ast => print(&ast^^)
+                | :Group ref group => print_group(&group^^)
             );
         );
 
@@ -152,11 +154,11 @@ const MakeAstModule = (
             match self^ with (
                 | :Empty => ansi.with_mode(
                     :Dim,
-                    () => output.write("<empty>"),
+                    () => write_str("<empty>"),
                 )
-                | :Token token => Token.Shape.print(token.shape)
+                | :Token ref token => Token.Shape.print(&token^.shape^)
                 | :InterpolatedString {
-                    .delimiter,
+                    .delimiter = ref delimiter,
                     .open = _,
                     .parts = ref parts,
                     .close = _,
@@ -165,22 +167,22 @@ const MakeAstModule = (
                     ansi.with_mode(
                         :Green,
                         () => (
-                            output.write(delimiter);
-                            output.write("interpolated");
-                            output.write(delimiter);
+                            write(delimiter);
+                            write_str("interpolated");
+                            write(delimiter);
                         ),
                     );
-                    output.write(" {\n");
+                    write_str(" {\n");
                     output.inc_indentation();
                     for part in parts |> ArrayList.iter do (
                         match part^ with (
-                            | :Content { .contents, ... } => (
+                            | :Content { .contents = ref contents, ... } => (
                                 ansi.with_mode(
                                     :Green,
                                     (
 
 
-                                    ) => output.write(String.escape(contents)),
+                                    ) => write_escaped(contents),
                                 );
                             )
                             | :Interpolated {
@@ -204,72 +206,66 @@ const MakeAstModule = (
                     output.dec_indentation();
                     output.write("}");
                 )
-                | :Rule { .rule, .root = ref root } => (
+                | :Rule { .rule = ref rule, .root = ref root } => (
                     ansi.with_mode(
                         :Magenta,
-                        () => output.write(rule.name),
+                        () => write(&rule^^.name),
                     );
-                    output.write(" ");
+                    write_str(" ");
                     print_group(root);
                 )
-                | :Syntax { .command, .value_after } => (
-                    if value_after is :Some _ then (
-                        output.write("{\n");
+                | :Syntax { .command = ref command, .value_after = ref value_after } => (
+                    if value_after^ is :Some _ then (
+                        write_str("{\n");
                         output.inc_indentation();
                     );
                     ansi.with_mode(
                         :Yellow,
                         () => (
-                            output.write("@syntax");
-                            match command.shape with (
-                                | :FromScratch => output.write("from_scratch")
-                                | :Rule rule => output.write(String.escape(rule.name))
+                            write_str("@syntax");
+                            match command^.shape with (
+                                | :FromScratch => write_str("from_scratch")
+                                | :Rule ref rule => write_escaped(&rule^^.name)
                             );
                         ),
                     );
-                    if value_after is :Some value then (
-                        print(&value);
-                        output.write("\n");
+                    if value_after^ is :Some ref value then (
+                        print(value);
+                        write_str("\n");
                         output.dec_indentation();
-                        output.write("}");
+                        write_str("}");
                     );
                 )
                 | :Error { .parts = ref parts } => (
                     ansi.with_mode(
                         :Red,
-                        () => output.write("<error>"),
+                        () => write_str("<error>"),
                     );
-                    output.write("{\n");
+                    write_str("{\n");
                     output.inc_indentation();
                     for part in parts |> ArrayList.iter do (
                         match part^ with (
-                            | :Ignored token => (
+                            | :Ignored ref token => (
                                 ansi.with_mode(
                                     :Dim,
-                                    (
-
-
-                                    ) => output.write("<ignored> "),
+                                    () => write_str("<ignored> "),
                                 );
-                                Token.Shape.print_impl(token.shape, .verbose = false);
+                                Token.Shape.print_impl(&token^.shape^, .verbose = false);
                             )
-                            | :Keyword token => (
+                            | :Keyword ref token => (
                                 ansi.with_mode(
                                     :Magenta,
-                                    (
-
-
-                                    ) => output.write(Token.raw(token)),
+                                    () => write_str(Token.raw(token)),
                                 );
                             )
                             | :Value ref ast => (
-                                print(ast);
+                                print(&ast^^);
                             )
                         );
-                        output.write(",\n");
+                        write_str(",\n");
                     );
                     output.dec_indentation();
-                    output.write("}");
+                    write_str("}");
                 )
             );
         );
@@ -285,8 +281,8 @@ const Ast = (
             (.t, .t_span, .Shape) => {
                 .t_def = `(
                     newtype {
-                        .shape :: $Shape.t,
-                        .ignored_tokens_before :: ArrayList.t[Token.t],
+                        .shape :: Rc.t[$Shape.t],
+                        .ignored_tokens_before :: Rc.t[ArrayList.t[Token.t]],
                         .span :: Span,
                     }
                 ),
@@ -296,12 +292,12 @@ const Ast = (
                 .print_def = `(
                     (ast :: &$t) => (
                         let output = @current Output;
-                        $Shape.print(&ast^.shape);
+                        $Shape.print(&ast^.shape^);
                         ansi.with_mode(
                             :Dim,
                             () => (
                                 output.write(" at ");
-                                Span.print(ast^.span);
+                                Span.print(&ast^.span);
                             ),
                         );
                     )
@@ -311,11 +307,11 @@ const Ast = (
     ).*;
 
     const iter_list = (
-        ast :: Ast.t,
-        .binary_rule_name :: String,
-        .trailing_or_leading_rule_name :: Option.t[String],
-    ) -> std.iter.Iterable[Ast.t] => {
-        .iter = consumer => (
+        ast :: &Ast.t,
+        .binary_rule_name :: &str,
+        .trailing_or_leading_rule_name :: Option.t[&str],
+    ) -> std.iter.Iterable[type (&Ast.t)] => {
+        .iter = @move consumer => (
             let recurse = ast => (
                 iter_list(
                     ast,
@@ -323,20 +319,21 @@ const Ast = (
                     .trailing_or_leading_rule_name,
                 ).iter(consumer);
             );
-            match ast.shape with (
+            match ast^.shape^ with (
                 | :Empty => ()
                 | :Token _ => consumer(ast)
                 | :InterpolatedString _ => consumer(ast)
-                | :Rule { .rule, .root = { .children, ... } } => with_return (
-                    if rule.name == binary_rule_name then (
-                        let { lhs, rhs } = Tuple.unwrap_unnamed_2(children);
+                | :Rule { .rule = ref rule, .root = { .children = ref children, ... } } => with_return (
+                    if &rule^^.name |> RcStr.as_str == binary_rule_name then (
+                        let lhs = children |> Tuple.get_unnamed(0);
+                        let rhs = children |> Tuple.get_unnamed(1);
                         recurse(lhs |> Ast.unwrap_child_value);
                         recurse(rhs |> Ast.unwrap_child_value);
                         return;
                     );
                     if trailing_or_leading_rule_name is :Some name then (
-                        if rule.name == name then (
-                            let inner = Tuple.unwrap_unnamed_1(children);
+                        if &rule^^.name |> RcStr.as_str == name then (
+                            let inner = children |> Tuple.get_unnamed(0);
                             recurse(inner |> Ast.unwrap_child_value);
                             return;
                         );

@@ -1,4 +1,5 @@
 use (import "./output.ks").*;
+use (import "./rc_str.ks").*;
 use std.collections.OrdMap;
 use std.Ast;
 
@@ -9,8 +10,8 @@ const Tuple = (
 
     const t = [T] newtype {
         .unnamed :: ArrayList.t[T],
-        .named :: OrdMap.t[String, T],
-        .name_order :: ArrayList.t[String],
+        .named :: OrdMap.t[RcStr, T],
+        .name_order :: ArrayList.t[RcStr],
     };
 
     const new = [T] () -> Tuple.t[T] => {
@@ -21,6 +22,7 @@ const Tuple = (
 
     const Member = newtype (
         | :Index Int32
+        # TODO owned? Rc?
         | :Name &str
     );
 
@@ -50,7 +52,7 @@ const Tuple = (
         name :: &str,
     ) -> &T => (
         # TODO no allocating String
-        match &self^.named |> OrdMap.get(&String.from_str(name)) with (
+        match &self^.named |> OrdMap.get(&RcStr.from_String(String.from_str(name))) with (
             | :Some value => value
             | :None => panic_fmt!("tuple doesnt have field \(String.escape(name))")
         )
@@ -61,7 +63,7 @@ const Tuple = (
         name :: &str,
     ) -> Bool => (
         # TODO no allocating String
-        let name = String.from_str(name);
+        let name = RcStr.from_String(String.from_str(name));
         match &self^.named |> OrdMap.get(&name) with (
             | :Some _ => true
             | :None => false
@@ -93,13 +95,14 @@ const Tuple = (
         self :: &Tuple.t[T],
         name :: &str,
     ) -> Option.t[type (&T)] => (
-        let name = String.from_str(name);
+        # TODO
+        let name = RcStr.from_String(String.from_str(name));
         &self^.named |> OrdMap.get(&name)
     );
 
     const add = [T] (
         self :: &mut Tuple.t[T],
-        name :: Option.t[&str],
+        name :: Option.t[RcStr],
         value :: T,
     ) => (
         match name with (
@@ -110,11 +113,10 @@ const Tuple = (
 
     const add_named = [T] (
         self :: &mut Tuple.t[T],
-        name :: &str,
+        name :: RcStr,
         value :: T,
     ) => (
-        let name = String.from_str(name);
-        &mut self^.named |> OrdMap.add(String.clone(&name), value);
+        &mut self^.named |> OrdMap.add(name, value);
         &mut self^.name_order |> ArrayList.push_back(name);
     );
 
@@ -172,24 +174,24 @@ const Tuple = (
         .close :: &str,
     ) => (
         let output = @current Output;
-        output.write(open);
-        output.write("\n");
+        write_str(open);
+        write_str("\n");
         output.inc_indentation();
         for value in &self^.unnamed |> ArrayList.iter do (
             print_value(value);
-            output.write(delimiter);
-            output.write("\n");
+            write_str(delimiter);
+            write_str("\n");
         );
         for name in &self^.name_order |> ArrayList.iter do (
-            output.write(before_field_name);
-            output.write(name |> as_str);
-            output.write(after_field_name);
+            write_str(before_field_name);
+            write(name);
+            write_str(after_field_name);
             print_value(&self^.named |> OrdMap.get(name) |> Option.unwrap);
-            output.write(delimiter);
-            output.write("\n");
+            write_str(delimiter);
+            write_str("\n");
         );
         output.dec_indentation();
-        output.write(close);
+        write_str(close);
     );
 
     const into_iter = [T] (self :: Tuple.t[T]) -> std.iter.Iterable[type { Member, T }] => {
@@ -200,7 +202,7 @@ const Tuple = (
             );
             for name in self.name_order |> ArrayList.into_iter do (
                 let element = &mut self.named |> OrdMap.remove(&name) |> Option.unwrap;
-                let name = &name |> as_str;
+                let name = &name |> RcStr.as_str;
                 consumer({ :Name name, element });
             );
         ),
@@ -213,7 +215,7 @@ const Tuple = (
             );
             for name in &self^.name_order |> ArrayList.iter do (
                 let element = &self^.named |> OrdMap.get(name) |> Option.unwrap;
-                let name = name |> as_str;
+                let name = name |> RcStr.as_str;
                 consumer({ :Name name, element });
             );
         ),

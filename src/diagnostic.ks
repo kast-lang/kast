@@ -113,7 +113,7 @@ const Diagnostic = (
 
     const default_handler = (.stop_on_error :: Bool) -> Handler => {
         .stop_on_error,
-        .handle = (diagnostic :: Diagnostic.t) => (
+        .handle = @move (diagnostic :: Diagnostic.t) => (
             print(&diagnostic);
             if stop_on_error then (
                 std.sys.exit(-1);

@@ -72,7 +72,6 @@
             fd
             inotify-tools
             hyperfine
-            clang
             gcc
             gdb
             boehmgc
@@ -82,13 +81,23 @@
             valgrind
             libbacktrace
             libunwind
+            clang-tools
           ];
           shellHook = ''
             echo Hello from Kast dev shell
             export KAST_PATH=$(pwd)/kast_path
+
+            cat >.clangd <<EOF
+            CompileFlags:
+              Add: [
+                -isystem, .,
+                -isystem, $KAST_BOOTSTRAP_PATH/c-runtime/include,
+                -Wall, -Wextra, -Wpedantic,
+                -DKAST_ALLOCATION_STATS, -DKAST_DEBUG
+              ]
+            EOF
           '';
-          # Since I dont have cmake or whatever
-          CLANGD_FLAGS = "--query-driver=${pkgs.clang}/bin/clang*";
+          KAST_BOOTSTRAP_PATH = "${kast-bootstrap}";
           KAST_JS_RUNTIME =
             "${inputs.kast.packages.${system}.js-runtime}/runtime.mjs";
           RAYLIB = "${raylib}";

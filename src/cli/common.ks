@@ -20,7 +20,7 @@ const Common = (
         .ext :: Option.t[String],
     };
 
-    const path_arg_for_syntax = (path :: &str, .@"syntax" :: Option.t[type (&Syntax)]) -> &str => (
+    const path_arg_for_syntax = (path :: &str, .@"syntax" :: Option.t[type (&Syntax)]) -> String => (
         let ext = match @"syntax" with (
             | :None => :Some "ks"
             | :Some s => &s^.ext |> Option.as_ref |> Option.map(as_str)
@@ -28,7 +28,7 @@ const Common = (
         path_arg(path, .ext)
     );
 
-    const path_arg = (path :: &str, .ext :: Option.t[&str]) -> &str => (
+    const path_arg = (path :: &str, .ext :: Option.t[&str]) -> String => (
         let fail = () => (
             let mut message = String.from_str("Expected a path");
             if ext is :Some ext then (
@@ -45,7 +45,7 @@ const Common = (
         if ext is :Some ext then (
             if actual_ext != ext then fail();
         );
-        path
+        String.from_str(path)
     );
 
     const Args = (

@@ -7,6 +7,7 @@ use (import "./token.ks").*;
 use (import "./token_stream.ks").*;
 use (import "./log.ks").*;
 use (import "./rc_str.ks").*;
+use std.rc.Rc;
 
 const report_error_and_unwind = [T] (span :: Span, message :: () -> ()) -> T => (
     let diagnostic = {
@@ -395,7 +396,7 @@ const SyntaxParser = (
     ) -> SyntaxRuleset.t => (
         let mut ruleset = SyntaxRuleset.new();
         for &rule in &parse_syntax_rules(token_stream) |> ArrayList.iter do (
-            &mut ruleset |> SyntaxRuleset.add(rule);
+            &mut ruleset |> SyntaxRuleset.add(Rc.new(rule));
         );
         ruleset
     );
