@@ -16,8 +16,8 @@ const clone = [T] (self :: &Treap.t[T]) -> Treap.t[T] => (
     match self^ with (
         | :Empty => :Empty
         | :Node ref data => :Node Box_new({
-            .left = clone(&data^^.left),
-            .right = clone(&data^^.right),
+            .left = clone[T](&data^^.left),
+            .right = clone[T](&data^^.right),
             .value = data^^.value, # TODO Clone trait?
             .count = data^^.count,
             .priority = data^^.priority,
