@@ -9,9 +9,7 @@ const new = [T] () -> OrdSet.t[T] => {
 };
 
 const clone = [T] (self :: &OrdSet.t[T]) -> OrdSet.t[T] => {
-    .inner = {
-        ...self^.inner
-    },
+    .inner = OrdMap.clone(&self^.inner),
 };
 
 const contains = [T] (self :: &OrdSet.t[T], x :: &T) -> Bool => (

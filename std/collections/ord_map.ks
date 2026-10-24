@@ -9,6 +9,11 @@ const t = [K, V] newtype {
     .compare :: std.cmp.Compare[K],
 };
 
+const clone = [K, V] (self :: &OrdMap.t[K, V]) -> OrdMap.t[K, V] => {
+    .inner = Treap.clone(&self^.inner),
+    .compare = self^.compare,
+};
+
 const length = [K, V] (self :: &OrdMap.t[K, V]) -> Int32 => (
     &self^.inner |> Treap.length
 );
