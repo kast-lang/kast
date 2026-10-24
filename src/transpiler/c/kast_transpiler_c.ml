@@ -510,7 +510,7 @@ module Impl = struct
         | Some data_ty -> (transpile_ty data_ty).is_copy |> Lazy.force)
     | Types.T_Tuple tuple ->
       tuple.tuple
-      |> Tuple.to_seq
+      |> Tuple.to_seq_stable_order
       |> Seq.for_all (fun ((_member, field) : Tuple.member * Types.ty_tuple_field) ->
         (transpile_ty field.ty).is_copy |> Lazy.force)
     | Types.T_List _ -> false
@@ -649,7 +649,7 @@ module Impl = struct
                 compound_literal
                   kast_ty
                   (tuple.tuple
-                   |> Tuple.to_seq
+                   |> Tuple.to_seq_stable_order
                    |> List.of_seq
                    |> List.map
                         (fun
@@ -1426,7 +1426,7 @@ module Impl = struct
       in
       let fields () =
         tuple
-        |> Tuple.to_seq
+        |> Tuple.to_seq_stable_order
         |> Seq.map
              (fun
                  ((member, field) : Tuple.member * Types.ty_tuple_field)
@@ -1459,7 +1459,7 @@ module Impl = struct
       let args = args.ty |> Ty.await_inferred |> Ty.Shape.expect_tuple |> Option.unwrap in
       let args =
         args.tuple
-        |> Tuple.to_seq
+        |> Tuple.to_seq_stable_order
         |> Seq.map (fun ((_member, field) : Tuple.member * Types.ty_tuple_field) ->
           (transpile_ty field.ty).c_ty)
         |> List.of_seq
@@ -1519,7 +1519,7 @@ module Impl = struct
       in
       let args =
         args.tuple
-        |> Tuple.to_seq
+        |> Tuple.to_seq_stable_order
         |> Seq.map (fun ((_member, field) : Tuple.member * Types.ty_tuple_field) ->
           (transpile_ty field.ty).c_ty)
         |> List.of_seq
@@ -1809,7 +1809,7 @@ module Impl = struct
         in
         let args =
           args_tuple_ty
-          |> Tuple.to_seq
+          |> Tuple.to_seq_stable_order
           |> Seq.map
                (fun
                    ((member, field) : Tuple.member * Types.ty_tuple_field)
@@ -2163,7 +2163,7 @@ module Impl = struct
     | V_Tuple { ty = _; tuple } ->
       let fields =
         tuple
-        |> Tuple.to_seq
+        |> Tuple.to_seq_stable_order
         |> Seq.map
              (fun
                  ((member, field) : Tuple.member * Types.value_tuple_field)
@@ -2379,7 +2379,7 @@ module Impl = struct
           |> Option.unwrap
         in
         args_ty.tuple
-        |> Tuple.to_seq
+        |> Tuple.to_seq_stable_order
         |> Seq.map
              (fun
                  ((member, _arg_ty) : Tuple.member * Types.ty_tuple_field)

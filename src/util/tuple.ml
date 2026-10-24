@@ -73,6 +73,14 @@ module Tuple = struct
     { unnamed; named; named_order_rev }
   ;;
 
+  let to_seq_stable_order : 'a. 'a tuple -> (member * 'a) Seq.t =
+    fun { unnamed; named; named_order_rev = _ } ->
+    Seq.append
+      (unnamed |> Array.to_seq |> Seq.mapi (fun i x -> (Index i : member), x))
+      (StringMap.to_seq named
+       |> Seq.map (fun (name, value) -> (Name name : member), value))
+  ;;
+
   let to_seq : 'a. 'a tuple -> (member * 'a) Seq.t =
     fun { unnamed; named; named_order_rev } ->
     Seq.append
