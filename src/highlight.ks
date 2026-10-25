@@ -10,6 +10,8 @@ use (import "./lexer/_lib.ks").*;
 use (import "./token_stream.ks").*;
 use (import "./syntax_parser.ks").*;
 use (import "./parser.ks").*;
+use (import "./rc_str.ks").*;
+use std.rc.Rc;
 
 module:
 
@@ -31,7 +33,7 @@ const Highlight = (
     );
 
     const OutputT = newtype {
-        .print :: (Span, TokenType, String) -> (),
+        .print :: (Span, TokenType, &str) -> (),
         .replace_ast :: Option.t[type ((&Ast.t, &Ast.t -> ()) -> ())],
         .move_to :: (Position, .print_whitespace :: Bool) -> (),
     };
@@ -67,33 +69,30 @@ const Highlight = (
         .before_new_line :: () -> (),
     ) => match mode with (
         | :Terminal => (
-            let init_state = () => {
+            let mut state = Rc.new({
                 .position = start,
-            };
-            let mut state = init_state();
-            # Needed because of replace within replace when
-            # doing structural find and replace :)
-            let mut printed_something_after_moving = true;
-            let move_to = (target_position :: Position, .print_whitespace :: Bool) => (
-                if printed_something_after_moving and print_whitespace then (
-                    while state.position.line < target_position.line do (
+                # Needed because of replace within replace when
+                # doing structural find and replace :)
+                .printed_something_after_moving = true,
+            });
+            let move_to = @move (target_position :: Position, .print_whitespace :: Bool) => (
+                if state^.printed_something_after_moving and print_whitespace then (
+                    while state^.position.line < target_position.line do (
                         before_new_line();
-                        # TODO fix copy
-                        state.position = { ...state.position };
-                        state.position.line += 1;
-                        state.position.column = PositionColumn.zero();
+                        state^.position.line += 1;
+                        state^.position.column = PositionColumn.zero();
                         (@current Output).write("\n");
                     );
-                    let current_column = state.position.column.string_encoding;
+                    let current_column = state^.position.column.string_encoding;
                     let target_column = target_position.column.string_encoding;
                     for _ in current_column..target_column do (
                         (@current Output).write(" ");
                     );
                 );
-                state.position = target_position;
-                printed_something_after_moving = false;
+                state^.position = target_position;
+                state^.printed_something_after_moving = false;
             );
-            let print_token = (span, token_type, s) => (
+            let print_token = @move (span, token_type, s) => (
                 move_to(span.start, .print_whitespace = true);
                 let mode :: Option.t[ansi.Mode] = match token_type with (
                     | :Keyword => :Some :Magenta
@@ -112,8 +111,8 @@ const Highlight = (
                     | :Some mode => ansi.with_mode(mode, () => (@current Output).write(s))
                     | :None => (@current Output).write(s)
                 );
-                state.position = span.end;
-                printed_something_after_moving = true;
+                state^.position = span.end;
+                state^.printed_something_after_moving = true;
             );
             {
                 .print = print_token,
@@ -128,15 +127,15 @@ const Highlight = (
     # TODO | :Html
     );
 
-    impl OutputMode as FromString = {
-        .from_string = s => (
+    impl OutputMode as Parse = {
+        .parse = s => (
             if s == "terminal" then (
                 :Terminal
             ) else if s == "html" then (
                 # :Html
                 Diagnostic.abort("TODO html mode")
             ) else (
-                Diagnostic.abort("Unknown highlight mode " + String.escape(s))
+                Diagnostic.abort(&format!("Unknown highlight mode \(String.escape(s))") |> as_str)
             )
         ),
     };
@@ -159,11 +158,11 @@ const Highlight = (
     ) => (
         for part in parts |> ArrayList.iter do (
             match part^ with (
-                | :Content { .raw, .span } => (
-                    (@current Context).print(span, content_token_type, raw);
+                | :Content { .raw = ref raw, .span } => (
+                    (@current Context).print(span, content_token_type, raw |> RcStr.as_str);
                 )
-                | :Escape { .raw, .span } => (
-                    (@current Context).print(span, :Escape, raw);
+                | :Escape { .raw = ref raw, .span } => (
+                    (@current Context).print(span, :Escape, raw |> RcStr.as_str);
                 )
             );
         );
@@ -191,70 +190,91 @@ const Highlight = (
 
     const walk_ast_impl = (ast :: &Ast.t) => (
         let ctx = @current Context;
-        walk_ignored_tokens(&ast^.ignored_tokens_before);
-        match ast^.shape with (
+        walk_ignored_tokens(&ast^.ignored_tokens_before^);
+        match ast^.shape^ with (
             | :Empty => ()
-            | :Token token => (
-                match token.shape with (
-                    | :Ident { .raw, .string, ... } => (
-                        match string with (
+            | :Token ref token => (
+                match token^.shape^ with (
+                    | :Ident { .raw = ref raw, .string = ref string, ... } => (
+                        match string^ with (
                             | :None => (
-                                ctx.print(token.span, :Ident, raw);
+                                ctx.print(token^.span, :Ident, raw |> RcStr.as_str);
                             )
-                            | :Some { { .open, .close, .raw_parts, ... }, .at_token } => (
-                                ctx.print(at_token.span, :Ident, Token.raw(at_token));
-                                ctx.print(open.span, :RawIdent, Token.raw(open));
-                                walk_string_parts(:RawIdent, &raw_parts);
-                                ctx.print(close.span, :RawIdent, Token.raw(close));
+                            | :Some {
+                                {
+                                    .open = ref open,
+                                    .close = ref close,
+                                    .raw_parts = ref raw_parts,
+                                    ...
+                                },
+                                .at_token = ref at_token,
+                            } => (
+                                ctx.print(at_token^.span, :Ident, Token.raw(at_token));
+                                ctx.print(open^.span, :RawIdent, Token.raw(open));
+                                walk_string_parts(:RawIdent, raw_parts);
+                                ctx.print(close^.span, :RawIdent, Token.raw(close));
                             )
                         )
                     )
-                    | :Number { .raw, ... } => (
-                        ctx.print(token.span, :Number, raw);
+                    | :Number { .raw = ref raw, ... } => (
+                        ctx.print(token^.span, :Number, raw |> RcStr.as_str);
                     )
-                    | :String { .open, .close, .raw_parts, ... } => (
-                        ctx.print(open.span, :StringDelimeter, Token.raw(open));
-                        walk_string_parts(:StringContent, &raw_parts);
-                        ctx.print(close.span, :StringDelimeter, Token.raw(close));
+                    | :String {
+                        .open = ref open,
+                        .close = ref close,
+                        .raw_parts = ref raw_parts,
+                        ...
+                    } => (
+                        ctx.print(open^.span, :StringDelimeter, Token.raw(open));
+                        walk_string_parts(:StringContent, raw_parts);
+                        ctx.print(close^.span, :StringDelimeter, Token.raw(close));
                     )
                 )
             )
             | :InterpolatedString {
                 .delimiter = _,
-                .open,
-                .parts,
-                .close,
+                .open = ref open,
+                .parts = ref parts,
+                .close = ref close,
                 .stripped_indentation = _,
             } => (
-                ctx.print(open.span, :StringDelimeter, Token.raw(open));
-                for part in &parts |> ArrayList.iter do (
+                ctx.print(open^.span, :StringDelimeter, Token.raw(open));
+                for part in parts |> ArrayList.iter do (
                     match part^ with (
-                        | :Content { .raw = _, .raw_parts, .span, .contents = _ } => (
-                            walk_string_parts(:StringContent, &raw_parts);
+                        | :Content {
+                            .raw = _,
+                            .raw_parts = ref raw_parts,
+                            .span = _,
+                            .contents = _,
+                        } => (
+                            walk_string_parts(:StringContent, raw_parts);
                         )
                         | :Interpolated {
-                            .open,
-                            .close,
+                            .open = ref open,
+                            .close = ref close,
                             .ast = ref inner,
                             .ignored_trailing_tokens = ref ignored_trailing_tokens,
                         } => (
-                            ctx.print(open.span, :Escape, Token.raw(open));
+                            ctx.print(open^.span, :Escape, Token.raw(open));
                             walk_ast(inner);
                             walk_ignored_tokens(ignored_trailing_tokens);
-                            ctx.print(close.span, :Escape, Token.raw(close));
+                            ctx.print(close^.span, :Escape, Token.raw(close));
                         )
                     );
                 );
-                ctx.print(close.span, :StringDelimeter, Token.raw(close));
+                ctx.print(close^.span, :StringDelimeter, Token.raw(close));
             )
             | :Rule { .root = ref root, ... } => (
                 walk_ast_group(root);
             )
-            | :Syntax { .command, .value_after } => (
-                for token in &command.raw_tokens |> ArrayList.iter do (
-                    ctx.print(token^.span, :SyntaxCommand, Token.raw(token^));
+            | :Syntax {
+                .command = ref command,
+                .value_after = ref value_after,
+            } => (
+                for token in &command^.raw_tokens |> ArrayList.iter do (
+                    ctx.print(token^.span, :SyntaxCommand, Token.raw(token));
                 );
-                if value_after is :Some ref ast then (
+                if value_after^ is :Some ref ast then (
                     walk_ast(ast);
                 );
             )
@@ -271,14 +291,14 @@ const Highlight = (
     const walk_ast_parts = (parts :: &ArrayList.t[Ast.Part]) => (
         for part in parts |> ArrayList.iter do (
             match part^ with (
-                | :Keyword token => (
-                    (@current Context).print(token.span, :Keyword, Token.raw(token));
+                | :Keyword ref token => (
+                    (@current Context).print(token^.span, :Keyword, Token.raw(token));
                 )
                 | :Value ref ast => (
-                    walk_ast(ast);
+                    walk_ast(&ast^^);
                 )
                 | :Group ref inner_group => (
-                    walk_ast_group(inner_group);
+                    walk_ast_group(&inner_group^^);
                 )
                 | :Ignored ref token => (
                     walk_ignored_token(token);
@@ -288,13 +308,13 @@ const Highlight = (
     );
 
     const walk_ignored_token = (token :: &Token.t) => (
-        if token^.shape is :Comment { .raw, ... } then (
-            (@current Context).print(token^.span, :Comment, raw);
+        if token^.shape^ is :Comment { .raw = ref raw, ... } then (
+            (@current Context).print(token^.span, :Comment, raw |> RcStr.as_str);
         ) else (
             # ignored because of error
             (
                 @current Context
-            ).print(token^.span, :Error, Token.raw(token^));
+            ).print(token^.span, :Error, Token.raw(token));
         )
     );
 

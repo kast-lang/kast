@@ -5,7 +5,7 @@ use (import "../id.ks").*;
 # use (import "../lsp/_lib.ks").*;
 use (import "./common.ks").*;
 # use (import "./format.ks").*;
-# use (import "./highlight.ks").*;
+use (import "./highlight.ks").*;
 # use (import "./parse_json.ks").*;
 use (import "./parse_syntax_rules.ks").*;
 use (import "./parse_syntax_ruleset.ks").*;
@@ -38,7 +38,7 @@ const Args = (
         | :ParseSyntaxRuleset ParseSyntaxRuleset.Args.t
         | :Parse Parse.Args.t
         # | :ParseJson ParseJson.Args.t
-        # | :Highlight Highlight.Args.t
+        | :Highlight Highlight.Args.t
         # | :Format Format.Args.t
         # | :Lsp Lsp.CliArgs.t
         # | :StructuralFindAndReplace StructuralFindAndReplace.Args.t
@@ -70,12 +70,12 @@ const Args = (
                 if arg == "parse" then (
                     unwind subcommand (:Parse Parse.Args.parse(i + 1, .fix_syntax = :None));
                 );
+                if arg == "highlight" then (
+                    unwind subcommand (:Highlight Highlight.Args.parse(i + 1, .fix_syntax = :None));
+                );
                 @comment_out (
                 if arg == "parse-json" then (
                     unwind subcommand (:ParseJson ParseJson.Args.parse(i + 1));
-                );
-                if arg == "highlight" then (
-                    unwind subcommand (:Highlight Highlight.Args.parse(i + 1, .fix_syntax = :None));
                 );
                 if arg == "fmt" or arg == "format" then (
                     unwind subcommand (:Format Format.Args.parse(i + 1, .fix_syntax = :None));
@@ -127,7 +127,7 @@ match subcommand with (
     | :ParseSyntaxRuleset args => ParseSyntaxRuleset.run(common_args, args)
     | :Parse args => Parse.run(common_args, args)
     # | :ParseJson args => ParseJson.run(common_args, args)
-    # | :Highlight args => Highlight.run(common_args, args)
+    | :Highlight args => Highlight.run(common_args, args)
     # | :Format args => Format.run(common_args, args)
     # | :Lsp args => Lsp.run(args)
     # | :StructuralFindAndReplace args => StructuralFindAndReplace.run(common_args, args)

@@ -8,6 +8,7 @@ use (import "../token_stream.ks").*;
 use (import "../syntax_parser.ks").*;
 use (import "../parser.ks").*;
 use (import "../highlight.ks").*;
+use (import "../rc_str.ks").*;
 
 const root_scope = @current_scope;
 
@@ -37,7 +38,7 @@ const Highlight = (
                 let arg = std.sys.argv_at(i);
                 if arg == "--ruleset" and &@"syntax" |> Option.is_none then (
                     @"syntax" = :Some {
-                        .ruleset = std.sys.argv_at(i + 1),
+                        .ruleset = String.from_str(std.sys.argv_at(i + 1)),
                         .ext = :None,
                     };
                     i += 2;
@@ -48,7 +49,7 @@ const Highlight = (
                     i += 2;
                     continue;
                 );
-                &mut paths |> ArrayList.push_back(Common.path_arg_for_syntax(arg, .@"syntax"));
+                &mut paths |> ArrayList.push_back(Common.path_arg_for_syntax(arg, .@"syntax" = &@"syntax" |> Option.as_ref));
                 i += 1;
             );
             {
@@ -60,18 +61,21 @@ const Highlight = (
     );
 
     const run = (common_args :: Common.Args.t, args :: Args.t) => (
-        let ruleset_path = args.ruleset |> Option.unwrap_or("kast:///std/syntax.ks");
-        let mut lexer = Lexer.new(Source.read(SourcePath.parse(ruleset_path)));
+        let ruleset_path = match args.ruleset with (
+            | :Some ref path => path |> as_str
+            | :None => "kast:///std/syntax.ks"
+        );
+        let mut lexer = Lexer.new(Source.read(&SourcePath.parse(ruleset_path)));
         let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
-        let ruleset = SyntaxParser.parse_syntax_ruleset(&mut token_stream);
+        let mut ruleset = SyntaxParser.parse_syntax_ruleset(&mut token_stream);
 
         let output = root_scope.Highlight.new_output(args.mode);
-        let process = (path :: SourcePath) => (
+        let process = (path :: &SourcePath) => (
             let source = Source.read(path);
             let entire_source_span = (
                 let start = Position.beginning();
                 let mut end = start;
-                for c in source.contents |> String.iter do (
+                for c in &source.contents |> RcStr.iter do (
                     &mut end |> Position.advance(c);
                 );
                 {
@@ -83,7 +87,7 @@ const Highlight = (
             let mut lexer = Lexer.new(source);
             let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
             let parsed = Parser.parse(
-                .ruleset,
+                .ruleset = &mut ruleset,
                 .entire_source_span,
                 .path = source.path,
                 .token_stream = &mut token_stream,
@@ -95,10 +99,10 @@ const Highlight = (
             output.move_to(Position.beginning(), .print_whitespace = false);
         );
         if &args.paths |> ArrayList.length == 0 then (
-            process(:Stdin);
+            process(&(:Stdin));
         );
-        for path in args.paths |> ArrayList.into_iter do (
-            process(SourcePath.parse(path));
+        for path in &args.paths |> ArrayList.iter do (
+            process(&SourcePath.parse(path |> as_str));
         );
     );
 );
