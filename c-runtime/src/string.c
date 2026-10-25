@@ -74,7 +74,7 @@ void utf8_char_encode_step(char** s, Char c) {
 
 void Char_write_maybe_escape(Char c, char quote_char, Kast_Formatter* fmt) {
     switch (c) {
-        case '0':
+        case '\0':
             Kast_Formatter_printf(fmt, "\\0");
             break;
         case '\\':
