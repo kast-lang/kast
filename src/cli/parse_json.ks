@@ -3,6 +3,7 @@ use (import "../output.ks").*;
 use (import "../json/_lib.ks").*;
 use (import "../source.ks").*;
 use (import "../source_path.ks").*;
+use (import "../rc_str.ks").*;
 const dep_json = import "../../deps/json/lib.ks";
 
 module:
@@ -40,16 +41,16 @@ const ParseJson = (
     );
 
     const run = (common_args :: Common.Args.t, args :: Args.t) => (
-        let process = (path :: SourcePath) => (
+        let process = (path :: &SourcePath) => (
             let source = Source.read(path);
             let json = if args.use_kast_parser then (
-                let json = Json.parse(source.contents)
+                let json = Json.parse(&source.contents |> RcStr.as_str)
                     |> std.Result.unwrap_or_else(
                         error => panic("TODO Error happened")
                     );
                 json
             ) else (
-                let mut reader = dep_json.Reader.create(&source.contents);
+                let mut reader = dep_json.Reader.create(&source.contents |> RcStr.as_str);
                 let json = dep_json.parse(&mut reader)
                     |> std.Result.unwrap_or_else(
                         error => panic("TODO Error happened")
@@ -60,10 +61,10 @@ const ParseJson = (
             (@current Output).write("\n");
         );
         if &args.paths |> ArrayList.length == 0 then (
-            process(:Stdin);
+            process(&(:Stdin));
         );
-        for path in args.paths |> ArrayList.into_iter do (
-            process(SourcePath.parse(path));
+        for path in &args.paths |> ArrayList.iter do (
+            process(&SourcePath.parse(path |> as_str));
         );
     );
 );

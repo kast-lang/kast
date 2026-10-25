@@ -13,6 +13,7 @@ use (import "../syntax_rule.ks").*;
 use (import "../syntax_parser.ks").*;
 use (import "../ast.ks").*;
 use (import "../parser.ks").*;
+use (import "../rc_str.ks").*;
 const dep = import "../../deps/json/lib.ks";
 use std.collections.OrdMap;
 
@@ -34,8 +35,8 @@ const Json = (
 
     const t = newtype (
         | :Number Float64
-        | :String String
-        | :Object OrdMap.t[String, Json.t]
+        | :String RcStr
+        | :Object OrdMap.t[RcStr, Json.t]
         | :Array ArrayList.t[Json.t]
         | :Bool Bool
         | :Null
@@ -44,15 +45,15 @@ const Json = (
     const from_dep = (value :: dep.Value) -> Json.t => (
         match value with (
             | :Number x => (
-                let x = dep.Number.into_f64(x);
+                let x = dep.Number.to_f64(&x);
                 :Number x
             )
-            | :String s => :String s
+            | :String s => :String RcStr.from_String(s)
             | :Object a => (
                 let mut b = OrdMap.new();
                 for { name, value } in a |> ArrayList.into_iter do (
                     let value = from_dep(value);
-                    &mut b |> OrdMap.add(name, value);
+                    &mut b |> OrdMap.add(RcStr.from_String(name), value);
                 );
                 :Object b
             )
@@ -71,13 +72,14 @@ const Json = (
     const into_dep = (value :: Json.t) -> dep.Value => (
         match value with (
             | :Number x => (
-                let x = dep.Number.parse(&mut dep.Reader.create(&to_string(x))) |> Option.unwrap;
+                let x = dep.Number.parse(&mut dep.Reader.create(&to_string(x) |> as_str)) |> Option.unwrap;
                 :Number x
             )
-            | :String s => :String s
+            | :String s => :String String.from_str(&s |> RcStr.as_str)
             | :Object a => (
                 let mut b = ArrayList.new();
                 for { .key = name, .value = value } in a |> OrdMap.into_iter do (
+                    let name = String.from_str(&name |> RcStr.as_str);
                     let value = into_dep(value);
                     &mut b |> ArrayList.push_back({ name, value });
                 );
@@ -102,15 +104,15 @@ const Json = (
 
     const ruleset = () => (
         let path = "kast:///json/syntax.ks";
-        let source = Source.read(SourcePath.parse(path));
+        let source = Source.read(&SourcePath.parse(path));
         let mut lexer = Lexer.new(source);
         let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
         SyntaxParser.parse_syntax_ruleset(&mut token_stream)
     );
 
-    const parse_array = (rule :: &SyntaxRule.t, children :: Tuple.t[Ast.Child]) -> Json.t => (
+    const parse_array = (rule :: &SyntaxRule.t, children :: &Tuple.t[Ast.Child]) -> Json.t => (
         let mut elements = ArrayList.new();
-        let inner = children |> Tuple.unwrap_unnamed_1 |> Ast.unwrap_child_value;
+        let inner = children |> Tuple.get_unnamed(0) |> Ast.unwrap_child_value;
         for element in Ast.iter_list(
             inner,
             .binary_rule_name = "comma",
@@ -121,16 +123,16 @@ const Json = (
         :Array elements
     );
 
-    const ast_to_name = (ast :: Ast.t) -> String => with_return (
-        if ast.shape is :Token token then (
-            match token.shape with (
+    const ast_to_name = (ast :: &Ast.t) -> RcStr => with_return (
+        if ast^.shape^ is :Token ref token then (
+            match token^.shape^ with (
                 | :String { .contents, ... } => return contents
                 | :Ident { .name, ... } => return name
                 | _ => ()
             );
         );
         error(
-            ast.span,
+            ast^.span,
             () => (
                 let output = @current Output;
                 output.write("Expected field name");
@@ -138,19 +140,21 @@ const Json = (
         )
     );
 
-    const parse_obj = (rule :: &SyntaxRule.t, children :: Tuple.t[Ast.Child]) -> Json.t => (
+    const parse_obj = (rule :: &SyntaxRule.t, children :: &Tuple.t[Ast.Child]) -> Json.t => (
         let mut fields = OrdMap.new();
-        let inner = children |> Tuple.unwrap_unnamed_1 |> Ast.unwrap_child_value;
+        let inner = children |> Tuple.get_unnamed(0) |> Ast.unwrap_child_value;
         for field in Ast.iter_list(
             inner,
             .binary_rule_name = "comma",
             .trailing_or_leading_rule_name = :None,
         ) do (
-            if field.shape is :Rule { .rule, .root = { .children, ... } } then (
-                if rule.name == "field" then (
-                    let name = (&children |> Tuple.get_named("name"))^
+            if field^.shape^ is :Rule { .rule = ref rule, .root = ref root } then (
+                if &rule^^.name |> RcStr.as_str == "field" then (
+                    let name = &root^.children
+                        |> Tuple.get_named("name")
                         |> Ast.unwrap_child_value;
-                    let value = (&children |> Tuple.get_named("value"))^
+                    let value = &root^.children
+                        |> Tuple.get_named("value")
                         |> Ast.unwrap_child_value;
                     let name = ast_to_name(name);
                     let value = from_ast(value);
@@ -159,98 +163,97 @@ const Json = (
                 );
             );
             error(
-                field.span,
+                field^.span,
                 () => (
-                    let output = @current Output;
-                    output.write("Expected field, got ");
-                    output.write(rule^.name);
+                    write_str("Expected field, got ");
+                    write(&rule^.name);
                 )
             );
         );
         :Object fields
     );
 
-    const from_ast = (ast :: Ast.t) -> Json.t => with_return (
-        match ast.shape with (
+    const from_ast = (ast :: &Ast.t) -> Json.t => with_return (
+        match ast^.shape^ with (
             | :Empty => error(
-                ast.span,
+                ast^.span,
                 () => (@current Output).write("json can't be empty"),
             )
-            | :Token token => (
-                match token.shape with (
-                    | :String { .contents, ... } => :String contents
-                    | :Number { .raw, ... } => :Number std.String.parse[Float64](raw)
+            | :Token ref token => (
+                match token^.shape^ with (
+                    | :String { .contents = ref contents, ... } => :String contents^
+                    | :Number { .raw = ref raw, ... } => :Number std.String.parse[Float64](raw |> RcStr.as_str)
                     | _ => error(
-                        token.span,
+                        token^.span,
                         () => (
                             (@current Output).write("json can't be ");
-                            Token.Shape.print(token.shape);
+                            Token.Shape.print(&token^.shape^);
                         )
                     )
                 )
             )
             | :InterpolatedString _ => (
                 error(
-                    ast.span,
+                    ast^.span,
                     () => (@current Output).write("Interpolated strings aren't supported")
                 )
             )
-            | :Rule { .rule, .root = { .children, ... } } => (
-                if rule.name == "negative" then (
-                    let inner = children |> Tuple.unwrap_unnamed_1 |> Ast.unwrap_child_value;
+            | :Rule { .rule = ref rule, .root = { .children = ref children, ... } } => (
+                let rule = &rule^^;
+                if &rule^.name |> RcStr.as_str == "negative" then (
+                    let inner = children |> Tuple.get_unnamed(0) |> Ast.unwrap_child_value;
                     let value = from_ast(inner);
                     match value with (
                         | :Number x => return :Number -x
                         | _ => (
                             error(
-                                inner.span,
+                                inner^.span,
                                 () => (@current Output).write("Expected a number to be negated"),
                             )
                         )
                     )
                 );
-                if rule.name == "obj" then (
-                    return parse_obj(&rule, children);
+                if &rule^.name |> RcStr.as_str == "obj" then (
+                    return parse_obj(rule, children);
                 );
-                if rule.name == "array" then (
-                    return parse_array(&rule, children);
+                if &rule^.name |> RcStr.as_str == "array" then (
+                    return parse_array(rule, children);
                 );
-                if rule.name == "null" then (
+                if &rule^.name |> RcStr.as_str == "null" then (
                     return :Null;
                 );
-                if rule.name == "true" then (
+                if &rule^.name |> RcStr.as_str == "true" then (
                     return :Bool true;
                 );
-                if rule.name == "false" then (
+                if &rule^.name |> RcStr.as_str == "false" then (
                     return :Bool false;
                 );
                 error(
-                    ast.span,
+                    ast^.span,
                     () => (
-                        let output = @current Output;
-                        output.write(rule.name);
-                        output.write(" is not valid json");
+                        write(&rule^.name);
+                        write_str(" is not valid json");
                     ),
                 )
             )
         )
     );
 
-    const parse = (json :: String) -> Result.t[Json.t, ParseError] => (
-        let path :: SourcePath = :Special "<json>";
+    const parse = (json :: &str) -> Result.t[Json.t, ParseError] => (
+        let path :: SourcePath = :Special RcStr.from_String(String.from_str("<json>"));
         let source :: Source = {
-            .contents = json,
+            .contents = RcStr.from_String(String.from_str(json)),
             .path,
         };
         let mut lexer = Lexer.new(source);
         let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
         let parsed = Parser.parse(
-            .ruleset = ruleset(),
+            .ruleset = &mut ruleset(),
             .token_stream = &mut token_stream,
             .entire_source_span = Source.entire_span(&source),
             .path,
         );
-        :Ok from_ast(parsed.ast)
+        :Ok from_ast(&parsed.ast)
     );
 
     const to_str = (self :: &Json.t) -> String => (
@@ -262,13 +265,13 @@ const Json = (
             | :Number value => (
                 ansi.with_mode(
                     :Italic,
-                    () => (@current Output).write(to_string(value)),
+                    () => write_str(&to_string(value) |> as_str),
                 );
             )
-            | :String s => (
+            | :String ref s => (
                 ansi.with_mode(
                     :Green,
-                    () => (@current Output).write(String.escape(s)),
+                    () => write_escaped(s),
                 );
             )
             | :Object ref fields => (
@@ -318,7 +321,7 @@ const Json = (
             | :Bool value => (
                 ansi.with_mode(
                     :Magenta,
-                    () => (@current Output).write(to_string(value)),
+                    () => (@current Output).write(&to_string(value) |> as_str),
                 );
             )
             | :Null => (
