@@ -4,7 +4,7 @@ use (import "../output.ks").*;
 use (import "../id.ks").*;
 # use (import "../lsp/_lib.ks").*;
 use (import "./common.ks").*;
-# use (import "./format.ks").*;
+use (import "./format.ks").*;
 use (import "./highlight.ks").*;
 use (import "./parse_json.ks").*;
 use (import "./parse_syntax_rules.ks").*;
@@ -39,7 +39,7 @@ const Args = (
         | :Parse Parse.Args.t
         | :ParseJson ParseJson.Args.t
         | :Highlight Highlight.Args.t
-        # | :Format Format.Args.t
+        | :Format Format.Args.t
         # | :Lsp Lsp.CliArgs.t
         # | :StructuralFindAndReplace StructuralFindAndReplace.Args.t
         # | :Repl Repl.Args.t
@@ -76,10 +76,10 @@ const Args = (
                 if arg == "highlight" then (
                     unwind subcommand (:Highlight Highlight.Args.parse(i + 1, .fix_syntax = :None));
                 );
-                @comment_out (
                 if arg == "fmt" or arg == "format" then (
                     unwind subcommand (:Format Format.Args.parse(i + 1, .fix_syntax = :None));
                 );
+                @comment_out (
                 if arg == "lsp" then (
                     unwind subcommand (:Lsp Lsp.CliArgs.parse(i + 1));
                 );
@@ -128,7 +128,7 @@ match subcommand with (
     | :Parse args => Parse.run(common_args, args)
     | :ParseJson args => ParseJson.run(common_args, args)
     | :Highlight args => Highlight.run(common_args, args)
-    # | :Format args => Format.run(common_args, args)
+    | :Format args => Format.run(common_args, args)
     # | :Lsp args => Lsp.run(args)
     # | :StructuralFindAndReplace args => StructuralFindAndReplace.run(common_args, args)
     # | :Repl args => Repl.run(common_args, args)

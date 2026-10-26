@@ -13,6 +13,7 @@ use (import "./span.ks").*;
 use (import "./position.ks").*;
 use (import "./token.ks").*;
 use (import "./highlight.ks").*;
+use (import "./rc_str.ks").*;
 
 module:
 
@@ -39,39 +40,38 @@ const Format = (
     const Indentation = @context IndentationT;
 
     const flush = () => (
-        let output = @current Output;
-        let mut ctx = @current Context;
-        let mut indentation = @current Indentation;
-        for _ in 0..ctx.queued_newlines do (
-            output.write("\n");
-            ctx.just_printed_newline = true;
+        let ref mut ctx = @current Context;
+        let ref mut indentation = @current Indentation;
+        for _ in 0..ctx^.queued_newlines do (
+            write_str("\n");
+            ctx^.just_printed_newline = true;
         );
-        ctx.queued_newlines = 0;
-        while ctx.queued_indentation < 0 do (
-            indentation.string = indentation.string
-                |> String.substring_from(ctx.indentation_width);
-            ctx.queued_indentation += 1;
-        );
-        while ctx.queued_indentation > 0 do (
-            for _ in 0..ctx.indentation_width do (
-                indentation.string += " ";
+        ctx^.queued_newlines = 0;
+        while ctx^.queued_indentation < 0 do (
+            indentation^.string = String.from_str(
+                &indentation^.string |> as_str |> String.substring_from(ctx^.indentation_width)
             );
-            ctx.queued_indentation -= 1;
+            ctx^.queued_indentation += 1;
+        );
+        while ctx^.queued_indentation > 0 do (
+            for _ in 0..ctx^.indentation_width do (
+                indentation^.string = String.concat_owned(indentation^.string, String.from_str(" "));
+            );
+            ctx^.queued_indentation -= 1;
         );
     );
 
-    const print_raw = (raw :: String) => with_return (
+    const print_raw = (raw :: &str) => with_return (
         if String.length(raw) == 0 then (
             return;
         );
         flush();
-        let output = @current Output;
-        let mut ctx = @current Context;
-        if ctx.just_printed_newline then (
-            output.write((@current Indentation).string);
+        let ref mut ctx = @current Context;
+        if ctx^.just_printed_newline then (
+            write_str(&(@current Indentation).string |> as_str);
         );
-        output.write(raw);
-        ctx.just_printed_newline = false;
+        write_str(raw);
+        ctx^.just_printed_newline = false;
     );
 
     const inc_indentation = () => (
@@ -86,39 +86,39 @@ const Format = (
         (@current Context).queued_newlines += 1;
     );
 
-    const print_token = (token :: Token.t) => (
+    const print_token = (token :: &Token.t) => (
         let output = @current Output;
-        let mut ctx = @current Context;
+        let ref mut ctx = @current Context;
         let flush_before = () => (
             flush();
             if (
-                ctx.just_printed_newline
-                and token.span.start.line - ctx.prev_span.end.line > 1
-                and not ctx.prev_was_string_content
+                ctx^.just_printed_newline
+                and token^.span.start.line - ctx^.prev_span.end.line > 1
+                and not ctx^.prev_was_string_content
             ) then (
                 queue_newline();
             );
         );
-        if token.shape is :Comment { .raw, .ty } then (
+        if token^.shape^ is :Comment { .raw = ref raw, .ty } then (
             if (
-                not ctx.just_printed_newline
-                and ctx.prev_span.end.line == token.span.start.line
+                not ctx^.just_printed_newline
+                and ctx^.prev_span.end.line == token^.span.start.line
             ) then (
                 output.write(" ");
             ) else (
-                if not ctx.just_printed_newline and ctx.queued_newlines == 0 then (
+                if not ctx^.just_printed_newline and ctx^.queued_newlines == 0 then (
                     queue_newline();
                 );
                 flush_before();
             );
-            if ctx.just_printed_newline then (
-                output.write((@current Indentation).string);
+            if ctx^.just_printed_newline then (
+                write_str(&(@current Indentation).string |> as_str);
             );
-            output.write(raw);
-            ctx.just_printed_newline = false;
+            write(raw);
+            ctx^.just_printed_newline = false;
             match ty with (
                 | :Line => (
-                    if ctx.queued_newlines == 0 then (
+                    if ctx^.queued_newlines == 0 then (
                         queue_newline();
                     );
                     flush();
@@ -126,29 +126,32 @@ const Format = (
                 | :Block => ()
             );
         ) else (
-            if ctx.prev_was_block_comment and ctx.prev_span.end.line == token.span.start.line then (
-                output.write(" ");
+            if ctx^.prev_was_block_comment and ctx^.prev_span.end.line == token^.span.start.line then (
+                write_str(" ");
             );
             flush_before();
-            if token.shape is :String {
-                .open,
-                .close,
+            if token^.shape^ is :String {
+                .open = ref open,
+                .close = ref close,
                 .raw_parts = ref raw_parts,
-                .stripped_indentation,
+                .stripped_indentation = ref stripped_indentation,
                 ...
             } then (
                 print_raw(Token.raw(open));
-                if stripped_indentation != "" then (
+                if stripped_indentation |> RcStr.as_str != "" then (
                     inc_indentation();
                 );
                 for part in raw_parts |> ArrayList.iter do (
                     let raw = match part^ with (
-                        | :Escape { .raw, ... } => raw
-                        | :Content { .raw, ... } => raw
+                        | :Escape { .raw = ref raw, ... } => raw
+                        | :Content { .raw = ref raw, ... } => raw
                     );
-                    print_raw_string_content(raw, .stripped_indentation);
+                    print_raw_string_content(
+                        raw |> RcStr.as_str,
+                        .stripped_indentation = stripped_indentation |> RcStr.as_str,
+                    );
                 );
-                if stripped_indentation != "" then (
+                if stripped_indentation |> RcStr.as_str != "" then (
                     dec_indentation();
                 );
                 print_raw(Token.raw(close));
@@ -156,17 +159,17 @@ const Format = (
                 print_raw(Token.raw(token));
             );
         );
-        ctx.prev_span = token.span;
-        ctx.prev_was_block_comment = match token.shape with (
+        ctx^.prev_span = token^.span;
+        ctx^.prev_was_block_comment = match token^.shape^ with (
             | :Comment { .ty = :Block, ... } => true
             | _ => false
         );
-        ctx.prev_was_string_content = false;
+        ctx^.prev_was_string_content = false;
     );
 
     const print_raw_string_content = (
-        raw :: String,
-        .stripped_indentation :: String,
+        raw :: &str,
+        .stripped_indentation :: &str,
     ) => (
         let mut ctx = @current Context;
         let mut first = true;
@@ -198,8 +201,9 @@ const Format = (
             );
             flush();
             if ctx.just_printed_newline then (
-                (@current Indentation).extra_in_string = line
-                    |> String.substring(0, i);
+                (@current Indentation).extra_in_string = String.from_str(
+                    line |> String.substring(0, i)
+                );
             );
             print_raw(line);
         );
@@ -207,16 +211,16 @@ const Format = (
     );
 
     const format_to_string = (parsed :: &Parser.Parsed) -> String => (
-        let mut result = "";
+        let mut result = std.StringBuilder.new();
         let output = new_output(
             .write = s => (
-                result += s;
+                std.StringBuilder.add_str(&mut result, s);
             ),
             .indentation_string = "    ", # should depend on user setting
             .color = false,
         );
         format(parsed, output);
-        result
+        std.StringBuilder.into_string(result)
     );
 
     const format = (parsed :: &Parser.Parsed, output :: OutputT) => (
@@ -234,8 +238,8 @@ const Format = (
         };
         with Output = output;
         with Indentation = {
-            .string = "",
-            .extra_in_string = "",
+            .string = String.from_str(""),
+            .extra_in_string = String.from_str(""),
         };
         let {
             .ast = ref ast,
@@ -256,44 +260,50 @@ const Format = (
             .shape = ref shape,
             .span = _,
         } = ast^;
-        walk_ignored_tokens(ignored_tokens_before);
-        match shape^ with (
+        walk_ignored_tokens(&ignored_tokens_before^^);
+        match shape^^ with (
             | :Empty => ()
-            | :Token token => print_token(token)
+            | :Token ref token => print_token(token)
             | :InterpolatedString {
                 .delimiter = _,
-                .open,
-                .parts,
-                .close,
-                .stripped_indentation,
+                .open = ref open,
+                .parts = ref parts,
+                .close = ref close,
+                .stripped_indentation = ref stripped_indentation,
             } => (
                 with Indentation = {
-                    .extra_in_string = "",
-                    ...(@current Indentation),
+                    .string = String.clone(&(@current Indentation).string),
+                    .extra_in_string = String.from_str(""),
                 };
                 print_token(open);
-                if stripped_indentation != "" then (
+                if stripped_indentation |> RcStr.as_str != "" then (
                     inc_indentation();
                 );
-                for part in &parts |> ArrayList.iter do (
+                for part in parts |> ArrayList.iter do (
                     match part^ with (
-                        | :Content { .raw, ... } => (
-                            print_raw_string_content(raw, .stripped_indentation);
+                        | :Content { .raw = ref raw, ... } => (
+                            print_raw_string_content(
+                                raw |> RcStr.as_str,
+                                .stripped_indentation = stripped_indentation |> RcStr.as_str,
+                            );
                         )
                         | :Interpolated {
-                            .open,
-                            .close,
+                            .open = ref open,
+                            .close = ref close,
                             .ast = ref inner,
                             .ignored_trailing_tokens = ref ignored_trailing_tokens,
                         } => (
                             with Indentation = {
                                 .string = (
-                                    let cur = @current Indentation;
-                                    cur.string + cur.extra_in_string
+                                    let ref cur = @current Indentation;
+                                    String.concat_owned(
+                                        String.clone(&cur^.string),
+                                        String.clone(&cur^.extra_in_string),
+                                    )
                                 ),
-                                .extra_in_string = "",
+                                .extra_in_string = String.from_str(""),
                             };
-                            let wrapped = open.span.end.line != close.span.start.line;
+                            let wrapped = open^.span.end.line != close^.span.start.line;
                             print_token(open);
                             if wrapped then (
                                 queue_newline();
@@ -309,40 +319,40 @@ const Format = (
                         )
                     );
                 );
-                if stripped_indentation != "" then (
+                if stripped_indentation |> RcStr.as_str != "" then (
                     dec_indentation();
                 );
                 print_token(close);
             )
             | :Rule { .rule = ref rule, .root = ref root } => (
                 walk_ast_group(
-                    &rule^.parts,
+                    &rule^^.parts,
                     root,
-                    rule^.wrap_mode,
-                    .priority = rule^.priority,
+                    rule^^.wrap_mode,
+                    .priority = rule^^.priority,
                     .parent,
                 );
             )
-            | :Syntax { .command, .value_after } => (
+            | :Syntax { .command = ref command, .value_after = ref value_after } => (
                 let mut prev_token_span :: Option.t[_] = :None;
-                for &token in &command.raw_tokens |> ArrayList.iter do (
+                for token in &command^.raw_tokens |> ArrayList.iter do (
                     if prev_token_span is :Some prev_token_span then (
                         if (
-                            prev_token_span.end.line != token.span.start.line
-                            or prev_token_span.end.column.string_encoding != token.span.start.column.string_encoding
+                            prev_token_span.end.line != token^.span.start.line
+                            or prev_token_span.end.column.string_encoding != token^.span.start.column.string_encoding
                         ) then (
                             print_raw(" ");
                         );
                     );
                     print_token(token);
-                    prev_token_span = :Some token.span;
+                    prev_token_span = :Some token^.span;
                 );
                 queue_newline();
-                if value_after is :Some ref ast then (
+                if value_after^ is :Some ref ast then (
                     walk_ast(ast, .parent = :None);
                 );
             )
-            | :Error { .parts } => (
+            | :Error { .parts = ref parts } => (
                 Diagnostic.abort("Refusing to format code with errors")
             )
         )
@@ -378,7 +388,7 @@ const Format = (
         let skip_ignored_parts = () => (
             while part_idx < &group^.parts |> ArrayList.length do (
                 let part = &group^.parts |> ArrayList.at(part_idx);
-                if part^ is :Ignored token then (
+                if part^ is :Ignored ref token then (
                     walk_ignored_token(token);
                 ) else (
                     break;
@@ -393,24 +403,29 @@ const Format = (
                 :None
             )
         );
+        let next_part = () => (
+            let result = peek_part();
+            part_idx += 1;
+            result
+        );
         for part in rule_parts |> ArrayList.iter do (
             match part^ with (
-                | :Keyword expected_keyword => with_return (
+                | :Keyword ref expected_keyword => with_return (
                     skip_ignored_parts();
-                    let keyword_token = match peek_part() with (
-                        | :Some &(:Keyword token) => token
+                    let keyword_token = match next_part() with (
+                        | :Some &(:Keyword ref token) => token
                         | _ => panic("expected keyword token")
                     );
-                    if expected_keyword != Token.raw(keyword_token) then (
+                    if expected_keyword |> RcStr.as_str != Token.raw(keyword_token) then (
                         panic("Expected different keyword");
                     );
                     print_token(keyword_token);
                 )
-                | :Whitespace whitespace => (
+                | :Whitespace ref whitespace => (
                     let s = if wrapped then (
-                        whitespace.wrap
+                        &whitespace^.wrap |> RcStr.as_str
                     ) else (
-                        whitespace.no_wrap
+                        &whitespace^.no_wrap |> RcStr.as_str
                     );
                     for c in String.iter(s) do (
                         if c == '\t' then (
@@ -424,25 +439,27 @@ const Format = (
                         )
                     );
                 )
-                | :Value { .name, ... } => (
-                    let member = next_member(name); # we use this to advance unnamed idx
+                | :Value { .name = ref name, ... } => (
+                    let member = next_member(name |> Option.as_ref |> Option.map(RcStr.as_str)); # we use this to advance unnamed idx
                     skip_ignored_parts();
-                    let child = match peek_part() with (
-                        | :Some &(:Value ref child) => child
-                        | _ => panic("Expected value part")
+                    let child = match next_part() with (
+                        | :Some &(:Value ref child) => &child^^
+                        | other => (
+                            panic("Expected value part")
+                        )
                     );
                     walk_ast(child, .parent = :Some { .wrapped, .priority });
                 )
                 | :Group {
-                    .name,
+                    .name = ref name,
                     .parts = ref rule_group_parts,
                     .quantifier,
                     .wrap_mode = override_wrap_mode,
                     .span = _,
                 } => (
-                    let member = next_member(name);
+                    let member = next_member(name |> Option.as_ref |> Option.map(RcStr.as_str));
                     let child :: Option.t[_] = match &group^.children |> Tuple.get_opt(member) with (
-                        | :Some &(:Group ref group) => :Some group
+                        | :Some &(:Group ref group) => :Some &group^^
                         | :None => :None
                         | :Some &(:Value _) => panic("Expected group, got value")
                     );
@@ -454,7 +471,7 @@ const Format = (
                     );
                     if child is :Some group then (
                         skip_ignored_parts();
-                        match peek_part() with (
+                        match next_part() with (
                             | :Some &(:Group _) => ()
                             | _ => panic("expected group part")
                         );
@@ -471,7 +488,7 @@ const Format = (
         );
         while part_idx < &group^.parts |> ArrayList.length do (
             let part = &group^.parts |> ArrayList.at(part_idx);
-            if part^ is :Ignored token then (
+            if part^ is :Ignored ref token then (
                 walk_ignored_token(token);
             ) else (
                 panic("unexpected part");
@@ -482,11 +499,11 @@ const Format = (
 
     const walk_ignored_tokens = (tokens :: &ArrayList.t[Token.t]) => (
         for token in tokens |> ArrayList.iter do (
-            walk_ignored_token(token^);
+            walk_ignored_token(token);
         );
     );
 
-    const walk_ignored_token = (token :: Token.t) => (
+    const walk_ignored_token = (token :: &Token.t) => (
         print_token(token);
     );
 );
