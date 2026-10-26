@@ -74,6 +74,7 @@ let inner_compiled_with_handler
       | E_Ref { mut = _; place } -> handler.handle PlaceExpr place
       | E_Claim place -> handler.handle PlaceExpr place
       | E_UnsafeCopy place -> handler.handle PlaceExpr place
+      | E_Defer expr -> handler.handle Expr expr
       | E_Then { list } -> list |> List.iter (handler.handle Expr)
       | E_Stmt { expr } -> handler.handle Expr expr
       | E_Scope { expr } -> handler.handle Expr expr

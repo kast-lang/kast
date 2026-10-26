@@ -1308,6 +1308,7 @@ module Impl = struct
       | E_UnsafeCopy place | E_Claim place ->
         let place = transpile_place_expr place in
         claim place
+      | E_Defer e -> failwith __LOC__
       | E_Then { list } ->
         let expr = ref None in
         list

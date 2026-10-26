@@ -68,6 +68,7 @@ and stmt =
   | S_Goto of { label : string }
   | S_GotoLabel of string
   | S_For of { body : block }
+  | S_Scope of block
   | S_Return of expr
   | S_ReturnVoid
 
@@ -319,6 +320,7 @@ module Print = struct
     | S_For { body } ->
       write "for(;;) ";
       print_block body
+    | S_Scope block -> print_block block
     | S_Return value ->
       write "return ";
       print_expr value

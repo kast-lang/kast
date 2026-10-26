@@ -19,6 +19,7 @@
 @syntax "core:let &context" 3 @wrap never = "let" " " "&" "@context" " " "=" " " _;
 @syntax "let rec" 3 @wrap never = "let" " " "rec" " " pattern " " "=" " " value;
 # @syntax "let else" 3 @wrap never = "let" " " pattern " " "=" " " value " " "else" " " else_case;
+@syntax "core:defer" 3 @wrap never = "@defer" " " _;
 
 @syntax "core:empty_variant" 5000 @wrap never = "@empty_variant";
 @syntax "core:leading union" 3.99 @wrap never = "|" " " _;

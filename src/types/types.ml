@@ -476,6 +476,7 @@ module rec TypesImpl : sig
     | E_Ref of expr_ref
     | E_Claim of place_expr
     | E_UnsafeCopy of place_expr
+    | E_Defer of expr
     | E_Then of expr_then
     | E_Stmt of expr_stmt
     | E_Scope of expr_scope
@@ -1254,6 +1255,7 @@ end = struct
     | E_Ref of expr_ref
     | E_Claim of place_expr
     | E_UnsafeCopy of place_expr
+    | E_Defer of expr
     | E_Then of expr_then
     | E_Stmt of expr_stmt
     | E_Scope of expr_scope

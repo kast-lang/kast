@@ -299,6 +299,7 @@ module Impl = struct
     | E_Ref { mut : bool = _; place } -> complete_place_expr place
     | E_Claim place -> complete_place_expr place
     | E_UnsafeCopy place -> complete_place_expr place
+    | E_Defer expr -> complete_expr expr
     | E_Then { list } -> list |> List.iter complete_expr
     | E_Stmt { expr } -> complete_expr expr
     | E_Scope { expr } -> complete_expr expr

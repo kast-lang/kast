@@ -348,6 +348,9 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
         }
       | E_Claim place -> place.data.signature
       | E_UnsafeCopy place -> place.data.signature
+      | E_Defer expr ->
+        ignored_ty expr.data.span expr.data.signature.ty;
+        { ty = Ty.inferred ~span T_Unit }
       | E_Then { list } ->
         let rec go (list : expr list) =
           match list with

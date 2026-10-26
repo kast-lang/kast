@@ -307,6 +307,7 @@ module Impl = struct
       | E_Ref _ -> "Ref"
       | E_Claim _ -> "Claim"
       | E_UnsafeCopy _ -> "Copy"
+      | E_Defer _ -> "Defer"
       | E_Stmt _ -> "Stmt"
       | E_Scope _ -> "Scope"
       | E_Fn _ -> "Fn"
@@ -353,6 +354,8 @@ module Impl = struct
         "@{<magenta>unsafe_copy@} (@;<0 2>@[<v>place = %a,@]@ )"
         (print_place_expr ~options)
         place
+    | E_Defer expr ->
+      fprintf fmt "@{<magenta>defer@} (@;<0 2>@[<v>%a@]@ )" (print_expr ~options) expr
     | E_Claim place ->
       fprintf
         fmt

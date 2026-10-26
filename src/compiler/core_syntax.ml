@@ -2655,6 +2655,31 @@ let unsafe_copy : core_syntax =
   }
 ;;
 
+let defer : core_syntax =
+  { name = "defer"
+  ; handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        : a ->
+        let span = ast.data.span in
+        let expr = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
+        let expr () =
+          let expr = C.compile Expr expr in
+          E_Defer expr |> init_expr span C.state
+        in
+        match kind with
+        | Expr -> expr ()
+        | PlaceExpr -> Compiler.temp_expr (module C) ast
+        | TyExpr -> (fun () -> TE_Expr (expr ())) |> init_ty_expr span C.state
+        | Pattern | Assignee ->
+          error span "defer can't be pattern | assignee";
+          init_error span C.state kind)
+  }
+;;
+
 let auto_instantiate : core_syntax =
   { name = "auto_instantiate"
   ; handle =
@@ -2858,6 +2883,7 @@ let core =
   ; context
   ; let_context
   ; unsafe_copy
+  ; defer
   ]
 ;;
 

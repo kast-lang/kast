@@ -1280,6 +1280,7 @@ and eval : state -> expr -> value =
            | E_Ref place -> eval_expr_ref state expr place
            | E_Claim place -> eval_expr_claim state expr place
            | E_UnsafeCopy place -> eval_expr_claim state expr place
+           | E_Defer _ -> failwith __LOC__
            | E_Fn f -> eval_expr_fn state expr f
            | E_Generic f -> eval_expr_generic state expr f
            | E_Tuple tuple -> eval_expr_tuple state expr tuple

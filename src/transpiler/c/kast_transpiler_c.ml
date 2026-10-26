@@ -1672,7 +1672,7 @@ module Impl = struct
       f_stmts |> List.iter insert_stmt;
       old_return ();
       insert_stmt (S_GotoLabel deferred_unwind_label);
-      f_stmts |> List.iter insert_stmt;
+      f ();
       old_unwind ();
       insert_stmt (S_GotoLabel skip_deferred_label);
       unwind_ctx.return <- (fun () -> insert_stmt (S_Goto { label = deferred_label }));
@@ -2555,6 +2555,9 @@ module Impl = struct
         Some (E_Pure (Pure_AddrOf (transpile_place_expr place)))
       | Types.E_Claim place -> Some (claim place)
       | Types.E_UnsafeCopy place -> Some (E_Pure (Pure_Copy (transpile_place_expr place)))
+      | Types.E_Defer e ->
+        defer (fun () -> insert_stmt (S_Scope (new_block (fun () -> execute_expr e))));
+        None
       | Types.E_Then { list } ->
         List.fold_left
           (fun acc e ->
