@@ -1,10 +1,7 @@
 use std.rc.Rc;
 
-const Ctx = @context Int32;
+const f = (...) => ();
 
-(
-    with Ctx = 123;
-    dbg.print(@current Ctx);
-);
-dbg.print(@current Ctx);
+let { first, ...rest } = { Rc.new(69), Rc.new(420) };
 
+f(Rc.new(123 :: Int32));

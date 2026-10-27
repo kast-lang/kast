@@ -1897,7 +1897,7 @@ module Impl = struct
                        in
                        let var = gen_name "packed" in
                        let var_ty = transpile_ty packed.data.signature.ty in
-                       let_var packed.data.signature.ty var None;
+                       let_var ~drop:false packed.data.signature.ty var None;
                        packed_ty.tuple
                        |> Tuple.iter (fun packed_member _field ->
                          let member =
