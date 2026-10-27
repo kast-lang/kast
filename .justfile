@@ -91,5 +91,5 @@ test:
     fd --exclude '**/doesnt-parse/*' --type file --extension ks --exec-batch kast parse > /dev/null
     fd --exclude '**/doesnt-parse/*' --type file --extension ks --exec-batch kast mini parse > /dev/null
 
-lsp-stress-test:
-    kast-bootstrap run --target js lsp-stress-test/main.ks | kast lsp
+lsp-stress-test *args:
+    kast-bootstrap run --target c lsp-stress-test/main.ks {{args}} | kast lsp

@@ -11,6 +11,10 @@ const RcStr = newtype {
 impl RcStr as module = (
     module:
 
+    const allocate = (s :: &str) -> RcStr => (
+        from_String(String.from_str(s))
+    );
+
     const from_String = (s :: String) -> RcStr => (
         let length = &s |> String.as_str |> String.length;
         let original = Rc.new(s);
@@ -44,6 +48,15 @@ impl RcStr as module = (
     const at = (self :: &RcStr, idx :: Int32) -> Char => (
         self |> as_str |> String.at(idx)
     );
+
+    const lines = (self :: &RcStr) -> std.iter.Iterable[RcStr] => {
+        # TODO no allocate
+        .iter = @move f => (
+            for line in String.lines(as_str(self)) do (
+                f(allocate(line));
+            );
+        ),
+    };
 );
 
 impl RcStr as std.fmt.Display = {

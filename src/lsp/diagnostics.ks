@@ -7,16 +7,22 @@ const diagnostics = (
     module:
 
     const document = (state :: &mut State, request :: Json.t) -> Json.t => with_return (
-        let :Object fields = request;
-        let (&(:Object params)) = &fields |> OrdMap.get("params") |> Option.unwrap;
+        let :Object ref fields = request;
+        let (&(:Object ref params)) = fields
+            |> OrdMap.get(&RcStr.allocate("params"))
+            |> Option.unwrap;
         let text_document = (
-            let (&value) = &params |> OrdMap.get("textDocument") |> Option.unwrap;
-            let :Object fields = value;
-            let (&(:String uri)) = &fields |> OrdMap.get("uri") |> Option.unwrap;
-            { .uri = parse(uri) }
+            let value = params
+                |> OrdMap.get(&RcStr.allocate("textDocument"))
+                |> Option.unwrap;
+            let :Object ref fields = value^;
+            let (&(:String ref uri)) = fields
+                |> OrdMap.get(&RcStr.allocate("uri"))
+                |> Option.unwrap;
+            { .uri = parse(uri |> RcStr.as_str) }
         );
         let file_state = &state^.files
-            |> OrdMap.get(Uri.to_string(text_document.uri))
+            |> OrdMap.get(&RcStr.from_String(Uri.to_string(&text_document.uri)))
             |> Option.unwrap_or_else(
                 () => (
                     # Technically null is not allowed response
@@ -29,14 +35,14 @@ const diagnostics = (
             let diagnostic = :Object (
                 let mut fields = OrdMap.new();
                 let range = span_to_lsp_range(diagnostic^.span);
-                &mut fields |> OrdMap.add("range", range);
+                &mut fields |> OrdMap.add(RcStr.allocate("range"), range);
                 let severity = match diagnostic^.severity with (
                     | :Error => 1
                     | :Warning => 2
                     | :Info => 3
                     | :Hint => 4
                 );
-                &mut fields |> OrdMap.add("severity", :Number severity);
+                &mut fields |> OrdMap.add(RcStr.allocate("severity"), :Number severity);
                 unwindable source (
                     let source = match diagnostic^.source with (
                         | :Lexer => "lexer"
@@ -46,28 +52,32 @@ const diagnostics = (
                         | :Interpreter => "interpreter"
                         | :Other => unwind source ()
                     );
-                    &mut fields |> OrdMap.add("source", :String source);
+                    &mut fields
+                        |> OrdMap.add(
+                            RcStr.allocate("source"),
+                            :String RcStr.allocate(source),
+                        );
                 );
-                let message = output_to_string(diagnostic^.message);
-                &mut fields |> OrdMap.add("message", :String message);
+                let message = RcStr.from_String(output_to_string(diagnostic^.message));
+                &mut fields |> OrdMap.add(RcStr.allocate("message"), :String message);
                 # Can add tags : unnecessary/deprecated
                 let mut related = ArrayList.new();
                 for info in &diagnostic^.related |> ArrayList.iter do (
                     let mut fields = OrdMap.new();
-                    &mut fields |> OrdMap.add("location", span_to_lsp_location(info^.span));
-                    let message = output_to_string(info^.message);
-                    &mut fields |> OrdMap.add("message", :String message);
+                    &mut fields |> OrdMap.add(RcStr.allocate("location"), span_to_lsp_location(info^.span));
+                    let message = RcStr.from_String(output_to_string(info^.message));
+                    &mut fields |> OrdMap.add(RcStr.allocate("message"), :String message);
                     &mut related |> ArrayList.push_back(:Object fields);
                 );
-                &mut fields |> OrdMap.add("relatedInformation", :Array related);
+                &mut fields |> OrdMap.add(RcStr.allocate("relatedInformation"), :Array related);
                 fields
             );
             &mut diagnostics |> ArrayList.push_back(diagnostic);
         );
         :Object (
             let mut fields = OrdMap.new();
-            &mut fields |> OrdMap.add("kind", :String "full");
-            &mut fields |> OrdMap.add("items", :Array diagnostics);
+            &mut fields |> OrdMap.add(RcStr.allocate("kind"), :String RcStr.allocate("full"));
+            &mut fields |> OrdMap.add(RcStr.allocate("items"), :Array diagnostics);
             fields
         )
     );
@@ -75,7 +85,7 @@ const diagnostics = (
     const workspace = (state :: &mut State, request :: Json.t) -> Json.t => (
         :Object (
             let mut fields = OrdMap.new();
-            &mut fields |> OrdMap.add("items", :Array ArrayList.new());
+            &mut fields |> OrdMap.add(RcStr.allocate("items"), :Array ArrayList.new());
             fields
         )
     );

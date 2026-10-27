@@ -61,7 +61,7 @@ const semantic_tokens = (
             | :Namespace => 22
         );
 
-        const to_string = (self :: TokenType) -> String => match self with (
+        const to_str = (self :: TokenType) -> &str => match self with (
             | :Type => "type"
             | :Class => "class"
             | :Enum => "enum"
@@ -132,7 +132,7 @@ const semantic_tokens = (
     impl TokenModifier as module = (
         module:
 
-        const to_string = (self :: TokenModifier) -> String => match self with (
+        const to_str = (self :: TokenModifier) -> &str => match self with (
             | :Declaration => "declaration"
             | :Definition => "definition"
             | :Readonly => "readonly"
@@ -180,33 +180,39 @@ const semantic_tokens = (
         for token_type in TokenType.variants() do (
             &mut token_types
                 |> ArrayList.push_back(
-                    :String (token_type |> TokenType.to_string)
+                    :String RcStr.allocate(token_type |> TokenType.to_str)
                 );
         );
-        &mut fields |> OrdMap.add("tokenTypes", :Array token_types);
+        &mut fields |> OrdMap.add(RcStr.allocate("tokenTypes"), :Array token_types);
         let mut token_modifiers = ArrayList.new();
         for token_modifier in TokenModifier.variants() do (
             &mut token_modifiers
                 |> ArrayList.push_back(
-                    :String (token_modifier |> TokenModifier.to_string)
+                    :String RcStr.allocate(token_modifier |> TokenModifier.to_str)
                 );
         );
-        &mut fields |> OrdMap.add("tokenModifiers", :Array token_modifiers);
+        &mut fields |> OrdMap.add(RcStr.allocate("tokenModifiers"), :Array token_modifiers);
         :Object fields
     );
 
     const full = (state :: &mut State, request :: Json.t) -> Json.t => with_return (
-        let :Object fields = request;
-        let (&(:Object params)) = &fields |> OrdMap.get("params") |> Option.unwrap;
+        let :Object ref fields = request;
+        let (&(:Object ref params)) = fields
+            |> OrdMap.get(&RcStr.allocate("params"))
+            |> Option.unwrap;
         let text_document = (
-            let (&value) = &params |> OrdMap.get("textDocument") |> Option.unwrap;
-            let :Object fields = value;
-            let (&(:String uri)) = &fields |> OrdMap.get("uri") |> Option.unwrap;
-            { .uri = parse(uri) }
+            let value = params
+                |> OrdMap.get(&RcStr.allocate("textDocument"))
+                |> Option.unwrap;
+            let :Object ref fields = value^;
+            let (&(:String ref uri)) = fields
+                |> OrdMap.get(&RcStr.allocate("uri"))
+                |> Option.unwrap;
+            { .uri = parse(uri |> RcStr.as_str) }
         );
 
         let file_state = &state^.files
-            |> OrdMap.get(Uri.to_string(text_document.uri))
+            |> OrdMap.get(&RcStr.from_String(Uri.to_string(&text_document.uri)))
             |> Option.unwrap_or_else(() => return :Null);
         let parsed = &file_state^.parsed
             |> Option.as_ref
@@ -241,7 +247,7 @@ const semantic_tokens = (
                     span.end.column.string_encoding
                 ) else (
                     let line_contents = &file_state^.lines |> ArrayList.at(line);
-                    String.length(line_contents^)
+                    RcStr.length(line_contents)
                 );
                 let delta_line = line - prev_start.line;
                 let delta_start = if delta_line == 0 then (
@@ -292,7 +298,7 @@ const semantic_tokens = (
                         :Number (std.convert.int32_to_float64(x))
                     );
             );
-            &mut fields |> OrdMap.add("data", :Array json_data);
+            &mut fields |> OrdMap.add(RcStr.allocate("data"), :Array json_data);
             fields
         )
     );

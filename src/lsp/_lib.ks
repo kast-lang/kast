@@ -21,7 +21,7 @@ const Lsp = (
             let mut i = start_index;
             while i < std.sys.argc() do (
                 let arg = std.sys.argv_at(i);
-                Diagnostic.abort("Unexpected arg " + String.escape(arg));
+                Diagnostic.abort(&format!("Unexpected arg \(String.escape(arg))") |> as_str);
                 i += 1;
             );
             {  }
@@ -32,8 +32,11 @@ const Lsp = (
         state :: &mut State,
         request :: Json.t,
     ) -> Json.t => with_return (
-        let :Object request_fields = request;
-        let (&(:String method)) = &request_fields |> OrdMap.get("method") |> Option.unwrap;
+        let :Object ref request_fields = request;
+        let (&(:String ref method)) = request_fields
+            |> OrdMap.get(&RcStr.allocate("method"))
+            |> Option.unwrap;
+        let method = method |> RcStr.as_str;
         Log.info(
             () => (
                 let output = @current Output;
@@ -62,11 +65,14 @@ const Lsp = (
         if method == "workspace/diagnostic" then (
             return state |> diagnostics.workspace(request);
         );
-        panic("TODO respond to " + method)
+        panic_fmt!("TODO respond to \(method)")
     );
     const on_notification = (state :: &mut State, notification :: Json.t) -> () => with_return (
-        let :Object fields = notification;
-        let (&(:String method)) = &fields |> OrdMap.get("method") |> Option.unwrap;
+        let :Object ref fields = notification;
+        let (&(:String ref method)) = fields
+            |> OrdMap.get(&RcStr.allocate("method"))
+            |> Option.unwrap;
+        let method = method |> RcStr.as_str;
         Log.info(
             () => (
                 let output = @current Output;
@@ -85,8 +91,8 @@ const Lsp = (
     const run = (arg :: CliArgs.t) => (
         (@current Stdout).color = false;
         (@current Stderr).color = false;
-        let kast_syntax_file :: Source = Source.read(SourcePath.parse("kast:///std/syntax.ks"));
-        let minikast_syntax_file :: Source = Source.read(SourcePath.parse("kast:///mini/syntax.ks"));
+        let kast_syntax_file :: Source = Source.read(&SourcePath.parse("kast:///std/syntax.ks"));
+        let minikast_syntax_file :: Source = Source.read(&SourcePath.parse("kast:///mini/syntax.ks"));
         let get_syntax = source => (
             let mut lexer = Lexer.new(source);
             let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
@@ -103,8 +109,8 @@ const Lsp = (
             JsonRpc.stdio(),
             {
                 .on_request = request => with_return (
-                    let abort_handler = (msg :: String) -> Never => (
-                        return :Error msg
+                    let abort_handler = (msg :: &str) -> Never => (
+                        return :Error String.from_str(msg)
                     );
                     with Diagnostic.AbortHandler = abort_handler;
                     :Ok on_request(&mut state, request)

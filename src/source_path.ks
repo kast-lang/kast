@@ -11,6 +11,23 @@ const SourcePath = newtype (
     | :Special RcStr
 );
 
+impl SourcePath as std.fmt.Display = {
+    .display = (self, fmt) => match self^ with (
+        | :Stdin => (
+            std.fmt.write!(fmt, "<stdin>");
+        )
+        | :Uri uri => if &uri^.scheme |> String.as_str == "file" then (
+            # TODO relative to cwd?
+            fmt^.write_str(&uri^.path |> String.as_str);
+        ) else (
+            fmt^.write_str(&Uri.to_string(&uri^) |> String.as_str);
+        )
+        | :Special ref name => (
+            std.fmt.write!(fmt, "\(name^)");
+        )
+    ),
+};
+
 impl SourcePath as module = (
     module:
 
@@ -52,19 +69,8 @@ impl SourcePath as module = (
         )
     );
 
-    const print = (self :: &SourcePath) => match self^ with (
-        | :Stdin => (
-            write_str("<stdin>");
-        )
-        | :Uri uri => if &uri^.scheme |> String.as_str == "file" then (
-            # TODO relative to cwd?
-            write_str(&uri^.path |> String.as_str);
-        ) else (
-            write_str(&Uri.to_string(&uri^) |> String.as_str);
-        )
-        | :Special ref name => (
-            write(name);
-        )
+    const print = (self :: &SourcePath) => (
+        write_str(&format!("\(self^)") |> as_str);
     );
 );
 

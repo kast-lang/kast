@@ -3,8 +3,8 @@ use (import "./common.ks").*;
 module:
 
 const FileState = newtype {
-    .contents :: String,
-    .lines :: ArrayList.t[String],
+    .contents :: RcStr,
+    .lines :: ArrayList.t[RcStr],
     .parsed :: Option.t[Parser.Parsed],
     .diagnostics :: ArrayList.t[Diagnostic.t],
 };
@@ -14,10 +14,10 @@ const State = newtype {
         .kast :: SyntaxRuleset.t,
         .minikast :: SyntaxRuleset.t,
     },
-    .files :: OrdMap.t[String, FileState],
+    .files :: OrdMap.t[RcStr, FileState],
 };
 
-const get_ext = (path :: String) -> Option.t[String] => (
+const get_ext = (path :: &str) -> Option.t[&str] => (
     let last_dot = path |> String.last_index_of('.');
     if last_dot < 0 then (
         :None
@@ -26,39 +26,32 @@ const get_ext = (path :: String) -> Option.t[String] => (
     )
 );
 
-const open_or_change_doc = (state :: &mut State, uri :: Uri, contents :: String) => (
-    Log.info_msg("open_or_change_doc " + Uri.to_string(uri));
-    let source :: Source = { .path = :Uri uri, .contents };
-    let entire_source_span = (
-        let start = Position.beginning();
-        let mut end = start;
-        for c in source.contents |> String.iter do (
-            &mut end |> Position.advance(c);
-        );
-        {
-            .start,
-            .end,
-            .path = source.path,
-        }
-    );
+const open_or_change_doc = (state :: &mut State, uri :: Uri, contents :: &RcStr) => (
+    let contents = contents^;
+    Log.info_msg(&format!("open_or_change_doc \(Uri.to_string(&uri))") |> as_str);
+    let source :: Source = { .path = :Uri Rc.new(uri), .contents };
     let mut diagnostics = ArrayList.new();
     let parsed = (
         with Diagnostic.HandlerContext = {
             .stop_on_error = false,
             .handle = diagnostic => (
-                &mut diagnostics |> ArrayList.push_back(diagnostic);
+                &mut diagnostics |> ArrayList.push_back(Diagnostic.unstack(diagnostic));
             ),
         };
         let mut lexer = Lexer.new(source);
         let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
-        let ruleset = if std.repr.structurally_equal(get_ext(uri.path), :Some "mks") then (
-            state^.@"syntax".minikast
+        let is_mks = match get_ext(&uri.path |> as_str) with (
+            | :Some ext => ext == "mks"
+            | :None => false
+        );
+        let ruleset = if is_mks then (
+            &state^.@"syntax".minikast
         ) else (
-            state^.@"syntax".kast
+            &state^.@"syntax".kast
         );
         let parsed = Parser.parse(
             .ruleset,
-            .entire_source_span,
+            .entire_source_span = Source.entire_span(&source),
             .path = source.path,
             .token_stream = &mut token_stream,
         );
@@ -68,7 +61,7 @@ const open_or_change_doc = (state :: &mut State, uri :: Uri, contents :: String)
         .contents,
         .lines = (
             let mut lines = ArrayList.new();
-            for line in String.lines(contents) do (
+            for line in RcStr.lines(&contents) do (
                 &mut lines |> ArrayList.push_back(line);
             );
             lines
@@ -76,33 +69,51 @@ const open_or_change_doc = (state :: &mut State, uri :: Uri, contents :: String)
         .parsed,
         .diagnostics,
     };
-    &mut state^.files |> OrdMap.add(Uri.to_string(uri), file_state);
+    &mut state^.files |> OrdMap.add(RcStr.from_String(Uri.to_string(&uri)), file_state);
 );
 
 const did_open = (state :: &mut State, n :: Json.t) -> () => (
-    let :Object fields = n;
-    let (&(:Object params)) = &fields |> OrdMap.get("params") |> Option.unwrap;
+    let :Object ref fields = n;
+    let (&(:Object ref params)) = fields
+        |> OrdMap.get(&RcStr.allocate("params"))
+        |> Option.unwrap;
     let text_document = (
-        let (&value) = &params |> OrdMap.get("textDocument") |> Option.unwrap;
-        let :Object fields = value;
-        let (&(:String uri)) = &fields |> OrdMap.get("uri") |> Option.unwrap;
-        let (&(:String text)) = &fields |> OrdMap.get("text") |> Option.unwrap;
-        { .uri = parse(uri), .text }
+        let value = params
+            |> OrdMap.get(&RcStr.allocate("textDocument"))
+            |> Option.unwrap;
+        let :Object ref fields = value^;
+        let (&(:String ref uri)) = fields
+            |> OrdMap.get(&RcStr.allocate("uri"))
+            |> Option.unwrap;
+        let (&(:String ref text)) = fields
+            |> OrdMap.get(&RcStr.allocate("text"))
+            |> Option.unwrap;
+        { .uri = parse(uri |> RcStr.as_str), .text }
     );
     state |> open_or_change_doc(text_document.uri, text_document.text)
 );
 
 const did_change = (state :: &mut State, n :: Json.t) -> () => (
-    let :Object fields = n;
-    let (&(:Object params)) = &fields |> OrdMap.get("params") |> Option.unwrap;
+    let :Object ref fields = n;
+    let (&(:Object ref params)) = fields
+        |> OrdMap.get(&RcStr.allocate("params"))
+        |> Option.unwrap;
     let text_document = (
-        let (&value) = &params |> OrdMap.get("textDocument") |> Option.unwrap;
-        let :Object fields = value;
-        let (&(:String uri)) = &fields |> OrdMap.get("uri") |> Option.unwrap;
-        { .uri = parse(uri) }
+        let value = params
+            |> OrdMap.get(&RcStr.allocate("textDocument"))
+            |> Option.unwrap;
+        let :Object ref fields = value^;
+        let (&(:String ref uri)) = fields
+            |> OrdMap.get(&RcStr.allocate("uri"))
+            |> Option.unwrap;
+        { .uri = parse(uri |> RcStr.as_str) }
     );
-    let (&(:Array changes)) = &params |> OrdMap.get("contentChanges") |> Option.unwrap;
-    let (&(:Object change)) = &changes |> ArrayList.at(0);
-    let (&(:String text)) = &change |> OrdMap.get("text") |> Option.unwrap;
+    let (&(:Array ref changes)) = params
+        |> OrdMap.get(&RcStr.allocate("contentChanges"))
+        |> Option.unwrap;
+    let (&(:Object ref change)) = changes |> ArrayList.at(0);
+    let (&(:String ref text)) = change
+        |> OrdMap.get(&RcStr.allocate("text"))
+        |> Option.unwrap;
     state |> open_or_change_doc(text_document.uri, text)
 );

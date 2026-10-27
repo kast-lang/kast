@@ -1,4 +1,5 @@
 use (import "./json/_lib.ks").*;
+use (import "./rc_str.ks").*;
 const dep_json = import "../deps/json/lib.ks";
 use std.collections.OrdMap;
 
@@ -17,7 +18,7 @@ const JsonRpc = (
     const Io = newtype {
         .input :: BufferedReader,
         .output :: {
-            .write :: String -> (),
+            .write :: &str -> (),
         },
     };
 
@@ -43,8 +44,9 @@ const JsonRpc = (
     const read_header = (io :: Io) -> Header => (
         let mut content_length = :None;
         loop (
+            let s = io.input.read_until('\n');
+            let s = &s |> as_str;
             let header = (
-                let s = io.input.read_until('\n');
                 if s |> String.at(String.length(s) - 1) != '\r' then (
                     panic("\\r expected");
                 );
@@ -78,10 +80,10 @@ const JsonRpc = (
 
     const write = (io :: Io, message :: Json.t) => (
         let contents = message |> Json.into_dep |> to_string;
-        dbg.print(contents);
-        let content_length :: Int32 = @native "Buffer.byteLength(\(contents), 'utf-8')";
+        let contents = &contents |> as_str;
+        let content_length = String.utf8_length(contents);
         io.output.write("Content-Length: ");
-        io.output.write(to_string(content_length));
+        io.output.write(&to_string(content_length) |> as_str);
         io.output.write("\r\n\r\n");
         io.output.write(contents);
     );
@@ -90,28 +92,49 @@ const JsonRpc = (
         loop (
             let { .content_length } = read_header(io);
             let content = io.input.read_exactly(content_length);
-            let json = dep_json.parse(&mut dep_json.Reader.create(&content))
-                |> std.Result.unwrap
+            let content = &content |> as_str;
+            dbg.print(content);
+            let json = dep_json.parse(&mut dep_json.Reader.create(content))
+                |> std.Result.unwrap_or_else({ .err, .pos } => (
+                    panic_fmt!(''
+                        Failed to parse JSON:
+                            Error at \(String.to_string(pos)):
+                            \(String.to_string(err))'')
+                ))
                 |> Json.from_dep;
             let :Object message = json;
-            let (&(:String jsonrpc)) = &message |> OrdMap.get("jsonrpc") |> Option.unwrap;
-            if jsonrpc != "2.0" then (
-                panic("jsonrpc is not 2.0 but " + String.escape(jsonrpc));
+            let (&(:String ref jsonrpc)) = &message
+                |> OrdMap.get(&RcStr.allocate("jsonrpc"))
+                |> Option.unwrap;
+            if jsonrpc |> RcStr.as_str != "2.0" then (
+                panic_fmt!("jsonrpc is not 2.0 but \(jsonrpc^)");
             );
-            if &message |> OrdMap.get("id") is :Some &id then (
+            if &message |> OrdMap.get(&RcStr.allocate("id")) is :Some &id then (
                 let result = handler.on_request(json);
                 let mut response_fields = OrdMap.new();
-                &mut response_fields |> OrdMap.add("id", id);
+                &mut response_fields |> OrdMap.add(RcStr.allocate("id"), id);
                 match result with (
                     | :Ok result => (
-                        &mut response_fields |> OrdMap.add("result", result)
+                        &mut response_fields |> OrdMap.add(RcStr.allocate("result"), result)
                     )
                     | :Error error_message => (
                         let mut error_fields = OrdMap.new();
                         const INTERNAL_ERROR = -32603 :: Float64;
-                        &mut error_fields |> OrdMap.add("code", :Number INTERNAL_ERROR);
-                        &mut error_fields |> OrdMap.add("message", :String error_message);
-                        &mut response_fields |> OrdMap.add("error", :Object error_fields);
+                        &mut error_fields
+                            |> OrdMap.add(
+                                RcStr.allocate("code"),
+                                :Number INTERNAL_ERROR,
+                            );
+                        &mut error_fields
+                            |> OrdMap.add(
+                                RcStr.allocate("message"),
+                                :String RcStr.from_String(error_message),
+                            );
+                        &mut response_fields
+                            |> OrdMap.add(
+                                RcStr.allocate("error"),
+                                :Object error_fields,
+                            );
                     )
                 );
                 let response :: Json.t = :Object response_fields;

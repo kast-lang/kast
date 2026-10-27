@@ -35,6 +35,29 @@ const Diagnostic = (
         .related :: ArrayList.t[RelatedInfo]
     };
 
+    const unstack_message = (message :: () -> ()) -> (() -> ()) => (
+        let message = output_to_string(message);
+        @move () => write_str(&message |> as_str)
+    );
+
+    const unstack = (self :: Diagnostic.t) -> Diagnostic.t => {
+        .severity = self.severity,
+        .source = self.source,
+        .span = self.span,
+        .message = unstack_message(self.message),
+        .related = (
+            let mut list = ArrayList.new();
+            for info in self.related |> ArrayList.into_iter do (
+                let info = {
+                    .span = info.span,
+                    .message = unstack_message(info.message),
+                };
+                &mut list |> ArrayList.push_back(info);
+            );
+            list
+        ),
+    };
+
     const RelatedInfo = newtype {
         .span :: Span,
         .message :: () -> (),

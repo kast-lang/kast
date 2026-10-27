@@ -7,17 +7,23 @@ const formatting = (
     module:
 
     const format = (state :: &mut State, request :: Json.t) -> Json.t => with_return (
-        let :Object fields = request;
-        let (&(:Object params)) = &fields |> OrdMap.get("params") |> Option.unwrap;
+        let :Object ref fields = request;
+        let (&(:Object ref params)) = fields
+            |> OrdMap.get(&RcStr.allocate("params"))
+            |> Option.unwrap;
         let text_document = (
-            let (&value) = &params |> OrdMap.get("textDocument") |> Option.unwrap;
-            let :Object fields = value;
-            let (&(:String uri)) = &fields |> OrdMap.get("uri") |> Option.unwrap;
-            { .uri = parse(uri) }
+            let value = params
+                |> OrdMap.get(&RcStr.allocate("textDocument"))
+                |> Option.unwrap;
+            let :Object ref fields = value^;
+            let (&(:String ref uri)) = fields
+                |> OrdMap.get(&RcStr.allocate("uri"))
+                |> Option.unwrap;
+            { .uri = parse(uri |> RcStr.as_str) }
         );
 
         let file_state = &state^.files
-            |> OrdMap.get(Uri.to_string(text_document.uri))
+            |> OrdMap.get(&RcStr.from_String(Uri.to_string(&text_document.uri)))
             |> Option.unwrap_or_else(() => return :Null);
         let parsed = &file_state^.parsed
             |> Option.as_ref
@@ -29,7 +35,7 @@ const formatting = (
             let mut fields = OrdMap.new();
             &mut fields
                 |> OrdMap.add(
-                    "range",
+                    RcStr.allocate("range"),
                     span_to_lsp_range(
                         {
                             .start = Position.beginning(),
@@ -38,7 +44,11 @@ const formatting = (
                         }
                     )
                 );
-            &mut fields |> OrdMap.add("newText", :String new_text);
+            &mut fields
+                |> OrdMap.add(
+                    RcStr.allocate("newText"),
+                    :String RcStr.from_String(new_text),
+                );
             fields
         );
 

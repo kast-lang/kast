@@ -63,7 +63,7 @@
             '')
             (pkgs.writeShellScriptBin "kast" ''
               # flock --shared target
-              node target/kast.mjs "$@"
+              ./target/kast.exe "$@"
             '')
             rlwrap
             nixfmt-classic
