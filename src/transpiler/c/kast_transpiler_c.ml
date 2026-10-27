@@ -2690,6 +2690,17 @@ module Impl = struct
         let var_ty = transpile_ty expr.data.signature.ty in
         insert_stmt (S_DeclareVar { name = var_name; ty = var_ty.c_ty; value = None });
         let unnamed_idx = ref 0 in
+        let initialized_named_fields = ref StringSet.empty in
+        let initialize_named name field_ty =
+          if !initialized_named_fields |> StringSet.contains name
+          then
+            insert_drop
+              field_ty
+              (E_Pure
+                 (Pure_Copy
+                    (P_Field { obj = P_Ident var_name; field = member_name (Name name) })));
+          initialized_named_fields := !initialized_named_fields |> StringSet.add name
+        in
         parts
         |> List.iter (fun (part : expr Types.tuple_part_of) ->
           match part with
@@ -2700,7 +2711,10 @@ module Impl = struct
                 let member = Tuple.Member.Index !unnamed_idx in
                 unnamed_idx := !unnamed_idx + 1;
                 member
-              | Some label -> Tuple.Member.Name (Label.get_name label)
+              | Some label ->
+                let name = Label.get_name label in
+                initialize_named name field.data.signature.ty;
+                Tuple.Member.Name name
             in
             let field_name = member_name member in
             insert_stmt
@@ -2729,7 +2743,9 @@ module Impl = struct
                   let member = Tuple.Member.Index !unnamed_idx in
                   unnamed_idx := !unnamed_idx + 1;
                   member
-                | Name name -> Name name
+                | Name name ->
+                  initialize_named name field.ty;
+                  Name name
               in
               insert_stmt
                 (S_Assign
