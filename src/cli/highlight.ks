@@ -9,6 +9,7 @@ use (import "../syntax_parser.ks").*;
 use (import "../parser.ks").*;
 use (import "../highlight.ks").*;
 use (import "../rc_str.ks").*;
+use (import "../log.ks").*;
 
 const root_scope = @current_scope;
 
@@ -71,6 +72,15 @@ const Highlight = (
 
         let output = root_scope.Highlight.new_output(args.mode);
         let process = (path :: &SourcePath) => (
+            Log.info(
+                () => ansi.with_mode(
+                    :Bold,
+                    () => (
+                        SourcePath.print(path);
+                        write_str("\n\n");
+                    ),
+                ),
+            );
             let source = Source.read(path);
             let entire_source_span = (
                 let start = Position.beginning();
