@@ -2716,7 +2716,11 @@ module Impl = struct
               |> Option.unwrap
             in
             let packed_name = gen_name "packed" in
-            let_var packed.data.signature.ty packed_name (Some (transpile_expr packed));
+            let_var
+              ~drop:false
+              packed.data.signature.ty
+              packed_name
+              (Some (transpile_expr packed));
             packed_ty.tuple
             |> Tuple.iter (fun member (field : Types.ty_tuple_field) ->
               let assignee_member =
