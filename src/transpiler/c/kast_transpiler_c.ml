@@ -107,6 +107,7 @@ type _ Effect.t += GetBindingModuleMap : string Id.Map.t Effect.t
 type _ Effect.t += GetCurrentBlock : block Effect.t
 type _ Effect.t += GetScope : scope Effect.t
 type _ Effect.t += GetUnwindCtx : unwind_ctx Effect.t
+type _ Effect.t += GetSpan : Span.t Effect.t
 
 type transpiled_fn =
   { captured_ty_name : string option
@@ -209,6 +210,8 @@ module Impl = struct
 
   and insert_stmt (stmt : C_ast.stmt) : unit =
     let block = Effect.perform GetCurrentBlock in
+    let span = Effect.perform GetSpan in
+    Dynarray.add_last block.stmts (S_Comment (make_string "%a" Span.print span));
     Dynarray.add_last block.stmts stmt
 
   and ty_to_string (ty : C_ast.ty) : string =
@@ -3020,6 +3023,7 @@ module Impl = struct
       | Types.E_Error -> fail "transpiling error expr"
     with
     | Cancel -> raise Cancel
+    | effect GetSpan, k -> Effect.continue k expr.data.span
     | e ->
       Log.error (fun log -> log "while transpiling expr at %a" print_span span);
       raise e
@@ -3355,6 +3359,7 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
     ; types = ctx.types
     }
   with
+  | effect GetSpan, k -> Effect.continue k span
   | effect GetUnwindCtx, k -> Effect.continue k unwind_ctx
   | effect GetScope, k -> Effect.continue k scope
   | effect CurrentFnCaptured, k -> Effect.continue k captured
