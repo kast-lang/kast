@@ -96,6 +96,7 @@ and native_expr = native_expr_part list
 and native_expr_part =
   | N_Raw of string
   | N_Interpolated of pure_expr
+  | N_InterpolatedPlace of place_expr
 
 and ty_def_shape =
   | TD_Enum of StringSet.t
@@ -330,7 +331,8 @@ module Print = struct
     parts
     |> List.iter (function
       | N_Raw s -> write s
-      | N_Interpolated expr -> print_pure_expr expr)
+      | N_Interpolated expr -> print_pure_expr expr
+      | N_InterpolatedPlace place -> print_place_expr place)
 
   and print_pure_expr (expr : pure_expr) : unit =
     let surround = need_surround_pure_expr expr in

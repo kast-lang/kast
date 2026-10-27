@@ -1,9 +1,10 @@
 use std.rc.Rc;
 
-let mut a = ArrayList.new();
-# ...
+const Ctx = @context Int32;
 
-let ref_to_el_0 = &a.[0];
-
-&mut a |> ArrayList.push_back(123);
+(
+    with Ctx = 123;
+    dbg.print(@current Ctx);
+);
+dbg.print(@current Ctx);
 

@@ -1279,13 +1279,21 @@ module Impl = struct
   and variant_needs_tag (ty : Types.ty_variant) : bool =
     ty.variants |> Row.await_inferred_to_list |> List.length > 0
 
+  and memset_0 (place : C_ast.place_expr) =
+    insert_stmt
+      (S_Native
+         [ N_Raw "memset(&"
+         ; N_InterpolatedPlace place
+         ; N_Raw ", 0, sizeof("
+         ; N_InterpolatedPlace place
+         ; N_Raw "))"
+         ])
+
   and uninitialized (ty : C_ast.ty) : C_ast.expr =
     let var = gen_name "uninitialized" in
     let_c_var ty var None;
     (* memset prevents UB? *)
-    insert_stmt
-      (S_Native
-         [ N_Raw "memset(&"; N_Raw var; N_Raw ", 0, sizeof("; N_Raw var; N_Raw "))" ]);
+    memset_0 (P_Ident var);
     E_Pure (Pure_Copy (P_Ident var))
   (* match ty with *)
   (* | T_Unit -> E_Pure Pure_Unit *)
@@ -2508,11 +2516,32 @@ module Impl = struct
   and context_field_name (context_ty : Types.value_context_ty) : string =
     make_string "context_%d" context_ty.id.value
 
-  and current_context (context_ty : Types.value_context_ty) : C_ast.place_expr =
+  and context_initialized_field_name (context_ty : Types.value_context_ty) : string =
+    make_string "context_%d_initialized" context_ty.id.value
+
+  and current_context_with_initialized (context_ty : Types.value_context_ty)
+    : C_ast.place_expr * C_ast.place_expr
+    =
     let ctx = Effect.perform GetCtx in
     ctx.contexts <- ctx.contexts |> Id.Map.add context_ty.id context_ty;
     let scope = Effect.perform GetScope in
-    P_Field { obj = scope.ctx_place; field = context_field_name context_ty }
+    ( P_Field { obj = scope.ctx_place; field = context_field_name context_ty }
+    , P_Field { obj = scope.ctx_place; field = context_initialized_field_name context_ty }
+    )
+
+  and current_context (context_ty : Types.value_context_ty) : C_ast.place_expr =
+    let place, initialized = current_context_with_initialized context_ty in
+    insert_stmt
+      (S_If
+         { cond = E_Native [ N_InterpolatedPlace initialized; N_Raw " == 0" ]
+         ; then_case =
+             new_block (fun () ->
+               insert_stmt
+                 (S_Native
+                    [ N_Raw "exit_with_error(\"Accessing uninitialized context\")" ]))
+         ; else_case = None
+         });
+    place
 
   and claim (place : Types.place_expr) : C_ast.expr =
     let c_place = transpile_place_expr place in
@@ -2988,10 +3017,14 @@ module Impl = struct
       | Types.E_InjectContext { context_ty; value } ->
         let value = transpile_expr value in
         let old_var = gen_name "old_ctx" in
-        let ctx_place = current_context context_ty in
+        let ctx_place, ctx_initialized_place =
+          current_context_with_initialized context_ty
+        in
         let_var context_ty.ty old_var (Some (E_Pure (Pure_Copy ctx_place))) ~drop:false;
+        insert_stmt (S_Native [ N_InterpolatedPlace ctx_initialized_place; N_Raw "++" ]);
         insert_stmt (S_Assign { assignee = ctx_place; value });
         defer (fun () ->
+          insert_stmt (S_Native [ N_InterpolatedPlace ctx_initialized_place; N_Raw "--" ]);
           insert_drop context_ty.ty (E_Pure (Pure_Copy ctx_place));
           insert_stmt
             (S_Assign
@@ -3301,6 +3334,7 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
                Impl.insert_stmt (S_Native [ N_Raw "Kast_init(argc, argv)" ]);
                Impl.insert_stmt (S_Native [ N_Raw "Kast_init_user_type_infos()" ]);
                Impl.let_c_var (T_Named "Context") ctx_var None;
+               Impl.memset_0 (P_Ident ctx_var);
                Impl.insert_stmt
                  (S_Expr
                     (E_Apply { f = Pure_Copy (P_Ident "KAST_init_statics"); args = [] }));
@@ -3325,8 +3359,11 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
                 (ctx.contexts
                  |> Id.Map.to_list
                  |> List.map (fun ((_id, context_ty) : Id.t * Types.value_context_ty) ->
-                   ( Impl.context_field_name context_ty
-                   , (Impl.transpile_ty context_ty.ty).c_ty ))
+                   [ ( Impl.context_field_name context_ty
+                     , (Impl.transpile_ty context_ty.ty).c_ty )
+                   ; Impl.context_initialized_field_name context_ty, T_Named "UInt64"
+                   ])
+                 |> List.flatten
                  |> StringMap.of_list)
           ; comment = Some "implicit context"
           }
