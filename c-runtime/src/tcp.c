@@ -197,10 +197,7 @@ tcp_Listener_accepted tcp_Listener_accept(tcp_Listener* l, bool close_on_exec) {
     memcpy(addr_c, host, host_len);
     addr_c[host_len] = ':';
     memcpy(addr_c + host_len + 1, port, port_len);
-    String addr_s = {
-        .buf = addr_c,
-        .length = host_len + 1 + port_len,
-    };
+    String addr_s = String_from_raw_parts(addr_c, host_len + 1 + port_len);
     return (tcp_Listener_accepted) {
         .stream = tcp_Stream_from_fd(fd),
         .addr = addr_s,

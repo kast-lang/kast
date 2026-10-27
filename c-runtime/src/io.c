@@ -183,7 +183,7 @@ String Kast_read_until(FILE* f, Char delimiter) {
     size_t length = 0;
     for (;;) {
         Char c = Kast_fgetChar(f);
-        if (c == EOF || c == delimiter) {
+        if (c == (Char)EOF || c == delimiter) {
             break;
         }
         size_t encode_pos = length;
@@ -201,11 +201,7 @@ String Kast_read_until(FILE* f, Char delimiter) {
         char* encoder = buf + encode_pos;
         utf8_char_encode_step(&encoder, c);
     }
-    String result = {
-        .buf = buf,
-        .length = length,
-    };
-    return result;
+    return String_from_raw_parts(buf, length);
 }
 
 String Kast_input(StringView prompt) {
