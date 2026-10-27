@@ -81,7 +81,7 @@ const Parse = (
             let mut lexer = Lexer.new(source);
             let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
             let parsed = Parser.parse(
-                .ruleset = &mut ruleset,
+                .ruleset = &ruleset,
                 .entire_source_span = Source.entire_span(&source),
                 .path = source.path,
                 .token_stream = &mut token_stream,

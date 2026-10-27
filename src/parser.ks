@@ -58,7 +58,7 @@ const Parser = (
         .ignored_tokens :: ArrayList.t[Token.t],
     };
     const DynamicContextT = newtype {
-        .ruleset :: &mut SyntaxRuleset.t,
+        .ruleset :: &SyntaxRuleset.t,
         .continuation_keywords :: OrdSet.t[RcStr],
     };
     const StaticContext = @context type (&mut StaticContextT);
@@ -122,17 +122,20 @@ const Parser = (
                     } = SyntaxParser.parse_syntax_command(ctx^.token_stream);
                     let command_raw_tokens = ctx^.token_stream
                         |> TokenStream.finish_recording(command_raw_tokens);
-                    let command = match command with (
-                        | :FromScratch => (
-                            dyn_ctx^.ruleset^ = SyntaxRuleset.new();
-                            :FromScratch
-                        )
+                    let { command, new_ruleset } = match command with (
+                        | :FromScratch => { :FromScratch, SyntaxRuleset.new() }
                         | :Rule rule => (
                             let rule = Rc.new(rule);
-                            dyn_ctx^.ruleset |> SyntaxRuleset.add(rule);
-                            :Rule rule
+                            let mut new_ruleset = SyntaxRuleset.clone(dyn_ctx^.ruleset);
+                            &mut new_ruleset |> SyntaxRuleset.add(rule);
+                            { :Rule rule, new_ruleset }
                         )
                     );
+                    let mut new_dyn_ctx = {
+                        .ruleset = &new_ruleset,
+                        .continuation_keywords = OrdSet.clone(&dyn_ctx^.continuation_keywords),
+                    };
+                    with DynamicContext = &mut new_dyn_ctx;
                     let value_after = match try_parse(.priority_filter) with (
                         | :MadeProgress ast => :Some ast
                         | :NoProgress => :None
@@ -802,7 +805,7 @@ const Parser = (
     };
 
     const parse = (
-        .ruleset :: &mut SyntaxRuleset.t,
+        .ruleset :: &SyntaxRuleset.t,
         .token_stream :: &mut TokenStream.t,
         .entire_source_span :: Span,
         .path :: SourcePath,
@@ -817,7 +820,7 @@ const Parser = (
     );
 
     const parse_with = (
-        .ruleset :: &mut SyntaxRuleset.t,
+        .ruleset :: &SyntaxRuleset.t,
         .token_stream :: &mut TokenStream.t,
         .entire_source_span :: Span,
         .path :: SourcePath,

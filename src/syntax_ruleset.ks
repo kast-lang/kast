@@ -16,6 +16,7 @@ const SyntaxRuleset = (
         .keywords :: OrdSet.t[RcStr],
         .root :: Node,
         .syntax_keyword :: Option.t[RcStr],
+        .rules :: ArrayList.t[Rc.t[SyntaxRule.t]],
     };
 
     const EdgeKey = newtype (
@@ -60,7 +61,16 @@ const SyntaxRuleset = (
         .keywords = OrdSet.new(),
         .root = new_node(),
         .syntax_keyword = :Some RcStr.from_String(String.from_str("@syntax")),
+        .rules = ArrayList.new(),
     };
+
+    const clone = (self :: &SyntaxRuleset.t) -> SyntaxRuleset.t => (
+        let mut result = new();
+        for &rule in &self^.rules |> ArrayList.iter do (
+            add(&mut result, rule);
+        );
+        result
+    );
 
     const Context = @context type {
         .ruleset :: &mut SyntaxRuleset.t,
@@ -145,6 +155,7 @@ const SyntaxRuleset = (
     );
 
     const add = (self :: &mut SyntaxRuleset.t, rule :: Rc.t[SyntaxRule.t]) => (
+        &mut self^.rules |> ArrayList.push_back(rule);
         with Context = { .ruleset = self, .rule = &rule^ };
         follow_parts(
             &mut self^.root,

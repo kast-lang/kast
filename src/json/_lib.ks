@@ -248,7 +248,7 @@ const Json = (
         let mut lexer = Lexer.new(source);
         let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
         let parsed = Parser.parse(
-            .ruleset = &mut ruleset(),
+            .ruleset = &ruleset(),
             .token_stream = &mut token_stream,
             .entire_source_span = Source.entire_span(&source),
             .path,

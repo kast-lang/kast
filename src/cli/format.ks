@@ -76,22 +76,19 @@ const Format = (
     );
 
     const run = (common_args :: Common.Args.t, args :: Args.t) => (
-        # TODO because we mutate ruleset when parsing actually but should not be the case
-        let get_ruleset = () => (
-            let ruleset_path = match args.ruleset with (
-                | :Some ref path => path |> as_str
-                | :None => "kast:///std/syntax.ks"
-            );
-            let mut lexer = Lexer.new(Source.read(&SourcePath.parse(ruleset_path)));
-            let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
-            SyntaxParser.parse_syntax_ruleset(&mut token_stream)
+        let ruleset_path = match args.ruleset with (
+            | :Some ref path => path |> as_str
+            | :None => "kast:///std/syntax.ks"
         );
+        let mut lexer = Lexer.new(Source.read(&SourcePath.parse(ruleset_path)));
+        let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
+        let ruleset = SyntaxParser.parse_syntax_ruleset(&mut token_stream);
         let process = (path :: &SourcePath) => (
             let source = Source.read(path);
             let mut lexer = Lexer.new(source);
             let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
             let parsed = Parser.parse(
-                .ruleset = &mut get_ruleset(),
+                .ruleset = &ruleset,
                 .entire_source_span = Source.entire_span(&source),
                 .path = source.path,
                 .token_stream = &mut token_stream,
@@ -114,7 +111,7 @@ const Format = (
                     let mut lexer = Lexer.new(source);
                     let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
                     let parsed = Parser.parse(
-                        .ruleset = &mut get_ruleset(),
+                        .ruleset = &ruleset,
                         .entire_source_span = Source.entire_span(&source),
                         .path = source.path,
                         .token_stream = &mut token_stream,
