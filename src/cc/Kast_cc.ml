@@ -43,7 +43,7 @@ let run (args : Args.t) =
     | None -> fail "set KAST_PATH"
     | Some kast_path ->
       let c_files = Dynarray.create () in
-      let rec walk_dir dir_path =
+      let rec walk_dir dir_path remapped_dir_path =
         let dir = Unix.opendir dir_path in
         try
           while true do
@@ -52,18 +52,25 @@ let run (args : Args.t) =
             then ()
             else (
               let path = Filename.concat dir_path entry in
+              let remapped_path = Filename.concat remapped_dir_path entry in
               match (Unix.stat path).st_kind with
-              | Unix.S_DIR -> walk_dir path
+              | Unix.S_DIR -> walk_dir path remapped_path
               | Unix.S_REG | Unix.S_LNK ->
-                if Filename.extension path = ".c" then Dynarray.add_last c_files path
+                if Filename.extension path = ".c"
+                then Dynarray.add_last c_files remapped_path
               | _ -> ())
           done
         with
         | End_of_file -> ()
       in
       let c_runtime_path = Filename.concat kast_path "c-runtime" in
-      walk_dir c_runtime_path;
-      let compile_flags = [ "-I"; Filename.concat c_runtime_path "include" ] in
+      let c_runtime_remapped_path =
+        match Sys.getenv_opt "KAST_PATH_REMAP" with
+        | None -> c_runtime_path
+        | Some path -> Filename.concat path "c-runtime"
+      in
+      walk_dir c_runtime_path c_runtime_remapped_path;
+      let compile_flags = [ "-I"; Filename.concat c_runtime_remapped_path "include" ] in
       let link_flags = Dynarray.to_list c_files in
       if !do_link then compile_flags @ link_flags else compile_flags
   in
