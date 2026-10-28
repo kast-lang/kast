@@ -10,21 +10,9 @@ noreturn void exit_with_error(const char* fmt, ...) {
         fprintf(stderr, "\n");
     }
 #ifndef __EMSCRIPTEN__
-#ifdef USE_BACKTRACE
     Kast_Backtrace trace = Kast_Backtrace_get();
     Kast_Backtrace_print(&trace);
     Kast_Backtrace_drop(trace);
-#else
-    int N = 100;
-    void* buf[N];
-    int n = backtrace(buf, N);
-    backtrace_symbols_fd(buf, n, fileno(stderr));
-    // char** strings = backtrace_symbols(buf, n);
-    // for (int i = 0; i < n; i++) {
-    //     char* s = strings[i];
-    //     fprintf(stderr, "%d. %s\n", i + 1, s);
-    // }
-#endif
 #endif
     _exit(-1); // _exit to prevent sanitizers output
     exit(-1);

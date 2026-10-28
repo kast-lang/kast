@@ -13,9 +13,7 @@ void Kast_init(int argc, const char* argv[]) {
     emscripten_set_interval(Kast_run_gc, 0, NULL);
 #endif
 #endif
-#ifdef USE_BACKTRACE
     Kast_backtrace_init();
-#endif
     CLI_ARGS.argc = argc;
     CLI_ARGS.original_argv = argv;
     CLI_ARGS.argv = Kast_allocate_array(&StringView_TypeInfo, argc);

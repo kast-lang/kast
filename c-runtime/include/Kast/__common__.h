@@ -20,7 +20,9 @@
 #include <emscripten/html5.h>
 #define thread_local
 #else
-#define USE_BACKTRACE
+// #ifndef __TINYC__
+#define USE_LIBBACKTRACE
+// #endif
 #include <pthread.h>
 // #define thread_local __thread
 // TODO tcc doesnt have thread locals so noone has it now
@@ -28,7 +30,7 @@
 // NOTE: never use <threads.h> its borked (with beohmgc specifically)
 #define GC_THREADS
 #endif
-#ifdef USE_BACKTRACE
+#ifdef USE_LIBBACKTRACE
 #include <backtrace.h>
 #else
 #ifndef __EMSCRIPTEN__

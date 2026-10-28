@@ -20,9 +20,6 @@
 #ifdef KAST_ALLOCATION_STATS
 #include "allocation_stats.h"
 #endif
-#ifdef USE_BACKTRACE
-#include "./backtrace.h"
-#endif
 
 void Kast_init(int argc, const char* argv[]);
 void Kast_quit(void);
