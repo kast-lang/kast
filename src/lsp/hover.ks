@@ -41,8 +41,10 @@ const hover = (state :: &mut State, request :: Json.t) -> Json.t => with_return 
         }
     );
 
+    let uri_str = RcStr.from_String(Uri.to_string(&text_document.uri));
+    eprintln!("Hovering \(uri_str)");
     let file_state = &state^.files
-        |> OrdMap.get(&RcStr.from_String(Uri.to_string(&text_document.uri)))
+        |> OrdMap.get(&uri_str)
         |> Option.unwrap_or_else(() => return :Null);
     let hovered_char :: Option.t[_] = with_return (
         if (

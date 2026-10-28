@@ -4,12 +4,14 @@
     kast.url = "github:kast-lang/kast/bootstrap-ocaml";
     nix-filter.url = "github:numtide/nix-filter";
     flake-utils.url = "github:numtide/flake-utils";
+    tcc-overlay.url = "github:vesdev/tcc-overlay";
+    tcc-overlay.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs = inputs:
     inputs.flake-utils.lib.eachDefaultSystem (system:
       let
-        overlays = [ ];
+        overlays = [ inputs.tcc-overlay.overlays.default ];
         pkgs = import inputs.nixpkgs { inherit system overlays; };
         kast-bootstrap = inputs.kast.packages.${system}.default;
         filter = inputs.nix-filter.lib;
@@ -65,9 +67,6 @@
               # flock --shared target
               ./target/kast.exe "$@"
             '')
-            (pkgs.writeShellScriptBin "tcc" ''
-              just tcc "$@"
-            '')
             rlwrap
             nixfmt-classic
             nodejs
@@ -85,6 +84,7 @@
             libbacktrace
             libunwind
             clang-tools
+            tcc
           ];
           shellHook = ''
             echo Hello from Kast dev shell

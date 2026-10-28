@@ -19,6 +19,7 @@ const JsonRpc = (
         .input :: BufferedReader,
         .output :: {
             .write :: &str -> (),
+            .flush :: () -> (),
         },
     };
 
@@ -29,6 +30,9 @@ const JsonRpc = (
         },
         .output = {
             .write = std.io.stdout.write,
+            .flush = () => (
+                @native "fflush(stdout)";
+            ),
         },
     };
 
@@ -46,6 +50,9 @@ const JsonRpc = (
         loop (
             let s = io.input.read_until('\n');
             let s = &s |> as_str;
+            if s |> String.length == 0 then (
+                (@current Ctx).eof();
+            );
             let header = (
                 if s |> String.at(String.length(s) - 1) != '\r' then (
                     panic("\\r expected");
@@ -81,19 +88,25 @@ const JsonRpc = (
     const write = (io :: Io, message :: Json.t) => (
         let contents = message |> Json.into_dep |> to_string;
         let contents = &contents |> as_str;
+        dbg.print(contents);
         let content_length = String.utf8_length(contents);
         io.output.write("Content-Length: ");
         io.output.write(&to_string(content_length) |> as_str);
         io.output.write("\r\n\r\n");
         io.output.write(contents);
+        io.output.flush();
     );
 
-    const run = (io :: Io, handler :: Handler) => (
+    const Ctx = @context newtype {
+        .eof :: () -> Never,
+    };
+
+    const run = (io :: Io, handler :: Handler) => with_return (
+        with Ctx = { .eof = () => return };
         loop (
             let { .content_length } = read_header(io);
             let content = io.input.read_exactly(content_length);
             let content = &content |> as_str;
-            dbg.print(content);
             let json = dep_json.parse(&mut dep_json.Reader.create(content))
                 |> std.Result.unwrap_or_else({ .err, .pos } => (
                     panic_fmt!(''
@@ -102,14 +115,15 @@ const JsonRpc = (
                             \(String.to_string(err))'')
                 ))
                 |> Json.from_dep;
-            let :Object message = json;
-            let (&(:String ref jsonrpc)) = &message
+            let :Object ref message = json;
+            let (&(:String ref jsonrpc)) = message
                 |> OrdMap.get(&RcStr.allocate("jsonrpc"))
                 |> Option.unwrap;
             if jsonrpc |> RcStr.as_str != "2.0" then (
                 panic_fmt!("jsonrpc is not 2.0 but \(jsonrpc^)");
             );
-            if &message |> OrdMap.get(&RcStr.allocate("id")) is :Some &id then (
+            if message |> OrdMap.get(&RcStr.allocate("id")) is :Some id then (
+                let id = Json.clone(id);
                 let result = handler.on_request(json);
                 let mut response_fields = OrdMap.new();
                 &mut response_fields |> OrdMap.add(RcStr.allocate("id"), id);

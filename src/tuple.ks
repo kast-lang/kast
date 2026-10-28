@@ -195,7 +195,7 @@ const Tuple = (
     );
 
     const into_iter = [T] (self :: Tuple.t[T]) -> std.iter.Iterable[type { Member, T }] => {
-        .iter = consumer => (
+        .iter = @move consumer => (
             let mut self = self;
             for { index, element } in self.unnamed |> ArrayList.into_iter |> std.iter.enumerate do (
                 consumer({ :Index index, element });
@@ -209,7 +209,7 @@ const Tuple = (
     };
 
     const iter = [T] (self :: &Tuple.t[T]) -> std.iter.Iterable[type { Member, &T }] => {
-        .iter = consumer => (
+        .iter = @move consumer => (
             for { index, element } in &self^.unnamed |> ArrayList.iter |> std.iter.enumerate do (
                 consumer({ :Index index, element });
             );

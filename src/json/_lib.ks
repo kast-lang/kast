@@ -42,6 +42,27 @@ const Json = (
         | :Null
     );
 
+    const clone = (self :: &Json.t) -> Json.t => match self^ with (
+        | :Number x => :Number x
+        | :String s => :String s
+        | :Object ref map => :Object (
+            let mut cloned = OrdMap.new();
+            for &{ .key, .value = ref value } in map |> OrdMap.iter do (
+                &mut cloned |> OrdMap.add(key, clone(value));
+            );
+            cloned
+        )
+        | :Array ref array => :Array (
+            let mut cloned = ArrayList.new();
+            for value in array |> ArrayList.iter do (
+                &mut cloned |> ArrayList.push_back(clone(value));
+            );
+            cloned
+        )
+        | :Bool b => :Bool b
+        | :Null => :Null
+    );
+
     const from_dep = (value :: dep.Value) -> Json.t => (
         match value with (
             | :Number x => (
@@ -72,6 +93,7 @@ const Json = (
     const into_dep = (value :: Json.t) -> dep.Value => (
         match value with (
             | :Number x => (
+                with dep.error = (_ => panic("huh"));
                 let x = dep.Number.parse(&mut dep.Reader.create(&to_string(x) |> as_str)) |> Option.unwrap;
                 :Number x
             )

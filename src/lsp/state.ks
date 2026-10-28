@@ -28,7 +28,8 @@ const get_ext = (path :: &str) -> Option.t[&str] => (
 
 const open_or_change_doc = (state :: &mut State, uri :: Uri, contents :: &RcStr) => (
     let contents = contents^;
-    Log.info_msg(&format!("open_or_change_doc \(Uri.to_string(&uri))") |> as_str);
+    let uri_str = RcStr.from_String(Uri.to_string(&uri));
+    Log.info_msg(&format!("open_or_change_doc \(uri_str)") |> as_str);
     let source :: Source = { .path = :Uri Rc.new(uri), .contents };
     let mut diagnostics = ArrayList.new();
     let parsed = (
@@ -69,7 +70,8 @@ const open_or_change_doc = (state :: &mut State, uri :: Uri, contents :: &RcStr)
         .parsed,
         .diagnostics,
     };
-    &mut state^.files |> OrdMap.add(RcStr.from_String(Uri.to_string(&uri)), file_state);
+    eprintln!("parsed \(uri_str)");
+    &mut state^.files |> OrdMap.add(uri_str, file_state);
 );
 
 const did_open = (state :: &mut State, n :: Json.t) -> () => (

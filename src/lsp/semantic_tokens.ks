@@ -88,7 +88,7 @@ const semantic_tokens = (
         );
 
         const variants = () -> std.iter.Iterable[TokenType] => {
-            .iter = f => (
+            .iter = @move f => (
                 f(:Type);
                 f(:Class);
                 f(:Enum);
@@ -159,7 +159,7 @@ const semantic_tokens = (
         );
 
         const variants = () -> std.iter.Iterable[TokenModifier] => {
-            .iter = f => (
+            .iter = @move f => (
                 f(:Declaration);
                 f(:Definition);
                 f(:Readonly);
