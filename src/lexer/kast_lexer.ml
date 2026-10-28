@@ -160,6 +160,13 @@ module DefaultRules = struct
       { start; finish = lexer.reader.position; uri = lexer.source.uri }
     in
     let contents_raw = ref (Reader.start_rec lexer.reader) in
+    let strip_indentation =
+      if delimeter = "''" && Reader.peek lexer.reader = Some '\n'
+      then (
+        Reader.advance lexer.reader;
+        lexer.reader |> Reader.read_while Char.is_whitespace)
+      else ""
+    in
     let contents = Buffer.create 0 in
     let contents_start = ref lexer.reader.position in
     let parts = ref [] in
@@ -190,6 +197,7 @@ module DefaultRules = struct
       then ()
       else (
         with_return (fun { return } ->
+          let need_to_skip_indentation = ref false in
           let c =
             if c = '\\'
             then (
@@ -333,10 +341,25 @@ module DefaultRules = struct
                     lexer.reader.position
               in
               result)
+            else if c = '\n'
+            then (
+              need_to_skip_indentation := true;
+              '\n')
             else c
           in
           Reader.advance lexer.reader;
-          Buffer.add_char contents c);
+          Buffer.add_char contents c;
+          if !need_to_skip_indentation
+          then (
+            let i = ref 0 in
+            lexer.reader
+            |> Reader.read_while (fun c ->
+              if Some c = String.get strip_indentation !i
+              then (
+                i := !i + 1;
+                true)
+              else false)
+            |> ignore));
         loop ())
     in
     loop ();

@@ -79,7 +79,8 @@ module Shape = struct
       |> List.iteri (fun i (part : Types.string_part) ->
         if i <> 0 then fprintf fmt " ";
         match part with
-        | Content { raw; _ } -> fprintf fmt "@{<green>%a@}" String.print_debug raw
+        | Content { raw; contents; _ } ->
+          fprintf fmt "@{<green>%a@}" String.print_debug contents
         | Interpolate { value = { tokens; _ }; _ } ->
           List.print (fun fmt (token : Types.token) -> print fmt token.shape) fmt tokens)
     | Comment _ -> fprintf fmt "@{<italic><comment>@}"
