@@ -1,6 +1,7 @@
 /.direnv/
 /target/
 /temp/
+/logs/
 .kast_history
 /*perf.data*
 /.clangd

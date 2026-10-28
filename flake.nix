@@ -63,10 +63,27 @@
               systemd-run --quiet --user --scope -p MemoryMax=20G \
                 ${kast-bootstrap}/bin/kast "$@"
             '')
-            (pkgs.writeShellScriptBin "kast" ''
-              # flock --shared target
-              ./target/kast.exe "$@"
+            (pkgs.writeShellScriptBin "record-logs" ''
+              LOG_FILE="logs/$1_$(date +%H-%M-%S)"
+              shift
+              mkdir -p logs
+              # only keep 10 most recent logs
+              ls --sort time logs | tail --lines +11 | xargs --replace={} rm logs/{}
+              if [ -t 1 ]; then
+                tee $LOG_FILE.stdin | faketty \
+                  "$@" \
+                  > >(tee $LOG_FILE.stdout) \
+                  2> >(tee $LOG_FILE.stderr >&2)
+              else
+                tee $LOG_FILE.stdin | "$@" \
+                  > >(tee $LOG_FILE.stdout) \
+                  2> >(tee $LOG_FILE.stderr >&2)
+              fi
             '')
+            (pkgs.writeShellScriptBin "kast" ''
+              record-logs kast ./target/kast.exe "$@"
+            '')
+            faketty
             rlwrap
             nixfmt-classic
             nodejs
