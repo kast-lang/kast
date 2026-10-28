@@ -344,6 +344,7 @@ class lsp_server ~(sw : Eio.Switch.t) ~domain_mgr =
   end
 
 let run ({ dummy = () } : Args.t) =
+  fail "DONT USE KAST LSP THX" |> ignore;
   Eio_main.run (fun env ->
     Eio.Switch.run (fun sw ->
       Log.info (fun log -> log "Starting Kast LSP");
