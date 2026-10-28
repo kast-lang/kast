@@ -1,6 +1,6 @@
 {
     "capabilities": {
-        "positionEncoding": "utf-16",
+        "positionEncoding": "utf-8",
         "textDocumentSync": {
             "openClose": true,
             "change": 1
