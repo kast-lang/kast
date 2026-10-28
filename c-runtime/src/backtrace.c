@@ -1,4 +1,5 @@
 #include <Kast.h>
+#include <Kast/string.h>
 
 #ifdef USE_BACKTRACE
 struct backtrace_state* BACKTRACE_STATE;
@@ -38,14 +39,44 @@ int Kast_Backtrace_print_entry(
     const char* function
 ) {
     int* frame_num = data;
-    fprintf(
-        stderr,
-        "%d. %s() at %s:%d\n",
-        (*frame_num)++,
-        function ? function : "??",
-        filename ? filename : "??",
-        lineno
-    );
+    fprintf(stderr, "%d. %s() at ", (*frame_num)++, function ? function : "??");
+    if (filename != NULL) {
+        fprintf(stderr, "%s:%d\n", filename ? filename : "??", lineno);
+    } else {
+#ifdef __TINYC__
+        String addr2line_command = Kast_asprintf(
+            "addr2line -e %s %p",
+            CLI_ARGS.original_argv[0],
+            (void*)pc
+        );
+        Kast_ExecResult result = Kast_exec_and_capture_output(
+            String_as_StringView(&addr2line_command)
+        );
+        String_drop(addr2line_command);
+        StringView sout = String_as_StringView(&result.sout);
+        char* cwd_c = getcwd(NULL, 0);
+        StringView cwd = StringView_from_C_StringView(cwd_c);
+        if (sout.length >= cwd.length + 1
+            && StringView_cmp(cwd, String_substring(sout, 0, cwd.length)) == 0
+            && sout.buf[cwd.length] == '/') {
+            Kast_write(
+                stderr,
+                String_substring(
+                    sout,
+                    cwd.length + 1,
+                    sout.length - cwd.length - 1
+                )
+            );
+        } else {
+            Kast_write(stderr, sout);
+        }
+        free(cwd_c);
+        Kast_ExecResult_drop(result);
+#else
+        fprintf(stderr, "?? (%p)\n", (void*)pc);
+#endif
+    }
+
     return 0;
 }
 #endif

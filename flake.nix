@@ -12,6 +12,8 @@
     };
     nix-filter.url = "github:numtide/nix-filter";
     flake-utils.url = "github:numtide/flake-utils";
+    tcc-overlay.url = "github:vesdev/tcc-overlay";
+    tcc-overlay.inputs.nixpkgs.follows = "nixpkgs";
   };
   outputs = inputs:
     let
@@ -20,7 +22,8 @@
     in
     inputs.flake-utils.lib.eachDefaultSystem (system:
       let
-        pkgs = import inputs.nixpkgs { inherit system; };
+        overlays = [ inputs.tcc-overlay.overlays.default ];
+        pkgs = import inputs.nixpkgs { inherit system overlays; };
         opam-nix = inputs.opam-nix.lib.${system};
         devPackagesQuery = {
           # You can add "development" packages here. They will get added to the devShell automatically.
@@ -193,7 +196,7 @@
             prettier
             hyperfine
             clang-tools
-            tinycc
+            tcc
           ] ++ c-deps);
           shellHook = ''
             echo 'Hello from Kast devshell'

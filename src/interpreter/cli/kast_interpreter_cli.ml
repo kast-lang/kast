@@ -109,7 +109,7 @@ let run ({ compiler; argv_except_program; enable_source_maps } as args : Args.t)
           exe_path
           (List.print String.print_maybe_escaped)
           exe_args);
-    Unix.execvp exe_path (Array.of_list exe_args)
+    Unix.execvp exe_path (Array.of_list (exe_path :: exe_args))
   | JavaScript ->
     let path =
       match compiler.output with
