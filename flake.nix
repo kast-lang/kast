@@ -1,7 +1,7 @@
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    kast.url = "github:kast-lang/kast/bootstrap-ocaml";
+    kast-bootstrap.url = "github:kast-lang/kast/bootstrap-ocaml";
     nix-filter.url = "github:numtide/nix-filter";
     flake-utils.url = "github:numtide/flake-utils";
     tcc-overlay.url = "github:vesdev/tcc-overlay";
@@ -13,7 +13,7 @@
       let
         overlays = [ inputs.tcc-overlay.overlays.default ];
         pkgs = import inputs.nixpkgs { inherit system overlays; };
-        kast-bootstrap = inputs.kast.packages.${system}.default;
+        kast-bootstrap = inputs.kast-bootstrap.packages.${system}.default;
         filter = inputs.nix-filter.lib;
       in
       with pkgs; {
@@ -118,8 +118,6 @@
             EOF
           '';
           KAST_BOOTSTRAP_PATH = "${kast-bootstrap}";
-          KAST_JS_RUNTIME =
-            "${inputs.kast.packages.${system}.js-runtime}/runtime.mjs";
           RAYLIB = "${raylib}";
           RAYLIB_WEB = "${inputs.self.packages.${system}.raylib-web}/libraylib.web.a";
           CFLAGS = ''

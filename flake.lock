@@ -106,7 +106,7 @@
         "type": "github"
       }
     },
-    "kast": {
+    "kast-bootstrap": {
       "inputs": {
         "flake-utils": "flake-utils_2",
         "nix-filter": "nix-filter",
@@ -116,11 +116,11 @@
         "tcc-overlay": "tcc-overlay"
       },
       "locked": {
-        "lastModified": 1793185096,
-        "narHash": "sha256-Uz4J70jchfuzvZJmgbc7cRuWKJ5fLNEtZoa6kvTVOrs=",
+        "lastModified": 1793219645,
+        "narHash": "sha256-536bFb4H86698TN7oPlkDiVWoihOMMy0e9+wwz11D6w=",
         "owner": "kast-lang",
         "repo": "kast",
-        "rev": "94b020e880a03fce567003ef2017575af86fe799",
+        "rev": "78386aff4218a4cb84dad4774df1ccb8cedccbe6",
         "type": "github"
       },
       "original": {
@@ -244,12 +244,12 @@
         "flake-utils": "flake-utils_3",
         "mirage-opam-overlays": "mirage-opam-overlays",
         "nixpkgs": [
-          "kast",
+          "kast-bootstrap",
           "nixpkgs"
         ],
         "opam-overlays": "opam-overlays",
         "opam-repository": [
-          "kast",
+          "kast-bootstrap",
           "opam-repository"
         ],
         "opam2json": "opam2json"
@@ -303,7 +303,7 @@
     "opam2json": {
       "inputs": {
         "nixpkgs": [
-          "kast",
+          "kast-bootstrap",
           "opam-nix",
           "nixpkgs"
         ],
@@ -326,7 +326,7 @@
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
-        "kast": "kast",
+        "kast-bootstrap": "kast-bootstrap",
         "nix-filter": "nix-filter_2",
         "nixpkgs": "nixpkgs_2",
         "tcc-overlay": "tcc-overlay_2"
@@ -396,7 +396,7 @@
       "inputs": {
         "flake-parts": "flake-parts",
         "nixpkgs": [
-          "kast",
+          "kast-bootstrap",
           "nixpkgs"
         ]
       },
