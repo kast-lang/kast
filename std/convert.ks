@@ -15,6 +15,10 @@ const do_impl = (from, into) => `(
     };
 );
 
+include_ast do_impl(UInt32, Int32);
+include_ast do_impl(Int32, UInt32);
+include_ast do_impl(Int64, UInt64);
+include_ast do_impl(UInt64, Int64);
 include_ast do_impl(Int32, Int64);
 include_ast do_impl(Int32, Float64);
 include_ast do_impl(Int64, Int32);
