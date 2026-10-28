@@ -1,11 +1,11 @@
 #include <Kast/conv.h>
 
 String Float32_to_String(Float32 x) {
-    return Kast_asprintf("%f", x);
+    return Kast_asprintf("%g", x);
 }
 
 String Float64_to_String(Float64 x) {
-    return Kast_asprintf("%f", x);
+    return Kast_asprintf("%g", x);
 }
 
 String Int32_to_String(Int32 x) {
