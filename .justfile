@@ -13,7 +13,29 @@ build continuous="" main="src/cli/_main.ks" name="kast":
         --post-compile-cmd 'just post-build target/{{name}}.c target/{{name}}.exe' \
         {{main}}
 
+tcc *args:
+    podman build -t kast-tcc .
+    podman run -it \
+        -e CC=$CC \
+        -v $KAST_PATH:/kast:ro \
+        -e KAST_PATH=/kast \
+        -v $(pwd):/src -w /src \
+        notnix \
+        tcc {{args}}
+
+run-tcc *args:
+    podman run -i \
+        -v $(pwd):/src -w /src \
+        -e KAST_PATH=/src/kast_path \
+        kast-tcc \
+        ./target/kast.exe --color always {{args}}
+
 post-build src="target/kast.c" out="target/kast.exe":
+    #!/usr/bin/env bash
+    set -ex
+    if [ "$CC" = "tcc" ]; then
+        export KAST_PATH_REMAP=/kast
+    fi
     ${KAST_BIN:-kast-bootstrap} cc {{src}} -o {{out}}
 
 raylib-to-c:

@@ -65,6 +65,9 @@
               # flock --shared target
               ./target/kast.exe "$@"
             '')
+            (pkgs.writeShellScriptBin "tcc" ''
+              just tcc "$@"
+            '')
             rlwrap
             nixfmt-classic
             nodejs
