@@ -130,8 +130,6 @@ const Tuple = (
     const array_to_tuple = (a :: Ast, N :: Int32) -> Ast => @cfg (
         | target.name == "interpreter" => (
             if N == 0 then `(
-
-
             ) else if N == 1 then `(
                 (&$a |> ArrayList.at(0))^
             ) else `(

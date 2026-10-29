@@ -179,10 +179,7 @@ const MakeAstModule = (
                             | :Content { .contents = ref contents, ... } => (
                                 ansi.with_mode(
                                     :Green,
-                                    (
-
-
-                                    ) => write_escaped(contents),
+                                    () => write_escaped(contents),
                                 );
                             )
                             | :Interpolated {
@@ -193,10 +190,7 @@ const MakeAstModule = (
                             } => (
                                 ansi.with_mode(
                                     :Yellow,
-                                    (
-
-
-                                    ) => output.write("\\ "),
+                                    () => output.write("\\ "),
                                 );
                                 print(ast);
                             )
