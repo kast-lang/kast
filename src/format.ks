@@ -422,6 +422,7 @@ const Format = (
                     print_token(keyword_token);
                 )
                 | :Whitespace ref whitespace => (
+                    skip_ignored_parts();
                     let s = if wrapped then (
                         &whitespace^.wrap |> RcStr.as_str
                     ) else (
