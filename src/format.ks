@@ -87,7 +87,8 @@ const Format = (
     );
 
     const ensure_newline = () => (
-        if (@current Context).queued_newlines == 0 then (
+        let ref ctx = @current Context;
+        if ctx^.queued_newlines == 0 and not ctx^.just_printed_newline then (
             queue_newline();
         );
     );
@@ -127,7 +128,7 @@ const Format = (
                     if ctx^.queued_newlines == 0 then (
                         queue_newline();
                     );
-                    # flush();
+                    flush();
                 )
                 | :Block => ()
             );
@@ -447,9 +448,7 @@ const Format = (
             );
         );
         let peek_part = () -> Option.t[type (&Ast.Part)] => (
-            if part_idx < &group^.parts |> ArrayList.length then (
-                :Some (&group^.parts |> ArrayList.at(part_idx))
-            ) else (
+            if part_idx < &group^.parts |> ArrayList.length then (:Some (&group^.parts |> ArrayList.at(part_idx))) else (
                 :None
             )
         );
