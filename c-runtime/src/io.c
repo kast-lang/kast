@@ -64,6 +64,7 @@ Char Kast_fgetChar(FILE* f) {
     char buf[4];
     buf[0] = c;
     size_t i = 1;
+    assert(bytes <= 4);
     while (i < bytes) {
         c = Kast_fgetc(f);
         if (c == EOF) {

@@ -45,6 +45,7 @@
 #include <sys/socket.h>
 #endif
 
+#include <assert.h>
 #include <errno.h>
 #include <stdalign.h>
 #include <stdarg.h>
