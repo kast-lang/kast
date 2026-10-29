@@ -9,6 +9,18 @@ const ReversibleIterable = [Item] newtype {
     .rev :: () -> Iterable[Item],
 };
 
+const find_map = [T, U] (
+    iter :: std.iter.Iterable[T],
+    f :: T -> Option.t[U],
+) -> Option.t[U] => with_return (
+    for value in iter do (
+        if f(value) is :Some result then (
+            return :Some result;
+        );
+    );
+    :None
+);
+
 const find = [T] (
     iter :: std.iter.Iterable[T],
     predicate :: T -> Bool,
