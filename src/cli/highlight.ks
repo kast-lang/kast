@@ -72,7 +72,7 @@ const Highlight = (
 
         let output = root_scope.Highlight.new_output(args.mode);
         let process = (path :: &SourcePath) => (
-            Log.info(
+            Log.info_fn(
                 () => ansi.with_mode(
                     :Bold,
                     () => (

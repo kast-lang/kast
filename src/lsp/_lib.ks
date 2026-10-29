@@ -37,13 +37,7 @@ const Lsp = (
             |> OrdMap.get(&RcStr.allocate("method"))
             |> Option.unwrap;
         let method = method |> RcStr.as_str;
-        Log.info(
-            () => (
-                let output = @current Output;
-                output.write("Received request ");
-                output.write(method);
-            )
-        );
+        Log.info!("Received request: \(method)");
         if method == "initialize" then (
             return state |> initialize(request);
         );
@@ -73,13 +67,7 @@ const Lsp = (
             |> OrdMap.get(&RcStr.allocate("method"))
             |> Option.unwrap;
         let method = method |> RcStr.as_str;
-        Log.info(
-            () => (
-                let output = @current Output;
-                output.write("Received notification ");
-                output.write(method);
-            )
-        );
+        Log.info!("Received notification \(method)");
         if method == "textDocument/didOpen" then (
             return state |> did_open(notification);
         );

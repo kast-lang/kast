@@ -186,7 +186,7 @@ const SyntaxRuleset = (
                     };
                     Diagnostic.report(diagnostic);
                 );
-                Log.debug_msg(&format!("Added rule \(rule^.name)") |> as_str);
+                Log.debug!("Added rule \(rule^.name)");
                 node^.terminal = :Some rule;
             ),
         );

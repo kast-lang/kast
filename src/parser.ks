@@ -141,13 +141,15 @@ const Parser = (
                         | :NoProgress => :None
                     );
                     return :MadeProgress {
-                        .shape = Rc.new(:Syntax {
-                            .command = {
-                                .shape = command,
-                                .raw_tokens = command_raw_tokens,
-                            },
-                            .value_after,
-                        }),
+                        .shape = Rc.new(
+                            :Syntax {
+                                .command = {
+                                    .shape = command,
+                                    .raw_tokens = command_raw_tokens,
+                                },
+                                .value_after,
+                            }
+                        ),
                         .ignored_tokens_before,
                         .span = {
                             .start = syntax_token.span.start,
@@ -178,7 +180,7 @@ const Parser = (
                 | :Error _ => ()
                 | _ => break
             );
-            Log.debug(
+            Log.debug_fn(
                 () => (
                     write_str("Skipping ");
                     Token.print(&peek);
@@ -213,7 +215,7 @@ const Parser = (
         );
         if do_parse then (
             let ignored_tokens_before = Rc.new(claim_ignored_tokens());
-            Log.debug_msg(&format!("Parsed single token \(String.escape(peek_raw))") |> as_str);
+            Log.debug!("Parsed single token \(String.escape(peek_raw))");
             ctx^.token_stream |> TokenStream.advance;
             let parsed = match peek.shape^ with (
                 | :InterpolatedString {
@@ -356,7 +358,7 @@ const Parser = (
             let peek = &ctx^.token_stream^ |> TokenStream.peek;
             let peek_raw = &peek |> Token.raw;
 
-            Log.debug(
+            Log.debug_fn(
                 () => (
                     let output = @current Output;
                     write_str("Looking at ");
@@ -378,7 +380,7 @@ const Parser = (
                         and &dyn_ctx^.continuation_keywords
                             |> OrdSet.contains(keyword)
                     ) then (
-                        Log.debug_msg(&format!("Not following keyword \(String.escape(keyword |> RcStr.as_str)) because it is a continuation keyword") |> as_str);
+                        Log.debug!("Not following keyword \(String.escape(keyword |> RcStr.as_str)) because it is a continuation keyword");
                         return false;
                     );
                 );
@@ -392,7 +394,7 @@ const Parser = (
                         &mut parts |> ArrayList.push_back(:Ignored token);
                     );
                     ctx^.token_stream |> TokenStream.advance;
-                    Log.debug_msg(&format!("Following with keyword \(String.escape(peek_raw))") |> as_str);
+                    Log.debug!("Following with keyword \(String.escape(peek_raw))");
                     node = &edge^.target;
                     made_progress = true;
                     &mut parts |> ArrayList.push_back(:Keyword peek);
@@ -440,7 +442,7 @@ const Parser = (
                             :None
                         );
                         if value is :Some ast then (
-                            Log.debug_msg("Following with value");
+                            Log.debug!("Following with value");
                             node = &edge^.target;
                             made_progress = true;
                             &mut parts |> ArrayList.push_back(:Value ast);
@@ -533,7 +535,7 @@ const Parser = (
             .shape = Rc.new(shape),
             .span,
         };
-        Log.debug(
+        Log.debug_fn(
             () => (
                 write_str("Parsed at ");
                 Span.print(&span);
@@ -567,7 +569,7 @@ const Parser = (
         rule :: &SyntaxRule.t,
         .error_span :: Span,
     ) -> Ast.Group => (
-        Log.debug_msg(&format!("Collecting values for \(String.escape(&rule^.name |> RcStr.as_str))") |> as_str);
+        Log.debug!("Collecting values for \(String.escape(&rule^.name |> RcStr.as_str))");
         let mut parsed_part_idx = 0;
         let result = collect_values_from(
             &mut parsed_part_idx,
@@ -580,7 +582,7 @@ const Parser = (
             print_parsed_parts(&parsed_parts);
             panic_fmt!("Too many values supplied for the rule \(String.escape(&rule^.name |> RcStr.as_str))")
         ) else (
-            Log.debug_msg(&format!("Values have been collected for \(String.escape(&rule^.name |> RcStr.as_str))") |> as_str);
+            Log.debug!("Values have been collected for \(String.escape(&rule^.name |> RcStr.as_str))");
             result
         )
     );
@@ -620,7 +622,7 @@ const Parser = (
             let rule_part = &rule_group_parts^.[rule_part_idx];
             match ({ parsed_part, rule_part } :: { _, _ }) with (
                 | { &(:Value ast), &(:Value { .name, ... }) } => (
-                    Log.debug(
+                    Log.debug_fn(
                         () => (
                             let output = @current Output;
                             output.write("Matched value ");
@@ -640,7 +642,7 @@ const Parser = (
                             () => (@current Output).write("Incorrectly matched keyword")
                         );
                     );
-                    Log.debug(
+                    Log.debug_fn(
                         () => (
                             let output = @current Output;
                             output.write("Matched keyword ");
@@ -683,7 +685,7 @@ const Parser = (
                             );
                         )
                     );
-                    Log.debug(
+                    Log.debug_fn(
                         () => (
                             let output = @current Output;
                             output.write("Matching group at ");
@@ -697,7 +699,7 @@ const Parser = (
                         .rule_group = :Some rule_group,
                         .error_span,
                     );
-                    Log.debug_msg("Group matched");
+                    Log.debug!("Group matched");
                     let group = Rc.new(group);
                     &mut ast_parts |> ArrayList.push_back(:Group group);
                     &mut children |> Tuple.add(name, :Group group);
@@ -778,11 +780,11 @@ const Parser = (
 
     const try_parse = (.priority_filter :: SyntaxRule.PriorityFilter) -> ParseResult => (
         let mut progress = :None;
-        Log.debug_msg("Try parse");
+        Log.debug!("Try parse");
         loop (
             match try_parse_or_extend_minimal(progress, .priority_filter) with (
                 | :MadeProgress ast => (
-                    Log.debug_msg("Made progress");
+                    Log.debug!("Made progress");
                     progress = :Some ast;
                 )
                 | :NoProgress { .starting_value } => (
@@ -791,7 +793,7 @@ const Parser = (
                 )
             );
         );
-        Log.debug_msg("Try parse done");
+        Log.debug!("Try parse done");
         match progress with (
             | :None => :NoProgress
             | :Some ast => :MadeProgress ast

@@ -35,7 +35,7 @@ const Tokenize = (
 
     const run = (common_args :: Common.Args.t, args :: Args.t) => (
         let process = (path :: &SourcePath) => (
-            Log.info(
+            Log.info_fn(
                 () => ansi.with_mode(
                     :Bold,
                     () => (

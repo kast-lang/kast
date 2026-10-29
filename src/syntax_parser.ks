@@ -162,7 +162,7 @@ const SyntaxParser = (
         let mut left_assoc = false;
         if toplevel is :Some toplevel then (
             if token_stream |> peek_is("<-") then (
-                Log.trace_msg("<-");
+                Log.trace!("<-");
                 if not toplevel^.first then (
                     let peek = &token_stream^ |> TokenStream.peek;
                     report_error_and_unwind(
@@ -365,13 +365,13 @@ const SyntaxParser = (
             with Diagnostic.UnwindableHandler = {
                 .unwind_on_error = () => (
                     if token_stream^.index == index_before then (
-                        Log.debug_msg(&format!("skipping \(String.escape(Token.raw(&peek)))") |> as_str);
+                        Log.debug!("skipping \(String.escape(Token.raw(&peek)))");
                         token_stream |> TokenStream.advance;
                     );
                     continue
                 ),
             };
-            Log.trace_msg(&format!("parse_syntax_rules: peek = \(String.escape(Token.raw(&peek)))") |> as_str);
+            Log.trace!("parse_syntax_rules: peek = \(String.escape(Token.raw(&peek)))");
             if peek.shape^ is :Eof then break;
             if peek.shape^ is :Comment _ then (
                 token_stream |> TokenStream.advance;
@@ -380,10 +380,10 @@ const SyntaxParser = (
             token_stream |> expect_and_advance("@syntax");
             match parse_syntax_command(token_stream).command with (
                 | :FromScratch => (
-                    Log.debug_msg("parsed from_scratch");
+                    Log.debug!("parsed from_scratch");
                 )
                 | :Rule rule => (
-                    Log.debug_msg(&format!("parsed rule \(String.escape(&rule.name |> RcStr.as_str))") |> as_str);
+                    Log.debug!("parsed rule \(String.escape(&rule.name |> RcStr.as_str))");
                     &mut result |> ArrayList.push_back(rule);
                 )
             );
