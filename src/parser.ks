@@ -436,7 +436,10 @@ const Parser = (
                             :Some {
                                 .ignored_tokens_before = Rc.new(claim_ignored_tokens()),
                                 .shape = Rc.new(:Empty),
-                                .span = peek.span,
+                                .span = Span.empty(
+                                    .position = peek.span.start,
+                                    .path = peek.span.path,
+                                ),
                             }
                         ) else (
                             :None
@@ -460,7 +463,13 @@ const Parser = (
         );
 
         let span = (
-            let first_span = &parts.[0] |> ParsedPart.span;
+            let first_span = &parts
+                |> ArrayList.iter
+                |> std.iter.find_map(
+                    part => if part^ is :Ignored _ then :None else :Some part
+                )
+                |> Option.unwrap
+                |> ParsedPart.span;
             let last_index = (&parts |> ArrayList.length) - 1;
             let last_span = &parts.[last_index] |> ParsedPart.span;
             {
@@ -767,7 +776,12 @@ const Parser = (
                     ),
                 );
             );
-            let first_part = &ast_parts.[0];
+            let first_part = &ast_parts
+                |> ArrayList.iter
+                |> std.iter.find_map(
+                    part => if part^ is :Ignored _ then :None else :Some part
+                )
+                |> Option.unwrap;
             let last_part = &ast_parts.[parts_len - 1];
             {
                 .start = (first_part |> Ast.part_span).start,
