@@ -271,11 +271,11 @@ const Format = (
                 .close = ref close,
                 .stripped_indentation = ref stripped_indentation,
             } => (
+                print_token(open);
                 with Indentation = {
                     .string = String.clone(&(@current Indentation).string),
                     .extra_in_string = String.from_str(""),
                 };
-                print_token(open);
                 if stripped_indentation |> RcStr.as_str != "" then (
                     inc_indentation();
                 );
@@ -293,6 +293,7 @@ const Format = (
                             .ast = ref inner,
                             .ignored_trailing_tokens = ref ignored_trailing_tokens,
                         } => (
+                            print_token(open);
                             with Indentation = {
                                 .string = (
                                     let ref cur = @current Indentation;
@@ -304,7 +305,6 @@ const Format = (
                                 .extra_in_string = String.from_str(""),
                             };
                             let wrapped = open^.span.end.line != close^.span.start.line;
-                            print_token(open);
                             if wrapped then (
                                 queue_newline();
                                 inc_indentation();
