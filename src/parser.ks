@@ -141,15 +141,13 @@ const Parser = (
                         | :NoProgress => :None
                     );
                     return :MadeProgress {
-                        .shape = Rc.new(
-                            :Syntax {
-                                .command = {
-                                    .shape = command,
-                                    .raw_tokens = command_raw_tokens,
-                                },
-                                .value_after,
-                            }
-                        ),
+                        .shape = Rc.new(:Syntax {
+                            .command = {
+                                .shape = command,
+                                .raw_tokens = command_raw_tokens,
+                            },
+                            .value_after,
+                        }),
                         .ignored_tokens_before,
                         .span = {
                             .start = syntax_token.span.start,
@@ -381,7 +379,8 @@ const Parser = (
                 SyntaxRule.priority_matches(edge^.max_rule_priority, priority_filter)
             );
             # Try to follow with keyword
-            let keyword_edge = :Keyword RcStr.from_String(String.from_str(peek_raw)); # TODO no alloc
+            let keyword_edge = :Keyword RcStr.from_String(String.from_str(peek_raw));
+            # TODO no alloc
             if &node^.next |> OrdMap.get(&keyword_edge) is :Some edge then (
                 if should_follow_edge(edge) then (
                     for token in claim_ignored_tokens() |> ArrayList.into_iter do (

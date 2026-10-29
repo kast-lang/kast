@@ -389,7 +389,8 @@ const parse_fn = (
         .parent_scope = :Some (@current ScopeContext),
     );
     let fn_ty = {
-        .is_closure = true, # TODO
+        .is_closure = true,
+        # TODO
         .call_convention = :None,
         .args = (
             let mut args = ArrayList.new();
@@ -740,9 +741,7 @@ const parse_native = (
     {
         .shape = :Expr :Native { .parts = native_parts },
         .ty = expected_ty
-            |> Option.unwrap_or(
-                { .shape = :Unit, .alias_name = :None }
-            ),
+            |> Option.unwrap_or({ .shape = :Unit, .alias_name = :None }),
     }
 );
 

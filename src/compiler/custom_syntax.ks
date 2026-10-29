@@ -24,12 +24,10 @@ impl CustomSyntax as module = (
                     |> Option.unwrap;
                 Interpreter.Scope.inject_binding(
                     binding,
-                    Place.init(
-                        {
-                            .shape = :Ast ast^,
-                            .ty = Ty.AST,
-                        }
-                    ),
+                    Place.init({
+                        .shape = :Ast ast^,
+                        .ty = Ty.AST,
+                    }),
                 );
                 return;
             );

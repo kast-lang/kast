@@ -32,15 +32,13 @@ const read_raw_ident :: ReadFn = () => with_return (
         return :None;
     );
     let at_token :: Token.t = {
-        .shape = Rc.new(
-            :Punct {
-                .raw = RcStr.substring(
-                    &reader^.contents,
-                    reader^.position.string_encoding_index,
-                    1,
-                ),
-            }
-        ),
+        .shape = Rc.new(:Punct {
+            .raw = RcStr.substring(
+                &reader^.contents,
+                reader^.position.string_encoding_index,
+                1,
+            ),
+        }),
         .span = Span.single_char(
             .position = reader^.position,
             .char = :Some '@',

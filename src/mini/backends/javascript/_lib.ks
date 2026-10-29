@@ -115,16 +115,14 @@ const JavaScript = (
                         .args = ArrayList.new(),
                     },
                     .set = new_value => (
-                        insert_stmt(
-                            :Expr :Apply {
-                                .f = :Field { .obj = :Var var, .field = "set" },
-                                .args = (
-                                    let mut args = ArrayList.new();
-                                    &mut args |> ArrayList.push_back(new_value);
-                                    args
-                                ),
-                            }
-                        );
+                        insert_stmt(:Expr :Apply {
+                            .f = :Field { .obj = :Var var, .field = "set" },
+                            .args = (
+                                let mut args = ArrayList.new();
+                                &mut args |> ArrayList.push_back(new_value);
+                                args
+                            ),
+                        });
                     ),
                 }
             )
@@ -259,13 +257,11 @@ const JavaScript = (
                     )
                     | :None => :None
                 );
-                insert_stmt(
-                    :If {
-                        .cond = :Var cond,
-                        .then_case,
-                        .else_case,
-                    }
-                );
+                insert_stmt(:If {
+                    .cond = :Var cond,
+                    .then_case,
+                    .else_case,
+                });
                 return result_var
             )
             | :Then exprs => (
@@ -362,16 +358,14 @@ const JavaScript = (
             let_var(var(name), :Var calculate(value));
         );
         if &program.fns |> OrdMap.get("main") is :Some _ then (
-            insert_stmt(
-                :Expr :Apply {
-                    .f = :Var var("main"),
-                    .args = (
-                        let mut args = ArrayList.new();
-                        &mut args |> ArrayList.push_back(:Var ctx_var);
-                        args
-                    ),
-                }
-            );
+            insert_stmt(:Expr :Apply {
+                .f = :Var var("main"),
+                .args = (
+                    let mut args = ArrayList.new();
+                    &mut args |> ArrayList.push_back(:Var ctx_var);
+                    args
+                ),
+            });
         );
         { .toplevel = state.toplevel }
     );

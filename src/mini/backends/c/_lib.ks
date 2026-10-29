@@ -142,9 +142,7 @@ const C = (
         );
         if call_convention is :None then (
             &mut c_args
-                |> ArrayList.push_back(
-                    :Pointer :Struct ident("Context")
-                );
+                |> ArrayList.push_back(:Pointer :Struct ident("Context"));
         );
         for arg in args |> ArrayList.iter do (
             &mut c_args
@@ -184,19 +182,15 @@ const C = (
                 .fields = (
                     let mut fields = ArrayList.new();
                     &mut fields
-                        |> ArrayList.push_back(
-                            {
-                                .name = ident("captured"),
-                                .ty = :Pointer :Void,
-                            }
-                        );
+                        |> ArrayList.push_back({
+                            .name = ident("captured"),
+                            .ty = :Pointer :Void,
+                        });
                     &mut fields
-                        |> ArrayList.push_back(
-                            {
-                                .name = ident("f"),
-                                .ty = :Named raw_fn_type_name,
-                            }
-                        );
+                        |> ArrayList.push_back({
+                            .name = ident("f"),
+                            .ty = :Named raw_fn_type_name,
+                        });
                     fields
                 )
             },
@@ -231,15 +225,13 @@ const C = (
                         output.write("This expression is void, and can't be used as a value");
                     ),
                     .span = pure.span,
-                    .related = single_element_list(
-                        {
-                            .message = () => (
-                                let output = @current Output;
-                                output.write("While compiling this expr");
-                            ),
-                            .span = (@current ExprContext).span,
-                        }
-                    ),
+                    .related = single_element_list({
+                        .message = () => (
+                            let output = @current Output;
+                            output.write("While compiling this expr");
+                        ),
+                        .span = (@current ExprContext).span,
+                    }),
                 };
                 Diagnostic.report_and_unwind(diagnostic)
             )
@@ -378,20 +370,18 @@ const C = (
     );
 
     const check_unwind = () => (
-        insert_stmt(
-            :If {
-                .cond = :Raw "current_unwinding_raw_token.id",
-                .then_case = (
-                    let mut block = new_block();
-                    with Scope = {
-                        .block = &mut block,
-                    };
-                    (@current UnwindContext).insert_unwind();
-                    block
-                ),
-                .else_case = :None,
-            }
-        );
+        insert_stmt(:If {
+            .cond = :Raw "current_unwinding_raw_token.id",
+            .then_case = (
+                let mut block = new_block();
+                with Scope = {
+                    .block = &mut block,
+                };
+                (@current UnwindContext).insert_unwind();
+                block
+            ),
+            .else_case = :None,
+        });
     );
 
     const defer = (f :: () -> ()) => (
@@ -429,30 +419,28 @@ const C = (
         };
         let members_var = new_ident("members");
         # TODO instead of allocating at runtime we should have const array
-        insert_stmt(
-            :LetVar {
+        insert_stmt(:LetVar {
+            .ty = :Named ident("Array_MemberInfo"),
+            .ident = members_var,
+            .value = :Some :CompoundLiteral {
                 .ty = :Named ident("Array_MemberInfo"),
-                .ident = members_var,
-                .value = :Some :CompoundLiteral {
-                    .ty = :Named ident("Array_MemberInfo"),
-                    .fields = (
-                        let mut fields = ArrayList.new();
-                        let length = &info^.members |> ArrayList.length;
-                        let length_field = {
-                            .name = ident("length"),
-                            .value = :Literal :Int to_string(length),
-                        };
-                        &mut fields |> ArrayList.push_back(length_field);
-                        let data_field = {
-                            .name = ident("data"),
-                            .value = :Raw ("malloc_or_panic_fn(sizeof(MemberInfo) * " + to_string(length) + ")"),
-                        };
-                        &mut fields |> ArrayList.push_back(data_field);
-                        fields
-                    ),
-                },
-            }
-        );
+                .fields = (
+                    let mut fields = ArrayList.new();
+                    let length = &info^.members |> ArrayList.length;
+                    let length_field = {
+                        .name = ident("length"),
+                        .value = :Literal :Int to_string(length),
+                    };
+                    &mut fields |> ArrayList.push_back(length_field);
+                    let data_field = {
+                        .name = ident("data"),
+                        .value = :Raw ("malloc_or_panic_fn(sizeof(MemberInfo) * " + to_string(length) + ")"),
+                    };
+                    &mut fields |> ArrayList.push_back(data_field);
+                    fields
+                ),
+            },
+        });
         for { i, member } in &info^.members |> ArrayList.iter |> std.iter.enumerate do (
             let mut fields = ArrayList.new();
             let offset_or_name_field = {
@@ -469,29 +457,23 @@ const C = (
                 .value = :Ref :Ident ident(member^.type_info_const_name)
             };
             &mut fields |> ArrayList.push_back(ty_field);
-            insert_stmt(
-                :Assign {
-                    .assignee = :RawParts (
-                        let mut parts = ArrayList.new();
-                        &mut parts
-                            |> ArrayList.push_back(
-                                :Field {
-                                    .obj = :Ident members_var,
-                                    .field = ident("data"),
-                                }
-                            );
-                        &mut parts
-                            |> ArrayList.push_back(
-                                :Raw ("[" + to_string(i) + "]")
-                            );
-                        parts
-                    ),
-                    .value = :CompoundLiteral {
-                        .ty = :Named ident("MemberInfo"),
-                        .fields,
-                    },
-                }
-            );
+            insert_stmt(:Assign {
+                .assignee = :RawParts (
+                    let mut parts = ArrayList.new();
+                    &mut parts
+                        |> ArrayList.push_back(:Field {
+                            .obj = :Ident members_var,
+                            .field = ident("data"),
+                        });
+                    &mut parts
+                        |> ArrayList.push_back(:Raw ("[" + to_string(i) + "]"));
+                    parts
+                ),
+                .value = :CompoundLiteral {
+                    .ty = :Named ident("MemberInfo"),
+                    .fields,
+                },
+            });
         );
         let mut fields = ArrayList.new();
         let members_field = {
@@ -575,24 +557,20 @@ const C = (
             .block = &mut block,
         };
         let ident = new_ident("uninitialized");
-        insert_stmt(
-            :LetVar {
-                .ty = convert_ty(ty),
-                .ident,
-                .value = :None,
-            }
-        );
-        insert_stmt(
-            :RawParts (
-                let mut parts = ArrayList.new();
-                &mut parts |> ArrayList.push_back(:Raw "memset(");
-                &mut parts |> ArrayList.push_back(:Ref :Ident ident);
-                &mut parts |> ArrayList.push_back(:Raw ", 0, sizeof(");
-                &mut parts |> ArrayList.push_back(:Ident ident);
-                &mut parts |> ArrayList.push_back(:Raw "))");
-                parts
-            )
-        );
+        insert_stmt(:LetVar {
+            .ty = convert_ty(ty),
+            .ident,
+            .value = :None,
+        });
+        insert_stmt(:RawParts (
+            let mut parts = ArrayList.new();
+            &mut parts |> ArrayList.push_back(:Raw "memset(");
+            &mut parts |> ArrayList.push_back(:Ref :Ident ident);
+            &mut parts |> ArrayList.push_back(:Raw ", 0, sizeof(");
+            &mut parts |> ArrayList.push_back(:Ident ident);
+            &mut parts |> ArrayList.push_back(:Raw "))");
+            parts
+        ));
         insert_stmt(:Expr :Ident ident);
         { .expr = :Some :Stmt block, .span }
     );
@@ -725,27 +703,23 @@ const C = (
                     { .block = &mut body },
                     () => calculate(body_expr),
                 );
-                insert_stmt(
-                    :For {
-                        .init = :None,
-                        .test = :None,
-                        .incr = :None,
-                        .body,
-                    }
-                );
+                insert_stmt(:For {
+                    .init = :None,
+                    .test = :None,
+                    .incr = :None,
+                    .body,
+                });
                 return void(span)
             )
             | :If { .cond = ref cond, .then_case = ref then_case, .else_case = ref else_case } => (
                 let ident = new_ident("if_result");
                 let is_void = if ir_expr^.ty.shape is :Unit then true else false;
                 if not is_void then (
-                    insert_stmt(
-                        :LetVar {
-                            .ty = convert_ty(&ir_expr^.ty),
-                            .ident,
-                            .value = :None,
-                        }
-                    );
+                    insert_stmt(:LetVar {
+                        .ty = convert_ty(&ir_expr^.ty),
+                        .ident,
+                        .value = :None,
+                    });
                 );
                 let cond = pure(calculate(cond));
                 let then_case = (
@@ -783,13 +757,11 @@ const C = (
                     return void(span);
                 );
                 if value^.shape is :Uninitialized then (
-                    insert_stmt(
-                        :LetVar {
-                            .ty = convert_ty(&value^.ty),
-                            .ident = ident(name),
-                            .value = :None,
-                        }
-                    );
+                    insert_stmt(:LetVar {
+                        .ty = convert_ty(&value^.ty),
+                        .ident = ident(name),
+                        .value = :None,
+                    });
                 ) else (
                     let_var(&value^.ty, ident(name), pure(calculate(value)));
                 );
@@ -844,12 +816,10 @@ const C = (
                 let mut args = ArrayList.new();
                 if f_ty.is_closure then (
                     &mut args
-                        |> ArrayList.push_back(
-                            :Field {
-                                .obj = f,
-                                .field = ident("captured"),
-                            }
-                        );
+                        |> ArrayList.push_back(:Field {
+                            .obj = f,
+                            .field = ident("captured"),
+                        });
                 );
                 let f = if f_ty.is_closure then (
                     :Field {
@@ -929,25 +899,21 @@ const C = (
                 let token = pure(calculate(token));
                 let value = calculate(value);
                 if value.expr is :Some value then (
-                    insert_stmt(
-                        :Assign {
-                            .assignee = :Field {
-                                .obj = :Deref token,
-                                .field = ident("value"),
-                            },
-                            .value,
-                        }
-                    );
-                );
-                insert_stmt(
-                    :Assign {
-                        .assignee = :Raw "current_unwinding_raw_token",
-                        .value = :Field {
+                    insert_stmt(:Assign {
+                        .assignee = :Field {
                             .obj = :Deref token,
-                            .field = ident("raw"),
+                            .field = ident("value"),
                         },
-                    }
+                        .value,
+                    });
                 );
+                insert_stmt(:Assign {
+                    .assignee = :Raw "current_unwinding_raw_token",
+                    .value = :Field {
+                        .obj = :Deref token,
+                        .field = ident("raw"),
+                    },
+                });
                 # TODO cleanup before return
                 (
                     @current UnwindContext
@@ -966,9 +932,7 @@ const C = (
                     token_own_var,
                     :CompoundLiteral {
                         .ty = convert_ty(token_ty),
-                        .fields = single_element_list(
-                            { .name = ident("raw"), .value = :Raw "RawUnwindToken_new_fn()" }
-                        ),
+                        .fields = single_element_list({ .name = ident("raw"), .value = :Raw "RawUnwindToken_new_fn()" }),
                     },
                 );
                 let token_var = ident(token);
@@ -986,65 +950,55 @@ const C = (
                 );
                 let result_var = new_ident("unwindable_result");
                 if have_result_value then (
-                    insert_stmt(
-                        :LetVar {
-                            .ty = convert_ty(&ir_expr^.ty),
-                            .ident = result_var,
-                            .value = :None,
-                        }
-                    );
+                    insert_stmt(:LetVar {
+                        .ty = convert_ty(&ir_expr^.ty),
+                        .ident = result_var,
+                        .value = :None,
+                    });
                 );
                 let handle_unwind_label = new_ident("handle_unwind");
                 let unwindable_body_label = new_ident("unwindable_body");
                 let after_unwindable_label = new_ident("after_unwindable");
                 insert_stmt(:Goto unwindable_body_label);
                 insert_stmt(:GotoLabel handle_unwind_label);
-                insert_stmt(
-                    :If {
-                        .cond = :Apply {
-                            .f = :Ident ident("is_unwinding_with_fn"),
-                            .args = single_element_list(
-                                :Field {
+                insert_stmt(:If {
+                    .cond = :Apply {
+                        .f = :Ident ident("is_unwinding_with_fn"),
+                        .args = single_element_list(:Field {
+                            .obj = :Ident token_own_var,
+                            .field = ident("raw"),
+                        }),
+                    },
+                    .then_case = (
+                        let mut block = new_block();
+                        with Scope = {
+                            .block = &mut block,
+                        };
+                        insert_stmt(:Assign {
+                            .assignee = :Ident ident("current_unwinding_raw_token"),
+                            .value = :Ident ident("NO_UNWIND"),
+                        });
+                        if have_result_value then (
+                            insert_stmt(:Assign {
+                                .assignee = :Ident result_var,
+                                .value = :Field {
                                     .obj = :Ident token_own_var,
-                                    .field = ident("raw"),
-                                }
-                            ),
-                        },
-                        .then_case = (
-                            let mut block = new_block();
-                            with Scope = {
-                                .block = &mut block,
-                            };
-                            insert_stmt(
-                                :Assign {
-                                    .assignee = :Ident ident("current_unwinding_raw_token"),
-                                    .value = :Ident ident("NO_UNWIND"),
-                                }
-                            );
-                            if have_result_value then (
-                                insert_stmt(
-                                    :Assign {
-                                        .assignee = :Ident result_var,
-                                        .value = :Field {
-                                            .obj = :Ident token_own_var,
-                                            .field = ident("value"),
-                                        },
-                                    }
-                                );
-                            );
-                            insert_stmt(:Goto after_unwindable_label);
-                            block
-                        ),
-                        .else_case = :Some (
-                            let mut block = new_block();
-                            with Scope = {
-                                .block = &mut block,
-                            };
-                            (@current UnwindContext).insert_unwind();
-                            block
-                        ),
-                    }
-                );
+                                    .field = ident("value"),
+                                },
+                            });
+                        );
+                        insert_stmt(:Goto after_unwindable_label);
+                        block
+                    ),
+                    .else_case = :Some (
+                        let mut block = new_block();
+                        with Scope = {
+                            .block = &mut block,
+                        };
+                        (@current UnwindContext).insert_unwind();
+                        block
+                    ),
+                });
                 insert_stmt(:GotoLabel unwindable_body_label);
                 with UnwindContext = {
                     .insert_unwind = () => (
@@ -1055,12 +1009,10 @@ const C = (
                 let result = calculate(body);
                 (@current UnwindContext).cleanup_scope_without_unwind();
                 if have_result_value then (
-                    insert_stmt(
-                        :Assign {
-                            .assignee = :Ident result_var,
-                            .value = pure(result),
-                        }
-                    );
+                    insert_stmt(:Assign {
+                        .assignee = :Ident result_var,
+                        .value = pure(result),
+                    });
                 );
                 insert_stmt(:GotoLabel after_unwindable_label);
                 return {
@@ -1124,16 +1076,14 @@ const C = (
                         .result_ty = convert_ty(&ir_expr^.ty),
                     },
                     .before_body = () => (
-                        insert_stmt(
-                            :LetVar {
-                                .ty = :Pointer captured_ty,
-                                .ident = ident("captured"),
-                                .value = :Some :Apply {
-                                    .f = :Ident ident("mco_get_user_data"),
-                                    .args = single_element_list(:Ident coro),
-                                },
-                            }
-                        );
+                        insert_stmt(:LetVar {
+                            .ty = :Pointer captured_ty,
+                            .ident = ident("captured"),
+                            .value = :Some :Apply {
+                                .f = :Ident ident("mco_get_user_data"),
+                                .args = single_element_list(:Ident coro),
+                            },
+                        });
                         let_var(
                             &{
                                 .shape = :Ref {
@@ -1154,88 +1104,72 @@ const C = (
                     .body,
                 );
                 &mut ctx.result.fns
-                    |> ArrayList.push_back(
-                        {
-                            .signature = {
-                                .name = coro_fn,
-                                .args = single_element_list({ .name = ident("co"), .ty = :Raw "mco_coro*" }),
-                                .result_ty = :Void,
-                            },
-                            .body = (
-                                let mut block = new_block();
-                                with Scope = { .block = &mut block };
-                                let call :: Ast.Expr = :Apply {
-                                    .f = :Ident body_fn_ident,
-                                    .args = single_element_list(:Ident ident("co")),
-                                };
-                                if ir_expr^.ty.shape is :Unit then (
-                                    insert_stmt(:Expr call);
-                                ) else (
-                                    insert_stmt(
-                                        :LetVar {
-                                            .ty = convert_ty(&ir_expr^.ty),
-                                            .ident = ident("result"),
-                                            .value = :Some call,
-                                        }
-                                    );
-                                    insert_mco_stmt(
-                                        :Apply {
-                                            .f = :Ident ident("mco_push"),
-                                            .args = (
-                                                let mut args = ArrayList.new();
-                                                &mut args |> ArrayList.push_back(:Ident ident("co"));
-                                                &mut args |> ArrayList.push_back(:Ref :Ident ident("result"));
-                                                &mut args
-                                                    |> ArrayList.push_back(
-                                                        :Apply {
-                                                            .f = :Ident ident("sizeof"),
-                                                            .args = single_element_list(:Ident ident("result")),
-                                                        }
-                                                    );
-                                                args
-                                            ),
-                                        }
-                                    );
-                                );
-                                block
-                            ),
-                        }
-                    );
-                let desc = new_ident("desc");
-                insert_stmt(
-                    :LetVar {
-                        .ty = :Raw "mco_desc",
-                        .ident = desc,
-                        .value = :Some :Apply {
-                            .f = :Raw "mco_desc_init",
-                            .args = (
-                                let mut args = ArrayList.new();
-                                &mut args |> ArrayList.push_back(:Ident coro_fn);
-                                &mut args |> ArrayList.push_back(:Literal :Int "0");
-                                args
-                            ),
+                    |> ArrayList.push_back({
+                        .signature = {
+                            .name = coro_fn,
+                            .args = single_element_list({ .name = ident("co"), .ty = :Raw "mco_coro*" }),
+                            .result_ty = :Void,
                         },
-                    }
-                );
-                insert_stmt(
-                    :Assign {
-                        .assignee = :Field { .obj = :Ident desc, .field = ident("user_data") },
-                        .value = :Ident captured_var,
-                    }
-                );
-                insert_stmt(
-                    :Assign {
-                        .assignee = :Field { .obj = :Deref :Ident captured_var, .field = ctx_var },
-                        .value = :Ident (@current ScopeContextVar).ident,
-                    }
-                );
-                insert_stmt(
-                    :LetVar {
-                        .ty = :Raw "mco_coro*",
-                        .ident = coro,
-                        .value = :None,
-                    }
-                );
+                        .body = (
+                            let mut block = new_block();
+                            with Scope = { .block = &mut block };
+                            let call :: Ast.Expr = :Apply {
+                                .f = :Ident body_fn_ident,
+                                .args = single_element_list(:Ident ident("co")),
+                            };
+                            if ir_expr^.ty.shape is :Unit then (
+                                insert_stmt(:Expr call);
+                            ) else (
+                                insert_stmt(:LetVar {
+                                    .ty = convert_ty(&ir_expr^.ty),
+                                    .ident = ident("result"),
+                                    .value = :Some call,
+                                });
+                                insert_mco_stmt(:Apply {
+                                    .f = :Ident ident("mco_push"),
+                                    .args = (
+                                        let mut args = ArrayList.new();
+                                        &mut args |> ArrayList.push_back(:Ident ident("co"));
+                                        &mut args |> ArrayList.push_back(:Ref :Ident ident("result"));
+                                        &mut args
+                                            |> ArrayList.push_back(:Apply {
+                                                .f = :Ident ident("sizeof"),
+                                                .args = single_element_list(:Ident ident("result")),
+                                            });
+                                        args
+                                    ),
+                                });
+                            );
+                            block
+                        ),
+                    });
+                let desc = new_ident("desc");
+                insert_stmt(:LetVar {
+                    .ty = :Raw "mco_desc",
+                    .ident = desc,
+                    .value = :Some :Apply {
+                        .f = :Raw "mco_desc_init",
+                        .args = (
+                            let mut args = ArrayList.new();
+                            &mut args |> ArrayList.push_back(:Ident coro_fn);
+                            &mut args |> ArrayList.push_back(:Literal :Int "0");
+                            args
+                        ),
+                    },
+                });
+                insert_stmt(:Assign {
+                    .assignee = :Field { .obj = :Ident desc, .field = ident("user_data") },
+                    .value = :Ident captured_var,
+                });
+                insert_stmt(:Assign {
+                    .assignee = :Field { .obj = :Deref :Ident captured_var, .field = ctx_var },
+                    .value = :Ident (@current ScopeContextVar).ident,
+                });
+                insert_stmt(:LetVar {
+                    .ty = :Raw "mco_coro*",
+                    .ident = coro,
+                    .value = :None,
+                });
                 insert_mco_stmt(
                     :Apply {
                         .f = :Raw "mco_create",
@@ -1247,34 +1181,30 @@ const C = (
                         ),
                     },
                 );
-                insert_stmt(
-                    :Assign {
-                        .assignee = :Field {
-                            .obj = :Deref :Ident captured_var,
-                            .field = token_name,
-                        },
-                        .value = :CompoundLiteral {
-                            .ty = convert_ty(token_ty),
-                            .fields = (
-                                let mut fields = ArrayList.new();
-                                let coro_field = {
-                                    .name = ident("coro"),
-                                    .value = :Ident coro,
-                                };
-                                &mut fields |> ArrayList.push_back(coro_field);
-                                fields
-                            ),
-                        },
-                    }
-                );
+                insert_stmt(:Assign {
+                    .assignee = :Field {
+                        .obj = :Deref :Ident captured_var,
+                        .field = token_name,
+                    },
+                    .value = :CompoundLiteral {
+                        .ty = convert_ty(token_ty),
+                        .fields = (
+                            let mut fields = ArrayList.new();
+                            let coro_field = {
+                                .name = ident("coro"),
+                                .value = :Ident coro,
+                            };
+                            &mut fields |> ArrayList.push_back(coro_field);
+                            fields
+                        ),
+                    },
+                });
                 :Apply {
                     .f = :Ident ident(resume_fn + "_fn"),
-                    .args = single_element_list(
-                        :Field {
-                            .obj = :Deref :Ident captured_var,
-                            .field = token_name,
-                        }
-                    ),
+                    .args = single_element_list(:Field {
+                        .obj = :Deref :Ident captured_var,
+                        .field = token_name,
+                    }),
                 }
             )
             | :CaptureContinuation {
@@ -1317,31 +1247,25 @@ const C = (
                 ) else (
                     let result_var = new_ident("result");
                     let_var(&body^.ty, result_var, pure(calculate(body)));
-                    insert_mco_stmt(
-                        :Apply {
-                            .f = :Ident ident("mco_push"),
-                            .args = (
-                                let mut args = ArrayList.new();
-                                &mut args |> ArrayList.push_back(coro);
-                                &mut args |> ArrayList.push_back(:Ref :Ident result_var);
-                                &mut args
-                                    |> ArrayList.push_back(
-                                        :Apply {
-                                            .f = :Ident ident("sizeof"),
-                                            .args = single_element_list(:Ident result_var),
-                                        }
-                                    );
-                                args
-                            ),
-                        }
-                    );
+                    insert_mco_stmt(:Apply {
+                        .f = :Ident ident("mco_push"),
+                        .args = (
+                            let mut args = ArrayList.new();
+                            &mut args |> ArrayList.push_back(coro);
+                            &mut args |> ArrayList.push_back(:Ref :Ident result_var);
+                            &mut args
+                                |> ArrayList.push_back(:Apply {
+                                    .f = :Ident ident("sizeof"),
+                                    .args = single_element_list(:Ident result_var),
+                                });
+                            args
+                        ),
+                    });
                 );
-                insert_mco_stmt(
-                    :Apply {
-                        .f = :Ident ident("mco_yield"),
-                        .args = single_element_list(coro),
-                    }
-                );
+                insert_mco_stmt(:Apply {
+                    .f = :Ident ident("mco_yield"),
+                    .args = single_element_list(coro),
+                });
                 return {
                     .span,
                     .expr = :Some :Ident ident("TODO")
@@ -1408,13 +1332,11 @@ const C = (
     );
 
     const let_var = (ty :: &Ir.Type, ident :: Ast.Ident, value :: Ast.Expr) => (
-        insert_stmt(
-            :LetVar {
-                .ty = convert_ty(ty),
-                .ident,
-                .value = :Some value,
-            }
-        );
+        insert_stmt(:LetVar {
+            .ty = convert_ty(ty),
+            .ident,
+            .value = :Some value,
+        });
     );
 
     const insert_stmt = (stmt :: Ast.Stmt) => (
@@ -1423,27 +1345,23 @@ const C = (
 
     const insert_mco_stmt = (expr :: Ast.Expr) => (
         let result_var = new_ident("mco_result");
-        insert_stmt(
-            :LetVar {
-                .ty = :Raw "mco_result",
-                .ident = result_var,
-                .value = :Some expr,
-            }
-        );
-        insert_stmt(
-            :Expr :Apply {
-                .f = :Ident ident("assert"),
-                .args = (
-                    let mut args = ArrayList.new();
-                    let equals = :Equal {
-                        :Ident result_var,
-                        :Ident ident("MCO_SUCCESS"),
-                    };
-                    &mut args |> ArrayList.push_back(equals);
-                    args
-                ),
-            }
-        );
+        insert_stmt(:LetVar {
+            .ty = :Raw "mco_result",
+            .ident = result_var,
+            .value = :Some expr,
+        });
+        insert_stmt(:Expr :Apply {
+            .f = :Ident ident("assert"),
+            .args = (
+                let mut args = ArrayList.new();
+                let equals = :Equal {
+                    :Ident result_var,
+                    :Ident ident("MCO_SUCCESS"),
+                };
+                &mut args |> ArrayList.push_back(equals);
+                args
+            ),
+        });
     );
 
     const new_block = () -> Ast.Block => {
@@ -1457,42 +1375,38 @@ const C = (
         captures :: &OrdMap.t[String, Ir.Type],
         .span :: Span,
     ) => (
-        insert_stmt(
-            :LetVar {
-                .ty = :Pointer captured_ty,
-                .ident = captured_var,
-                .value = :Some :Raw output_to_string(() => (
-                    let output = @current Output;
-                    output.write("malloc_or_panic_fn(sizeof(");
-                    Print.ty(&captured_ty);
-                    output.write("))");
-                )),
-            }
-        );
-        insert_stmt(
-            :Assign {
-                .assignee = :Deref :Ident captured_var,
-                .value = :CompoundLiteral {
-                    .ty = captured_ty,
-                    .fields = (
-                        let mut fields = ArrayList.new();
-                        for &{ .key = name, .value = ref ty } in captures |> OrdMap.iter do (
-                            let value = pure(find_ident(ty, name, .span).get());
-                            let value = match capture_mode with (
-                                | :Move => value
-                                | :ByRef => :Ref value
-                            );
-                            let field = {
-                                .name = ident(name),
-                                .value = value,
-                            };
-                            &mut fields |> ArrayList.push_back(field);
+        insert_stmt(:LetVar {
+            .ty = :Pointer captured_ty,
+            .ident = captured_var,
+            .value = :Some :Raw output_to_string(() => (
+                let output = @current Output;
+                output.write("malloc_or_panic_fn(sizeof(");
+                Print.ty(&captured_ty);
+                output.write("))");
+            )),
+        });
+        insert_stmt(:Assign {
+            .assignee = :Deref :Ident captured_var,
+            .value = :CompoundLiteral {
+                .ty = captured_ty,
+                .fields = (
+                    let mut fields = ArrayList.new();
+                    for &{ .key = name, .value = ref ty } in captures |> OrdMap.iter do (
+                        let value = pure(find_ident(ty, name, .span).get());
+                        let value = match capture_mode with (
+                            | :Move => value
+                            | :ByRef => :Ref value
                         );
-                        fields
-                    )
-                }
+                        let field = {
+                            .name = ident(name),
+                            .value = value,
+                        };
+                        &mut fields |> ArrayList.push_back(field);
+                    );
+                    fields
+                )
             }
-        );
+        });
     );
 
     const captured_to_field_defs = (
@@ -1527,7 +1441,8 @@ const C = (
         let mut ctx = @current Context;
         with FunctionContext = {
             .capture_mode,
-            .captures = captures^, # TODO
+            .captures = captures^,
+            # TODO
             .result_ty = body^.ty,
         };
         with UnwindContext = {
@@ -1586,22 +1501,18 @@ const C = (
             &mut ctx.fn_capture_types |> OrdMap.add(name, ty_def.name);
             &mut ctx.result.types |> ArrayList.push_back(ty_def);
             &mut args
-                |> ArrayList.push_back(
-                    {
-                        .name = ident("captured_void"),
-                        .ty = :Pointer :Void,
-                    }
-                );
+                |> ArrayList.push_back({
+                    .name = ident("captured_void"),
+                    .ty = :Pointer :Void,
+                });
         );
         let ctx_var = new_ident("ctx");
         if def^.call_convention is :None then (
             &mut args
-                |> ArrayList.push_back(
-                    {
-                        .name = ctx_var,
-                        .ty = :Pointer :Struct ident("Context"),
-                    }
-                );
+                |> ArrayList.push_back({
+                    .name = ctx_var,
+                    .ty = :Pointer :Struct ident("Context"),
+                });
         );
         for arg in &def^.args |> ArrayList.iter do (
             make_sure_type_is_complete(&arg^.ty);
@@ -1623,13 +1534,11 @@ const C = (
             },
             .before_body = () => (
                 if &ctx.fn_capture_types |> OrdMap.get(name) is :Some &captured_ty then (
-                    insert_stmt(
-                        :LetVar {
-                            .ty = :Pointer :Named captured_ty,
-                            .ident = ident("captured"),
-                            .value = :Some :Ident ident("captured_void"),
-                        }
-                    );
+                    insert_stmt(:LetVar {
+                        .ty = :Pointer :Named captured_ty,
+                        .ident = ident("captured"),
+                        .value = :Some :Ident ident("captured_void"),
+                    });
                 );
             ),
             .body = &def^.body,
@@ -1641,12 +1550,10 @@ const C = (
                     .args = (
                         let mut args_as_closure = ArrayList.new();
                         &mut args_as_closure
-                            |> ArrayList.push_back(
-                                {
-                                    .name = ident("captured_nothing"),
-                                    .ty = :Pointer :Void,
-                                }
-                            );
+                            |> ArrayList.push_back({
+                                .name = ident("captured_nothing"),
+                                .ty = :Pointer :Void,
+                            });
                         for &arg in &args |> ArrayList.iter do (
                             &mut args_as_closure |> ArrayList.push_back(arg);
                         );
@@ -1658,24 +1565,23 @@ const C = (
                     let mut block = new_block();
                     with Scope = { .block = &mut block };
                     with ScopeContextVar = { .ident = ctx_var };
-                    insert_stmt(
-                        :Return :Apply {
-                            .f = :Ident ident(fn_name),
-                            .args = (
-                                let mut call_args = ArrayList.new();
-                                for arg in &args |> ArrayList.iter do (
-                                    &mut call_args |> ArrayList.push_back(:Ident arg^.name);
-                                );
-                                call_args
-                            )
-                        }
-                    );
+                    insert_stmt(:Return :Apply {
+                        .f = :Ident ident(fn_name),
+                        .args = (
+                            let mut call_args = ArrayList.new();
+                            for arg in &args |> ArrayList.iter do (
+                                &mut call_args |> ArrayList.push_back(:Ident arg^.name);
+                            );
+                            call_args
+                        )
+                    });
                     block
                 ),
             };
             &mut ctx.result.fns |> ArrayList.push_back(fn_as_closure);
             let fn_ty :: Ir.FnType = {
-                .is_closure = true, # TODO
+                .is_closure = true,
+                # TODO
                 .call_convention = def^.call_convention,
                 .args = (
                     let mut args = ArrayList.new();
@@ -1963,12 +1869,10 @@ const C = (
             let mut args = ArrayList.new();
             let ctx_var = new_ident("ctx");
             &mut args
-                |> ArrayList.push_back(
-                    {
-                        .name = ctx_var,
-                        .ty = :Pointer :Named ident("Context"),
-                    }
-                );
+                |> ArrayList.push_back({
+                    .name = ctx_var,
+                    .ty = :Pointer :Named ident("Context"),
+                });
             with FunctionContext = {
                 .capture_mode = :ByRef,
                 .captures = OrdMap.new(),

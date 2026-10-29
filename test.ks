@@ -5,4 +5,5 @@ format!(
     b
 );
 
+# comment
 foo(() => ());

@@ -179,17 +179,13 @@ const semantic_tokens = (
         let mut token_types = ArrayList.new();
         for token_type in TokenType.variants() do (
             &mut token_types
-                |> ArrayList.push_back(
-                    :String RcStr.allocate(token_type |> TokenType.to_str)
-                );
+                |> ArrayList.push_back(:String RcStr.allocate(token_type |> TokenType.to_str));
         );
         &mut fields |> OrdMap.add(RcStr.allocate("tokenTypes"), :Array token_types);
         let mut token_modifiers = ArrayList.new();
         for token_modifier in TokenModifier.variants() do (
             &mut token_modifiers
-                |> ArrayList.push_back(
-                    :String RcStr.allocate(token_modifier |> TokenModifier.to_str)
-                );
+                |> ArrayList.push_back(:String RcStr.allocate(token_modifier |> TokenModifier.to_str));
         );
         &mut fields |> OrdMap.add(RcStr.allocate("tokenModifiers"), :Array token_modifiers);
         :Object fields
@@ -294,9 +290,7 @@ const semantic_tokens = (
             let mut json_data = ArrayList.new();
             for x in data |> ArrayList.into_iter do (
                 &mut json_data
-                    |> ArrayList.push_back(
-                        :Number (std.convert.int32_to_float64(x))
-                    );
+                    |> ArrayList.push_back(:Number (std.convert.int32_to_float64(x)));
             );
             &mut fields |> OrdMap.add(RcStr.allocate("data"), :Array json_data);
             fields

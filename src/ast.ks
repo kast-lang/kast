@@ -280,17 +280,19 @@ const Ast = (
                 }
             ),
             .t_span_def = `((ast :: &$t) -> Span => ast^.span),
-            .print_def = `((ast :: &$t) => (
-                let output = @current Output;
-                $Shape.print(&ast^.shape^);
-                ansi.with_mode(
-                    :Dim,
-                    () => (
-                        output.write(" at ");
-                        Span.print(&ast^.span);
-                    ),
-                );
-            )),
+            .print_def = `(
+                (ast :: &$t) => (
+                    let output = @current Output;
+                    $Shape.print(&ast^.shape^);
+                    ansi.with_mode(
+                        :Dim,
+                        () => (
+                            output.write(" at ");
+                            Span.print(&ast^.span);
+                        ),
+                    );
+                )
+            ),
         })
     ).*;
 

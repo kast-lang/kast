@@ -183,10 +183,12 @@ const instantiate = (
             .span,
             .ast = template^.def,
             .native = false,
-            .setup_contexts = :Some (f => (
-                with TemplateArgsContext = args;
-                f()
-            )),
+            .setup_contexts = :Some (
+                f => (
+                    with TemplateArgsContext = args;
+                    f()
+                )
+            ),
         };
         (@current Compiler).add_toplevel_item(toplevel_item);
         { .template_name, .template_args = args.args, .name }

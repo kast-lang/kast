@@ -111,22 +111,20 @@ const read_string_impl = (
         let contents = RcStr.from_String(content_part.contents |> std.StringBuilder.into_string);
         if &contents |> RcStr.length == 0 then return;
         &mut parts
-            |> ArrayList.push_back(
-                :Content {
-                    .raw_parts = content_part.raw_parts,
-                    .span = {
-                        .start = content_part.start,
-                        .end = reader^.position,
-                        .path = lexer^.source.path,
-                    },
-                    .raw = (
-                        let start = content_part.start.string_encoding_index;
-                        let end = reader^.position.string_encoding_index;
-                        RcStr.substring(&reader^.contents, start, end - start)
-                    ),
-                    .contents,
-                }
-            );
+            |> ArrayList.push_back(:Content {
+                .raw_parts = content_part.raw_parts,
+                .span = {
+                    .start = content_part.start,
+                    .end = reader^.position,
+                    .path = lexer^.source.path,
+                },
+                .raw = (
+                    let start = content_part.start.string_encoding_index;
+                    let end = reader^.position.string_encoding_index;
+                    RcStr.substring(&reader^.contents, start, end - start)
+                ),
+                .contents,
+            });
         content_part = reset_content_part();
     );
     let stripped_indentation = if strip_indentation then (
@@ -180,15 +178,13 @@ const read_string_impl = (
                 # "hello, \(user.name)"
                 finish_content_part();
                 let open_token = {
-                    .shape = Rc.new(
-                        :Punct {
-                            .raw = RcStr.substring(
-                                &reader^.contents,
-                                escape_start.string_encoding_index,
-                                2,
-                            ),
-                        }
-                    ),
+                    .shape = Rc.new(:Punct {
+                        .raw = RcStr.substring(
+                            &reader^.contents,
+                            escape_start.string_encoding_index,
+                            2,
+                        ),
+                    }),
                     .span = {
                         .start = reader^.position,
                         .end = (
@@ -220,15 +216,13 @@ const read_string_impl = (
                     );
                     if c == ')' and bracket_balance == 0 then (
                         let close_token = {
-                            .shape = Rc.new(
-                                :Punct {
-                                    .raw = RcStr.substring(
-                                        &reader^.contents,
-                                        reader^.position.string_encoding_index,
-                                        1,
-                                    ),
-                                }
-                            ),
+                            .shape = Rc.new(:Punct {
+                                .raw = RcStr.substring(
+                                    &reader^.contents,
+                                    reader^.position.string_encoding_index,
+                                    1,
+                                ),
+                            }),
                             .span = Span.single_char(
                                 .position = reader^.position,
                                 .char = :Some ')',
@@ -236,18 +230,16 @@ const read_string_impl = (
                             ),
                         };
                         &mut parts
-                            |> ArrayList.push_back(
-                                :Interpolated {
-                                    .tokens,
-                                    .open = open_token,
-                                    .close = close_token,
-                                    .span = {
-                                        .start = span_start,
-                                        .end = reader^.position,
-                                        .path = lexer^.source.path,
-                                    }
+                            |> ArrayList.push_back(:Interpolated {
+                                .tokens,
+                                .open = open_token,
+                                .close = close_token,
+                                .span = {
+                                    .start = span_start,
+                                    .end = reader^.position,
+                                    .path = lexer^.source.path,
                                 }
-                            );
+                            });
                         Reader.advance(reader);
                         content_part = reset_content_part();
                         unwind outer_loop_body ();
@@ -383,17 +375,15 @@ const read_string_impl = (
     finish_content_part();
     if &parts |> ArrayList.length == 0 then (
         &mut parts
-            |> ArrayList.push_back(
-                :Content {
-                    .span = Span.empty(
-                        .position = reader^.position,
-                        .path = lexer^.source.path,
-                    ),
-                    .raw_parts = ArrayList.new(),
-                    .raw = empty_str(),
-                    .contents = empty_str(),
-                }
-            );
+            |> ArrayList.push_back(:Content {
+                .span = Span.empty(
+                    .position = reader^.position,
+                    .path = lexer^.source.path,
+                ),
+                .raw_parts = ArrayList.new(),
+                .raw = empty_str(),
+                .contents = empty_str(),
+            });
     );
     if not next_is_delim(delim) then (
         let span_so_far = {

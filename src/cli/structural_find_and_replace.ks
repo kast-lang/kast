@@ -143,15 +143,17 @@ const StructuralFindAndReplace = (
                             if @native "\(found^.ast^) == \(ast^)" then (
                                 with Highlight.Context = {
                                     ...(@current Highlight.Context),
-                                    .replace_ast = :Some ((ast :: &Ast.t, f :: &Ast.t -> ()) => (
-                                        for &{ .key = binding_name, .value = binding_ast } in &replace_pattern.bindings |> OrdMap.iter do (
-                                            # TODO identity equality
-                                            if @native "\(ast^) == \(binding_ast^)" then (
-                                                f((&found^.bindings |> OrdMap.get(binding_name) |> Option.unwrap)^);
-                                                break;
+                                    .replace_ast = :Some (
+                                        (ast :: &Ast.t, f :: &Ast.t -> ()) => (
+                                            for &{ .key = binding_name, .value = binding_ast } in &replace_pattern.bindings |> OrdMap.iter do (
+                                                # TODO identity equality
+                                                if @native "\(ast^) == \(binding_ast^)" then (
+                                                    f((&found^.bindings |> OrdMap.get(binding_name) |> Option.unwrap)^);
+                                                    break;
+                                                );
                                             );
-                                        );
-                                    )),
+                                        )
+                                    ),
                                 };
                                 f(&replace_pattern.ast);
                                 break;

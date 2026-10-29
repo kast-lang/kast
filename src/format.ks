@@ -224,7 +224,8 @@ const Format = (
             .write = s => (
                 std.StringBuilder.add_str(&mut result, s);
             ),
-            .indentation_string = "    ", # should depend on user setting
+            .indentation_string = "    ",
+            # should depend on user setting
             .color = false,
         );
         format(parsed, output);
@@ -494,7 +495,8 @@ const Format = (
                     );
                 )
                 | :Value { .name = ref name, ... } => (
-                    let member = next_member(name |> Option.as_ref |> Option.map(RcStr.as_str)); # we use this to advance unnamed idx
+                    let member = next_member(name |> Option.as_ref |> Option.map(RcStr.as_str));
+                    # we use this to advance unnamed idx
                     skip_ignored_parts();
                     let child = match next_part() with (
                         | :Some &(:Value ref child) => &child^^

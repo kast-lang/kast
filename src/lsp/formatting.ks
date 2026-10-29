@@ -36,13 +36,11 @@ const formatting = (
             &mut fields
                 |> OrdMap.add(
                     RcStr.allocate("range"),
-                    span_to_lsp_range(
-                        {
-                            .start = Position.beginning(),
-                            .end = parsed^.eof,
-                            .path = parsed^.ast.span.path,
-                        }
-                    )
+                    span_to_lsp_range({
+                        .start = Position.beginning(),
+                        .end = parsed^.eof,
+                        .path = parsed^.ast.span.path,
+                    })
                 );
             &mut fields
                 |> OrdMap.add(

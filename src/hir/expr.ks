@@ -39,14 +39,16 @@ const QuoteExpr = (
                 }
             ),
             .t_span_def = `((expr :: &$t) -> Span => expr^.span),
-            .print_def = `((expr :: &$t) => (
-                match expr^.shape with (
-                    | :Unquote ref expr => panic("TODO print expr")
-                    | :Construct ref shape => (
-                        $Shape.print(shape);
+            .print_def = `(
+                (expr :: &$t) => (
+                    match expr^.shape with (
+                        | :Unquote ref expr => panic("TODO print expr")
+                        | :Construct ref shape => (
+                            $Shape.print(shape);
+                        )
                     )
                 )
-            )),
+            ),
         })
     ).*;
 );
