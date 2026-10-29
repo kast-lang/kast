@@ -118,6 +118,7 @@ const Format = (
                 );
                 flush_before();
             );
+            flush();
             if ctx^.just_printed_newline then (
                 write_str(&(@current Indentation).string |> as_str);
             );
