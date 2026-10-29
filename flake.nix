@@ -70,7 +70,8 @@
               # only keep 10 most recent logs
               ls --sort time logs | tail --lines +11 | xargs --replace={} rm logs/{}
               if [ -t 1 ]; then
-                tee $LOG_FILE.stdin | faketty \
+                # tee $LOG_FILE.stdin | 
+                faketty \
                   "$@" \
                   > >(tee $LOG_FILE.stdout) \
                   2> >(tee $LOG_FILE.stderr >&2)
