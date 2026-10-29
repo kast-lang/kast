@@ -4,8 +4,7 @@ module:
 
 const RcStr = newtype {
     .original :: Rc.t[String],
-    .offset :: Int32,
-    .length :: Int32,
+    .s :: &str,
 };
 
 impl RcStr as module = (
@@ -18,42 +17,42 @@ impl RcStr as module = (
     const from_String = (s :: String) -> RcStr => (
         let length = &s |> String.as_str |> String.length;
         let original = Rc.new(s);
+        let s = &original^ |> String.as_str;
         {
             .original,
-            .offset = 0,
-            .length,
+            .s,
         }
     );
 
     const length = (self :: &RcStr) -> Int32 => (
-        self^.length
+        String.length(self^.s)
     );
 
     const substring = (self :: &RcStr, offset :: Int32, length :: Int32) -> RcStr => {
         .original = self^.original,
-        .offset = self^.offset + offset,
-        .length,
+        .s = self^.s |> String.substring(offset, length),
     };
 
-    const as_str = (s :: &RcStr) -> &str => (
-        &s^.original^
-            |> String.as_str
-            |> String.substring(s^.offset, s^.length)
+    const as_str = (self :: &RcStr) -> &str => (
+        self^.s
     );
 
     const iter = (self :: &RcStr) -> std.iter.Iterable[Char] => (
-        self |> as_str |> String.iter
+        self^.s |> String.iter
     );
 
     const at = (self :: &RcStr, idx :: Int32) -> Char => (
-        self |> as_str |> String.at(idx)
+        self^.s |> String.at(idx)
     );
 
     const lines = (self :: &RcStr) -> std.iter.Iterable[RcStr] => {
-        # TODO no allocate
         .iter = @move f => (
-            for line in String.lines(as_str(self)) do (
-                f(allocate(line));
+            for line in String.lines(self^.s) do (
+                let line = {
+                    .original = self^.original,
+                    .s = line,
+                };
+                f(line);
             );
         ),
     };
@@ -61,14 +60,14 @@ impl RcStr as module = (
 
 impl RcStr as std.fmt.Display = {
     .display = (self, fmt) => (
-        fmt^.write_str(self |> RcStr.as_str);
+        fmt^.write_str(self^.s);
     ),
 };
 
 impl RcStr as std.cmp.Ord = {
-    .compare = (a, b) => std.cmp.default_compare(&(a |> RcStr.as_str), &(b |> RcStr.as_str)),
+    .compare = (a, b) => std.cmp.default_compare(&a^.s, &b^.s),
 };
 
 impl type (&RcStr) as std.cmp.Ord = {
-    .compare = (&a, &b) => std.cmp.default_compare(&(a |> RcStr.as_str), &(b |> RcStr.as_str)),
+    .compare = (&a, &b) => std.cmp.default_compare(&a^.s, &b^.s),
 };
