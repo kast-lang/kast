@@ -86,6 +86,12 @@ const Format = (
         (@current Context).queued_newlines += 1;
     );
 
+    const ensure_newline = () => (
+        if (@current Context).queued_newlines == 0 then (
+            queue_newline();
+        );
+    );
+
     const print_token = (token :: &Token.t) => (
         let output = @current Output;
         let ref mut ctx = @current Context;
@@ -121,7 +127,7 @@ const Format = (
                     if ctx^.queued_newlines == 0 then (
                         queue_newline();
                     );
-                    flush();
+                    # flush();
                 )
                 | :Block => ()
             );
@@ -432,7 +438,7 @@ const Format = (
                         if c == '\t' then (
                             inc_indentation();
                         ) else if c == '\n' then (
-                            queue_newline();
+                            ensure_newline();
                         ) else if c == '\\' then (
                             dec_indentation();
                         ) else if c == ' ' then (
