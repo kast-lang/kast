@@ -55,6 +55,8 @@ let parse : Lexer.t -> Syntax.rule =
     |> Option.unwrap_or_else (fun () ->
       fail "expected wrap mode, got %a" Token.print (Lexer.peek lexer))
   in
+  if lexer |> Lexer.peek |> Token.is_raw "@can_undo_indentation"
+  then lexer |> Lexer.advance;
   (let token = Lexer.next lexer in
    if token |> Token.is_raw "=" |> not
    then fail "Expected \"=\", got %a" Token.print token);
