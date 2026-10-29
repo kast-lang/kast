@@ -1,6 +1,8 @@
-const Foo = newtype {
-    .a :: Int32,
-    .b :: String,
-};
+format!(
+    ''
+        multi-line string
+    '',
+    b
+);
 
-dbg.print(std.io.stdin.read_until('\n'));
+foo(() => ());
