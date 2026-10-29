@@ -86,7 +86,7 @@ const SyntaxRule = (
     const Quantifier = newtype (
         | :None
         | :Optional
-    # TODO | :Repeated
+        # TODO | :Repeated
     );
 
     const WrapMode = newtype (

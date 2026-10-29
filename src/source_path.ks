@@ -73,4 +73,3 @@ impl SourcePath as module = (
         write_str(&format!("\(self^)") |> as_str);
     );
 );
-

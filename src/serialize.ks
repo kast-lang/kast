@@ -46,20 +46,16 @@ const Serialize = (
                     for { .name, .data } in variants |> SList.into_iter do (
                         let variant_ident = std.Ast.ident(name);
                         let match_variant = match data with (
-                            | :Some data_ty => `(
-                                :$variant_ident data => (
-                                    OrdMap.add(
-                                        &mut $fields,
-                                        name,
-                                        (data_ty as ToJson).to_json(data),
-                                    );
-                                )
-                            )
-                            | :None => `(
-                                :$variant_ident => (
-                                    OrdMap.add(&mut $fields, name, :Null);
-                                )
-                            )
+                            | :Some data_ty => `(:$variant_ident data => (
+                                OrdMap.add(
+                                    &mut $fields,
+                                    name,
+                                    (data_ty as ToJson).to_json(data),
+                                );
+                            ))
+                            | :None => `(:$variant_ident => (
+                                OrdMap.add(&mut $fields, name, :Null);
+                            ))
                         );
                         match_variants = `($match_variants | $match_variant);
                     );
@@ -123,11 +119,11 @@ const Serialize = (
         )
         | true => panic("comptime only")
     );
-# const do_impl = () => (
-#     include_ast derive_to_json(Token.t);
-#     include_ast derive_to_json(Token.Shape.t);
-# );
-# const as_json = [T] (value :: T) -> Json.t => (
-# (T as ToJson).to_json(value)
-# );
+    # const do_impl = () => (
+    #     include_ast derive_to_json(Token.t);
+    #     include_ast derive_to_json(Token.Shape.t);
+    # );
+    # const as_json = [T] (value :: T) -> Json.t => (
+    # (T as ToJson).to_json(value)
+    # );
 );

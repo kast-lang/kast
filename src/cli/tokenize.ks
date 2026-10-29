@@ -66,17 +66,19 @@ const Tokenize = (
                 )
                 | :Json => (
                     Diagnostic.abort("json is broken :)");
-                (#
-                    let mut lexer = Lexer.new(Source.read(path));
-                    let mut json_tokens = ArrayList.new();
-                    loop (
-                        let token = &mut lexer |> Lexer.next;
-                        &mut json_tokens |> ArrayList.push_back(Serialize.as_json(token));
-                        if token.shape^ is :Eof then break;
+                    @comment_out (
+                        let mut lexer = Lexer.new(Source.read(path));
+                        let mut json_tokens = ArrayList.new();
+                        loop (
+                            let token = &mut lexer |> Lexer.next;
+                            &mut json_tokens |> ArrayList.push_back(Serialize.as_json(token));
+                            if token.shape^ is :Eof then break;
+                        );
+                        let json = :Array json_tokens;
+                        Json.print(&json);
+                        (@current Output).write("\n");
                     );
-                    let json = :Array json_tokens;
-                    Json.print(&json);
-                    (@current Output).write("\n");#) )
+                )
             );
         );
         if &args.paths |> ArrayList.length == 0 then (

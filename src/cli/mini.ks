@@ -107,7 +107,7 @@ const Mini = (
         const run = (common_args :: Common.Args.t, args :: Args.t) => (
             let target = args.target
                 |> Option.unwrap_or_else(
-                    () => Diagnostic.abort("Specify compilation --target")
+                    () => Diagnostic.abort("Specify compilation --target"),
                 );
             let target = if target == "javascript" or target == "js" then (
                 :JavaScript

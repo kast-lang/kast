@@ -29,11 +29,9 @@ const process_toplevel_fn_declaration = (
         |> AstHelpers.get_child_ast("args");
     let result_ty = &root.children
         |> Tuple.get_named_opt("result_ty")
-        |> Option.map(
-            &child => child
-                |> Ast.unwrap_child_group
-                |> AstHelpers.expect_single_child(:None)
-        );
+        |> Option.map(&child => child
+            |> Ast.unwrap_child_group
+            |> AstHelpers.expect_single_child(:None));
     let body = root
         |> AstHelpers.get_child_ast("body");
     let call_convention = parse_call_convention(root);
@@ -61,15 +59,13 @@ const process_toplevel_fn_declaration = (
         .args = arg_types,
         .result = result_ty,
     };
-    Log.debug(
-        () => (
-            let output = @current Output;
-            output.write("fn ");
-            output.write(name);
-            output.write(" :: ");
-            Ir.Print.fn_type(&fn_type);
-        )
-    );
+    Log.debug(() => (
+        let output = @current Output;
+        output.write("fn ");
+        output.write(name);
+        output.write(" :: ");
+        Ir.Print.fn_type(&fn_type);
+    ));
     fn_type
 );
 
@@ -88,11 +84,9 @@ const parse_fn_def = (
         |> AstHelpers.get_child_ast("args");
     let result_ty = &root.children
         |> Tuple.get_named_opt("result_ty")
-        |> Option.map(
-            &child => child
-                |> Ast.unwrap_child_group
-                |> AstHelpers.expect_single_child(:None)
-        );
+        |> Option.map(&child => child
+            |> Ast.unwrap_child_group
+            |> AstHelpers.expect_single_child(:None));
     let body = root
         |> AstHelpers.get_child_ast("body");
     let call_convention = parse_call_convention(root);
@@ -120,18 +114,16 @@ const parse_fn_def = (
         .parent = parent_scope,
         .vars = OrdMap.new(),
         .found_in_parent = (name, ty) => (
-            Log.debug(
-                () => (
-                    let output = @current Output;
-                    output.write("capturing ");
-                    output.write(name);
-                    output.write(" :: ");
-                    Ir.Print.type_name(&ty);
-                    output.write(" at ");
-                    Span.print(def.span);
-                    output.write("\n");
-                )
-            );
+            Log.debug(() => (
+                let output = @current Output;
+                output.write("capturing ");
+                output.write(name);
+                output.write(" :: ");
+                Ir.Print.type_name(&ty);
+                output.write(" at ");
+                Span.print(def.span);
+                output.write("\n");
+            ));
             &mut captures |> OrdMap.add(name, ty);
         ),
     };

@@ -9,12 +9,10 @@ const type_info_const_name = (ty :: &Ir.Type) -> String => with_return (
         .end = Position.beginning(),
         .path = :Special __FILE__
     };
-    let name = output_to_string(
-        () => (
-            Ir.Print.type_name_as_ident(ty);
-            (@current Output).write("_TypeInfo");
-        )
-    );
+    let name = output_to_string(() => (
+        Ir.Print.type_name_as_ident(ty);
+        (@current Output).write("_TypeInfo");
+    ));
     let mut ctx = @current Compiler;
     if &ctx.program.consts |> OrdMap.get(name) is :Some _ then (
         return name;

@@ -69,12 +69,14 @@ const Highlight = (
         .before_new_line :: () -> (),
     ) => match mode with (
         | :Terminal => (
-            let mut state = Rc.new({
-                .position = start,
-                # Needed because of replace within replace when
-                # doing structural find and replace :)
-                .printed_something_after_moving = true,
-            });
+            let mut state = Rc.new(
+                {
+                    .position = start,
+                    # Needed because of replace within replace when
+                    # doing structural find and replace :)
+                    .printed_something_after_moving = true,
+                }
+            );
             let move_to = @move (target_position :: Position, .print_whitespace :: Bool) => (
                 if state^.printed_something_after_moving and print_whitespace then (
                     while state^.position.line < target_position.line do (
@@ -124,7 +126,7 @@ const Highlight = (
 
     const OutputMode = newtype (
         | :Terminal
-    # TODO | :Html
+        # TODO | :Html
     );
 
     impl OutputMode as Parse = {

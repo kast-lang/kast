@@ -180,13 +180,15 @@ const read_string_impl = (
                 # "hello, \(user.name)"
                 finish_content_part();
                 let open_token = {
-                    .shape = Rc.new(:Punct {
-                        .raw = RcStr.substring(
-                            &reader^.contents,
-                            escape_start.string_encoding_index,
-                            2,
-                        ),
-                    }),
+                    .shape = Rc.new(
+                        :Punct {
+                            .raw = RcStr.substring(
+                                &reader^.contents,
+                                escape_start.string_encoding_index,
+                                2,
+                            ),
+                        }
+                    ),
                     .span = {
                         .start = reader^.position,
                         .end = (
@@ -218,13 +220,15 @@ const read_string_impl = (
                     );
                     if c == ')' and bracket_balance == 0 then (
                         let close_token = {
-                            .shape = Rc.new(:Punct {
-                                .raw = RcStr.substring(
-                                    &reader^.contents,
-                                    reader^.position.string_encoding_index,
-                                    1,
-                                ),
-                            }),
+                            .shape = Rc.new(
+                                :Punct {
+                                    .raw = RcStr.substring(
+                                        &reader^.contents,
+                                        reader^.position.string_encoding_index,
+                                        1,
+                                    ),
+                                }
+                            ),
                             .span = Span.single_char(
                                 .position = reader^.position,
                                 .char = :Some ')',
@@ -283,14 +287,10 @@ const read_string_impl = (
                     let error_position :: Position = with_return (
                         let mut pos = reader^.position;
                         let c1 = Reader.peek(&reader^)
-                            |> Option.unwrap_or_else(
-                                () => return pos
-                            );
+                            |> Option.unwrap_or_else(() => return pos);
                         &mut pos |> Position.advance(c1);
                         let c2 = Reader.peek2(&reader^)
-                            |> Option.unwrap_or_else(
-                                () => return pos
-                            );
+                            |> Option.unwrap_or_else(() => return pos);
                         &mut pos |> Position.advance(c2);
                         if not is_hex_digit(c1) or not is_hex_digit(c2) then (
                             return pos;

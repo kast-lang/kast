@@ -26,34 +26,28 @@ const QuoteExpr = (
     module:
 
     use (
-        include_ast MakeAstModule(
-            (.t, .t_span, .Shape) => {
-                .t_def = `(
-                    const Shape = newtype (
-                        | :Unquote Expr
-                        | :Construct $Shape.t
-                    );
-                    newtype {
-                        .shape :: Shape,
-                        .ignored_tokens_before :: ArrayList.t[Token.t],
-                        .span :: Span,
-                    }
-                ),
-                .t_span_def = `(
-                    (expr :: &$t) -> Span => expr^.span
-                ),
-                .print_def = `(
-                    (expr :: &$t) => (
-                        match expr^.shape with (
-                            | :Unquote ref expr => panic("TODO print expr")
-                            | :Construct ref shape => (
-                                $Shape.print(shape);
-                            )
-                        )
+        include_ast MakeAstModule((.t, .t_span, .Shape) => {
+            .t_def = `(
+                const Shape = newtype (
+                    | :Unquote Expr
+                    | :Construct $Shape.t
+                );
+                newtype {
+                    .shape :: Shape,
+                    .ignored_tokens_before :: ArrayList.t[Token.t],
+                    .span :: Span,
+                }
+            ),
+            .t_span_def = `((expr :: &$t) -> Span => expr^.span),
+            .print_def = `((expr :: &$t) => (
+                match expr^.shape with (
+                    | :Unquote ref expr => panic("TODO print expr")
+                    | :Construct ref shape => (
+                        $Shape.print(shape);
                     )
-                ),
-            }
-        )
+                )
+            )),
+        })
     ).*;
 );
 

@@ -80,7 +80,7 @@ const JsonRpc = (
         );
         let content_length = content_length
             |> Option.unwrap_or_else(
-                () => panic("Content-Length absent")
+                () => panic("Content-Length absent"),
             );
         { .content_length }
     );

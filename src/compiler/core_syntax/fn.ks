@@ -17,14 +17,12 @@ const compile_fn = (
         &mut args |> ArrayList.push_back(compile[Pattern](&arg, .expected_ty = :None));
     );
     let result_type = (&root^.children |> Tuple.get_named_opt("result_type"))
-        |> Option.map(
-            &result_type_ast => (
-                let result_type_ast = result_type_ast
-                    |> Ast.unwrap_child_group
-                    |> AstHelpers.expect_single_child(:None);
-                eval_ast_as_type(&result_type_ast)
-            )
-        );
+        |> Option.map(&result_type_ast => (
+            let result_type_ast = result_type_ast
+                |> Ast.unwrap_child_group
+                |> AstHelpers.expect_single_child(:None);
+            eval_ast_as_type(&result_type_ast)
+        ));
     let body_ast = (&root^.children |> Tuple.get_named("body"))^
         |> Ast.unwrap_child_value;
     let body = (

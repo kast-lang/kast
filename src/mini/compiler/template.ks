@@ -169,43 +169,37 @@ const instantiate = (
     );
     Log.debug_msg("calculated template args");
     let do_instantiate = () -> Instantiation => with_return (
-        let name = output_to_string(
-            () => (
-                let output = @current Output;
-                output.write(template_name);
-                for arg in &args.args |> ArrayList.iter do (
-                    output.write("_");
-                    Ir.Print.type_name_as_ident(arg);
-                );
-            )
-        );
+        let name = output_to_string(() => (
+            let output = @current Output;
+            output.write(template_name);
+            for arg in &args.args |> ArrayList.iter do (
+                output.write("_");
+                Ir.Print.type_name_as_ident(arg);
+            );
+        ));
         Log.debug_msg("instantiating " + name);
         let toplevel_item = {
             .name,
             .span,
             .ast = template^.def,
             .native = false,
-            .setup_contexts = :Some (
-                f => (
-                    with TemplateArgsContext = args;
-                    f()
-                )
-            ),
+            .setup_contexts = :Some (f => (
+                with TemplateArgsContext = args;
+                f()
+            )),
         };
         (@current Compiler).add_toplevel_item(toplevel_item);
         { .template_name, .template_args = args.args, .name }
     );
     let instantiation = &mut template^.instantiations
         |> OrdMap.get_or_init(args, do_instantiate);
-    Log.debug(
-        () => (
-            let output = @current Output;
-            output.write("Instantiation at ");
-            Span.print(span);
-            output.write(" = ");
-            output.write(instantiation^.name);
-        )
-    );
+    Log.debug(() => (
+        let output = @current Output;
+        output.write("Instantiation at ");
+        Span.print(span);
+        output.write(" = ");
+        output.write(instantiation^.name);
+    ));
     instantiation^
 );
 

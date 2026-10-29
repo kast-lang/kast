@@ -46,14 +46,14 @@ const ParseJson = (
             let json = if args.use_kast_parser then (
                 let json = Json.parse(&source.contents |> RcStr.as_str)
                     |> std.Result.unwrap_or_else(
-                        error => panic("TODO Error happened")
+                        error => panic("TODO Error happened"),
                     );
                 json
             ) else (
                 let mut reader = dep_json.Reader.create(&source.contents |> RcStr.as_str);
                 let json = dep_json.parse(&mut reader)
                     |> std.Result.unwrap_or_else(
-                        error => panic("TODO Error happened")
+                        error => panic("TODO Error happened"),
                     );
                 Json.from_dep(json)
             );

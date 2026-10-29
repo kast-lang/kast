@@ -11,27 +11,25 @@ const impl_expect_value = (
     ty :: std.Type,
     tag :: std.Ast,
 ) -> std.Ast => @cfg (
-    | target.name == "interpreter" => `(
-        (value :: Value, .span :: Span) -> ty => match value.shape with (
-            | :$(tag) result => result
-            | _ => (
-                let diagnostic = {
-                    .severity = :Error,
-                    .source = :Interpreter,
-                    .span,
-                    .message = () => (
-                        let output = @current Output;
-                        output.write("Expected ");
-                        output.write(name);
-                        output.write(", got ");
-                        Ty.print(&value.ty);
-                    ),
-                    .related = ArrayList.new(),
-                };
-                Diagnostic.report_and_unwind(diagnostic)
-            )
+    | target.name == "interpreter" => `((value :: Value, .span :: Span) -> ty => match value.shape with (
+        | :$(tag) result => result
+        | _ => (
+            let diagnostic = {
+                .severity = :Error,
+                .source = :Interpreter,
+                .span,
+                .message = () => (
+                    let output = @current Output;
+                    output.write("Expected ");
+                    output.write(name);
+                    output.write(", got ");
+                    Ty.print(&value.ty);
+                ),
+                .related = ArrayList.new(),
+            };
+            Diagnostic.report_and_unwind(diagnostic)
         )
-    )
+    ))
     | true => panic("comptime only pls")
 );
 
@@ -69,10 +67,10 @@ const expect_value = (
         const expect_string = (args :: ValueWithSpan) => expect_value.expect_string(...args);
         const expect_type = (args :: ValueWithSpan) => expect_value.expect_type(...args);
         const expect_ast = (args :: ValueWithSpan) => expect_value.expect_ast(...args);
-    # include_ast impl_with_span(expect_int);
-    # include_ast impl_with_span(expect_string);
-    # include_ast impl_with_span(expect_type);
-    # include_ast impl_with_span(expect_ast);
+        # include_ast impl_with_span(expect_int);
+        # include_ast impl_with_span(expect_string);
+        # include_ast impl_with_span(expect_type);
+        # include_ast impl_with_span(expect_ast);
     );
 );
 

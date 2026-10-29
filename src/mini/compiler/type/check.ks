@@ -100,15 +100,13 @@ const short_type_name = (ty :: &Ir.Type) -> String => (
 
 const type_check_impl = (expected :: &Ir.Type, actual :: &Ir.Type) => (
     let fail = () => (
-        (@current TypeCheckContext).fail(
-            () => (
-                let output = @current Output;
-                output.write("Expected ");
-                output.write(short_type_name(expected));
-                output.write(", got ");
-                output.write(short_type_name(actual));
-            )
-        );
+        (@current TypeCheckContext).fail(() => (
+            let output = @current Output;
+            output.write("Expected ");
+            output.write(short_type_name(expected));
+            output.write(", got ");
+            output.write(short_type_name(actual));
+        ));
     );
     match { expected^.shape, actual^.shape } with (
         | { :Any, _ } => ()
@@ -117,13 +115,11 @@ const type_check_impl = (expected :: &Ir.Type, actual :: &Ir.Type) => (
             let parent_ctx = @current TypeCheckContext;
             with TypeCheckContext = {
                 .fail = msg -> Never => (
-                    parent_ctx.fail(
-                        () => (
-                            let output = @current Output;
-                            output.write("referenced types are different");
-                            msg()
-                        )
-                    )
+                    parent_ctx.fail(() => (
+                        let output = @current Output;
+                        output.write("referenced types are different");
+                        msg()
+                    ))
                 ),
             };
             type_check_impl(a, b);
@@ -149,13 +145,11 @@ const type_check_impl = (expected :: &Ir.Type, actual :: &Ir.Type) => (
             let parent_ctx = @current TypeCheckContext;
             with TypeCheckContext = {
                 .fail = msg -> Never => (
-                    parent_ctx.fail(
-                        () => (
-                            let output = @current Output;
-                            output.write("list element type is different\n");
-                            msg()
-                        )
-                    )
+                    parent_ctx.fail(() => (
+                        let output = @current Output;
+                        output.write("list element type is different\n");
+                        msg()
+                    ))
                 ),
             };
             type_check_impl(
@@ -167,13 +161,11 @@ const type_check_impl = (expected :: &Ir.Type, actual :: &Ir.Type) => (
             let parent_ctx = @current TypeCheckContext;
             with TypeCheckContext = {
                 .fail = msg -> Never => (
-                    parent_ctx.fail(
-                        () => (
-                            let output = @current Output;
-                            output.write("unwind result type is different\n");
-                            msg()
-                        )
-                    )
+                    parent_ctx.fail(() => (
+                        let output = @current Output;
+                        output.write("unwind result type is different\n");
+                        msg()
+                    ))
                 ),
             };
             type_check_impl(
@@ -185,13 +177,11 @@ const type_check_impl = (expected :: &Ir.Type, actual :: &Ir.Type) => (
             let parent_ctx = @current TypeCheckContext;
             with TypeCheckContext = {
                 .fail = msg -> Never => (
-                    parent_ctx.fail(
-                        () => (
-                            let output = @current Output;
-                            output.write("unwind result type is different\n");
-                            msg()
-                        )
-                    )
+                    parent_ctx.fail(() => (
+                        let output = @current Output;
+                        output.write("unwind result type is different\n");
+                        msg()
+                    ))
                 ),
             };
             type_check_impl(
@@ -204,29 +194,25 @@ const type_check_impl = (expected :: &Ir.Type, actual :: &Ir.Type) => (
                 fail();
             );
             if &a^.args |> ArrayList.length != &b^.args |> ArrayList.length then (
-                (@current TypeCheckContext).fail(
-                    () => (
-                        let output = @current Output;
-                        output.write("Expected ");
-                        output.write(to_string(&a^.args |> ArrayList.length));
-                        output.write(" args, got ");
-                        output.write(to_string(&b^.args |> ArrayList.length));
-                    )
-                );
+                (@current TypeCheckContext).fail(() => (
+                    let output = @current Output;
+                    output.write("Expected ");
+                    output.write(to_string(&a^.args |> ArrayList.length));
+                    output.write(" args, got ");
+                    output.write(to_string(&b^.args |> ArrayList.length));
+                ));
             );
             for i in 0..&a^.args |> ArrayList.length do (
                 let parent_ctx = @current TypeCheckContext;
                 with TypeCheckContext = {
                     .fail = msg -> Never => (
-                        parent_ctx.fail(
-                            () => (
-                                let output = @current Output;
-                                output.write("argument #");
-                                output.write(to_string(i));
-                                output.write(" is different\n");
-                                msg()
-                            )
-                        )
+                        parent_ctx.fail(() => (
+                            let output = @current Output;
+                            output.write("argument #");
+                            output.write(to_string(i));
+                            output.write(" is different\n");
+                            msg()
+                        ))
                     ),
                 };
                 type_check_impl(
@@ -237,13 +223,11 @@ const type_check_impl = (expected :: &Ir.Type, actual :: &Ir.Type) => (
             let parent_ctx = @current TypeCheckContext;
             with TypeCheckContext = {
                 .fail = msg -> Never => (
-                    parent_ctx.fail(
-                        () => (
-                            let output = @current Output;
-                            output.write("result type is different\n");
-                            msg()
-                        )
-                    )
+                    parent_ctx.fail(() => (
+                        let output = @current Output;
+                        output.write("result type is different\n");
+                        msg()
+                    ))
                 ),
             };
             type_check_impl(

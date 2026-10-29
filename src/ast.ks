@@ -271,33 +271,27 @@ const Ast = (
     module:
 
     use (
-        include_ast MakeAstModule(
-            (.t, .t_span, .Shape) => {
-                .t_def = `(
-                    newtype {
-                        .shape :: Rc.t[$Shape.t],
-                        .ignored_tokens_before :: Rc.t[ArrayList.t[Token.t]],
-                        .span :: Span,
-                    }
-                ),
-                .t_span_def = `(
-                    (ast :: &$t) -> Span => ast^.span
-                ),
-                .print_def = `(
-                    (ast :: &$t) => (
-                        let output = @current Output;
-                        $Shape.print(&ast^.shape^);
-                        ansi.with_mode(
-                            :Dim,
-                            () => (
-                                output.write(" at ");
-                                Span.print(&ast^.span);
-                            ),
-                        );
-                    )
-                ),
-            }
-        )
+        include_ast MakeAstModule((.t, .t_span, .Shape) => {
+            .t_def = `(
+                newtype {
+                    .shape :: Rc.t[$Shape.t],
+                    .ignored_tokens_before :: Rc.t[ArrayList.t[Token.t]],
+                    .span :: Span,
+                }
+            ),
+            .t_span_def = `((ast :: &$t) -> Span => ast^.span),
+            .print_def = `((ast :: &$t) => (
+                let output = @current Output;
+                $Shape.print(&ast^.shape^);
+                ansi.with_mode(
+                    :Dim,
+                    () => (
+                        output.write(" at ");
+                        Span.print(&ast^.span);
+                    ),
+                );
+            )),
+        })
     ).*;
 
     const iter_list = (

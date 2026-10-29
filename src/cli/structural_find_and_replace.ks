@@ -109,15 +109,13 @@ const StructuralFindAndReplace = (
             .ruleset,
         );
         let replace = args.replace
-            |> Option.map(
-                contents => root_scope.StructuralFindAndReplace.compile_pattern(
-                    {
-                        .contents,
-                        .path = :Special "replace pattern",
-                    },
-                    .ruleset = replace_ruleset,
-                )
-            );
+            |> Option.map(contents => root_scope.StructuralFindAndReplace.compile_pattern(
+                {
+                    .contents,
+                    .path = :Special "replace pattern",
+                },
+                .ruleset = replace_ruleset,
+            ));
         let process = (path :: SourcePath) => (
             let source = Source.read(path);
             let mut lexer = Lexer.new(source);
@@ -145,17 +143,15 @@ const StructuralFindAndReplace = (
                             if @native "\(found^.ast^) == \(ast^)" then (
                                 with Highlight.Context = {
                                     ...(@current Highlight.Context),
-                                    .replace_ast = :Some (
-                                        (ast :: &Ast.t, f :: &Ast.t -> ()) => (
-                                            for &{ .key = binding_name, .value = binding_ast } in &replace_pattern.bindings |> OrdMap.iter do (
-                                                # TODO identity equality
-                                                if @native "\(ast^) == \(binding_ast^)" then (
-                                                    f((&found^.bindings |> OrdMap.get(binding_name) |> Option.unwrap)^);
-                                                    break;
-                                                );
+                                    .replace_ast = :Some ((ast :: &Ast.t, f :: &Ast.t -> ()) => (
+                                        for &{ .key = binding_name, .value = binding_ast } in &replace_pattern.bindings |> OrdMap.iter do (
+                                            # TODO identity equality
+                                            if @native "\(ast^) == \(binding_ast^)" then (
+                                                f((&found^.bindings |> OrdMap.get(binding_name) |> Option.unwrap)^);
+                                                break;
                                             );
-                                        )
-                                    ),
+                                        );
+                                    )),
                                 };
                                 f(&replace_pattern.ast);
                                 break;
@@ -164,12 +160,10 @@ const StructuralFindAndReplace = (
                     );
                     output.replace_ast = :Some replace_ast;
                     if args.inplace then (
-                        let result = output_to_string(
-                            () => (
-                                Highlight.highlight(&parsed, output);
-                                (@current Output).write("\n");
-                            )
-                        );
+                        let result = output_to_string(() => (
+                            Highlight.highlight(&parsed, output);
+                            (@current Output).write("\n");
+                        ));
                         let path = match path |> SourcePath.file_path with (
                             | :Some path => path
                             | :None => Diagnostic.abort("Inplace is only available given file path")

@@ -83,18 +83,18 @@ const Args = (
                     unwind subcommand (:Lsp Lsp.CliArgs.parse(i + 1));
                 );
                 @comment_out (
-                if arg == "find-ast" then (
-                    unwind subcommand (:StructuralFindAndReplace StructuralFindAndReplace.Args.parse(i + 1, .fix_syntax = :None));
-                );
-                if arg == "repl" then (
-                    unwind subcommand (:Repl Repl.Args.parse(i + 1));
-                );
-                if arg == "run" then (
-                    unwind subcommand (:Run Run.Args.parse(i + 1));
-                );
-                if arg == "mini" then (
-                    unwind subcommand (:Mini Mini.Args.parse(i + 1));
-                );
+                    if arg == "find-ast" then (
+                        unwind subcommand (:StructuralFindAndReplace StructuralFindAndReplace.Args.parse(i + 1, .fix_syntax = :None));
+                    );
+                    if arg == "repl" then (
+                        unwind subcommand (:Repl Repl.Args.parse(i + 1));
+                    );
+                    if arg == "run" then (
+                        unwind subcommand (:Run Run.Args.parse(i + 1));
+                    );
+                    if arg == "mini" then (
+                        unwind subcommand (:Mini Mini.Args.parse(i + 1));
+                    );
                 );
                 &mut common |> Common.Args.parse_arg(&mut i);
             );

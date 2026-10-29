@@ -116,14 +116,12 @@ const Repl = (
             Highlight.highlight(&parsed, Highlight.new_output(:Terminal));
             result
         );
-        let prompt = output_to_string(
-            () => (
-                ansi.with_mode(
-                    :Dim,
-                    () => (@current Output).write("> "),
-                )
+        let prompt = output_to_string(() => (
+            ansi.with_mode(
+                :Dim,
+                () => (@current Output).write("> "),
             )
-        );
+        ));
         let mut ctrl_c_pressed_times = 0;
         let history = History.new_file(".kast_history");
         loop (

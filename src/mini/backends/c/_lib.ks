@@ -82,17 +82,15 @@ const C = (
                 .signed,
                 .bits,
             } => (
-                :Raw output_to_string(
-                    () => (
-                        let output = @current Output;
-                        if not signed then (
-                            output.write("u_");
-                        );
-                        output.write("int");
-                        output.write(to_string(bits));
-                        output.write("_t");
-                    )
-                )
+                :Raw output_to_string(() => (
+                    let output = @current Output;
+                    if not signed then (
+                        output.write("u_");
+                    );
+                    output.write("int");
+                    output.write(to_string(bits));
+                    output.write("_t");
+                ))
             )
             | :Float32 => :Float32
             | :Float64 => :Float64
@@ -153,13 +151,11 @@ const C = (
                 |> ArrayList.push_back(convert_ty(arg));
         );
         let raw_fn_type_name = new_ident(
-            output_to_string(
-                () => (
-                    let output = @current Output;
-                    output.write("raw_");
-                    Ir.Print.fn_type_as_ident(f_ty);
-                )
-            )
+            output_to_string(() => (
+                let output = @current Output;
+                output.write("raw_");
+                Ir.Print.fn_type_as_ident(f_ty);
+            ))
         );
         let raw_ty_def = {
             .name = raw_fn_type_name,
@@ -173,11 +169,9 @@ const C = (
             return raw_fn_type_name;
         );
         let fn_type_name = new_ident(
-            output_to_string(
-                () => (
-                    Ir.Print.fn_type_as_ident(f_ty);
-                )
-            )
+            output_to_string(() => (
+                Ir.Print.fn_type_as_ident(f_ty);
+            ))
         );
         let ty_decl = {
             .name = fn_type_name,
@@ -421,11 +415,9 @@ const C = (
 
     const construct_type_info = (info :: &Ir.ConstructTypeInfo) -> Ast.Expr => (
         let ctx = @current Context;
-        let ty = output_to_string(
-            () => (
-                Print.ty(&convert_ty(&info^.ty))
-            )
-        );
+        let ty = output_to_string(() => (
+            Print.ty(&convert_ty(&info^.ty))
+        ));
         let { size, stride, alignment } = if info^.ty.shape is :Unit then {
             :Raw "0",
             :Raw "0",
@@ -925,11 +917,9 @@ const C = (
                 }
             )
             | :Defer ref expr => (
-                defer(
-                    () => (
-                        calculate(expr);
-                    )
-                );
+                defer(() => (
+                    calculate(expr);
+                ));
                 return void(span)
             )
             | :Unwind {
@@ -1471,14 +1461,12 @@ const C = (
             :LetVar {
                 .ty = :Pointer captured_ty,
                 .ident = captured_var,
-                .value = :Some :Raw output_to_string(
-                    () => (
-                        let output = @current Output;
-                        output.write("malloc_or_panic_fn(sizeof(");
-                        Print.ty(&captured_ty);
-                        output.write("))");
-                    )
-                ),
+                .value = :Some :Raw output_to_string(() => (
+                    let output = @current Output;
+                    output.write("malloc_or_panic_fn(sizeof(");
+                    Print.ty(&captured_ty);
+                    output.write("))");
+                )),
             }
         );
         insert_stmt(
@@ -1815,14 +1803,12 @@ const C = (
     );
 
     const enum_variant_name = (enum_ty :: &Ir.Type, variant :: String) -> Ast.Ident => (
-        let s = output_to_string(
-            () => (
-                let output = @current Output;
-                Ir.Print.type_name(enum_ty);
-                output.write("_");
-                output.write(variant);
-            )
-        );
+        let s = output_to_string(() => (
+            let output = @current Output;
+            Ir.Print.type_name(enum_ty);
+            output.write("_");
+            output.write(variant);
+        ));
         ident(s)
     );
 

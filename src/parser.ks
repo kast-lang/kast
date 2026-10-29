@@ -180,12 +180,10 @@ const Parser = (
                 | :Error _ => ()
                 | _ => break
             );
-            Log.debug_fn(
-                () => (
-                    write_str("Skipping ");
-                    Token.print(&peek);
-                )
-            );
+            Log.debug_fn(() => (
+                write_str("Skipping ");
+                Token.print(&peek);
+            ));
             &mut ctx^.ignored_tokens |> ArrayList.push_back(peek);
             ctx^.token_stream |> TokenStream.advance;
         );
@@ -238,24 +236,22 @@ const Parser = (
                             } => :Interpolated (
                                 let mut token_stream = (
                                     let mut i = 0;
-                                    TokenStream.from_fn(
-                                        () => (
-                                            if i < tokens |> ArrayList.length then (
-                                                let token = (tokens |> ArrayList.at(i))^;
-                                                i += 1;
-                                                token
-                                            ) else (
-                                                {
-                                                    .shape = Rc.new(:Eof),
-                                                    .span = {
-                                                        .start = span.end,
-                                                        .end = span.end,
-                                                        .path = span.path,
-                                                    },
-                                                }
-                                            )
+                                    TokenStream.from_fn(() => (
+                                        if i < tokens |> ArrayList.length then (
+                                            let token = (tokens |> ArrayList.at(i))^;
+                                            i += 1;
+                                            token
+                                        ) else (
+                                            {
+                                                .shape = Rc.new(:Eof),
+                                                .span = {
+                                                    .start = span.end,
+                                                    .end = span.end,
+                                                    .path = span.path,
+                                                },
+                                            }
                                         )
-                                    )
+                                    ))
                                 );
                                 let parsed = parse_with(
                                     .ruleset = dyn_ctx^.ruleset,
@@ -358,20 +354,18 @@ const Parser = (
             let peek = &ctx^.token_stream^ |> TokenStream.peek;
             let peek_raw = &peek |> Token.raw;
 
-            Log.debug_fn(
-                () => (
-                    let output = @current Output;
-                    write_str("Looking at ");
-                    Token.print(&peek);
-                    write_str("\ncontinuation keywords:");
-                    for keyword in &dyn_ctx^.continuation_keywords |> OrdSet.iter do (
-                        write_str(" ");
-                        write_escaped(keyword);
-                    );
-                    output.write("\n");
-                    (@current ParsingRuleCtx).print();
-                )
-            );
+            Log.debug_fn(() => (
+                let output = @current Output;
+                write_str("Looking at ");
+                Token.print(&peek);
+                write_str("\ncontinuation keywords:");
+                for keyword in &dyn_ctx^.continuation_keywords |> OrdSet.iter do (
+                    write_str(" ");
+                    write_escaped(keyword);
+                );
+                output.write("\n");
+                (@current ParsingRuleCtx).print();
+            ));
 
             let should_follow_edge = (edge :: &SyntaxRuleset.Edge) -> Bool => with_return (
                 if edge^.key is :Keyword ref keyword then (
@@ -465,9 +459,7 @@ const Parser = (
         let span = (
             let first_span = &parts
                 |> ArrayList.iter
-                |> std.iter.find_map(
-                    part => if part^ is :Ignored _ then :None else :Some part
-                )
+                |> std.iter.find_map(part => if part^ is :Ignored _ then :None else :Some part)
                 |> Option.unwrap
                 |> ParsedPart.span;
             let last_index = (&parts |> ArrayList.length) - 1;
@@ -494,42 +486,40 @@ const Parser = (
                 ),
             };
             let rule = node^.terminal
-                |> Option.unwrap_or_else(
-                    () => (
-                        let diagnostic = {
-                            .severity = :Error,
-                            .source = :Parser,
-                            .span,
-                            .message = () => (
-                                write_str("Can't finish parsing");
-                                for part in &parts |> ArrayList.iter do (
-                                    match part^ with (
-                                        | :Ignored _ => ()
-                                        | :Keyword token => (
-                                            write_str(" ");
-                                            write_str(&token |> Token.raw);
-                                        )
-                                        | :Value _ => write_str(" _")
-                                    );
-                                );
-                            ),
-                            .related = (
-                                let mut related = ArrayList.new();
-                                let peek = &ctx^.token_stream^ |> TokenStream.peek;
-                                let unexpected_token = {
-                                    .span = peek.span,
-                                    .message = () => (
-                                        write_str("Unexpected token ");
-                                        Token.Shape.print(&peek.shape^);
+                |> Option.unwrap_or_else(() => (
+                    let diagnostic = {
+                        .severity = :Error,
+                        .source = :Parser,
+                        .span,
+                        .message = () => (
+                            write_str("Can't finish parsing");
+                            for part in &parts |> ArrayList.iter do (
+                                match part^ with (
+                                    | :Ignored _ => ()
+                                    | :Keyword token => (
+                                        write_str(" ");
+                                        write_str(&token |> Token.raw);
                                     )
-                                };
-                                &mut related |> ArrayList.push_back(unexpected_token);
-                                related
-                            ),
-                        };
-                        Diagnostic.report_and_unwind(diagnostic)
-                    )
-                );
+                                    | :Value _ => write_str(" _")
+                                );
+                            );
+                        ),
+                        .related = (
+                            let mut related = ArrayList.new();
+                            let peek = &ctx^.token_stream^ |> TokenStream.peek;
+                            let unexpected_token = {
+                                .span = peek.span,
+                                .message = () => (
+                                    write_str("Unexpected token ");
+                                    Token.Shape.print(&peek.shape^);
+                                )
+                            };
+                            &mut related |> ArrayList.push_back(unexpected_token);
+                            related
+                        ),
+                    };
+                    Diagnostic.report_and_unwind(diagnostic)
+                ));
             :Rule {
                 .rule,
                 .root = collect_values(
@@ -544,14 +534,12 @@ const Parser = (
             .shape = Rc.new(shape),
             .span,
         };
-        Log.debug_fn(
-            () => (
-                write_str("Parsed at ");
-                Span.print(&span);
-                write_str("\n");
-                Ast.print(&ast);
-            )
-        );
+        Log.debug_fn(() => (
+            write_str("Parsed at ");
+            Span.print(&span);
+            write_str("\n");
+            Ast.print(&ast);
+        ));
         :MadeProgress ast
     );
 
@@ -631,13 +619,11 @@ const Parser = (
             let rule_part = &rule_group_parts^.[rule_part_idx];
             match ({ parsed_part, rule_part } :: { _, _ }) with (
                 | { &(:Value ast), &(:Value { .name, ... }) } => (
-                    Log.debug_fn(
-                        () => (
-                            let output = @current Output;
-                            output.write("Matched value ");
-                            Span.print(&ast.span);
-                        )
-                    );
+                    Log.debug_fn(() => (
+                        let output = @current Output;
+                        output.write("Matched value ");
+                        Span.print(&ast.span);
+                    ));
                     let ast = Rc.new(ast);
                     &mut ast_parts |> ArrayList.push_back(:Value ast);
                     &mut children |> Tuple.add(name, :Value ast);
@@ -651,13 +637,11 @@ const Parser = (
                             () => (@current Output).write("Incorrectly matched keyword")
                         );
                     );
-                    Log.debug_fn(
-                        () => (
-                            let output = @current Output;
-                            output.write("Matched keyword ");
-                            Token.print(token);
-                        )
-                    );
+                    Log.debug_fn(() => (
+                        let output = @current Output;
+                        output.write("Matched keyword ");
+                        Token.print(token);
+                    ));
                     &mut ast_parts |> ArrayList.push_back(:Keyword token^);
                     parsed_part_idx^ += 1;
                     rule_part_idx += 1;
@@ -694,13 +678,11 @@ const Parser = (
                             );
                         )
                     );
-                    Log.debug_fn(
-                        () => (
-                            let output = @current Output;
-                            output.write("Matching group at ");
-                            Span.print(&rule_group^.span);
-                        )
-                    );
+                    Log.debug_fn(() => (
+                        let output = @current Output;
+                        output.write("Matching group at ");
+                        Span.print(&rule_group^.span);
+                    ));
                     let group = collect_values_from(
                         parsed_part_idx,
                         parsed_parts,
@@ -778,9 +760,7 @@ const Parser = (
             );
             let first_part = &ast_parts
                 |> ArrayList.iter
-                |> std.iter.find_map(
-                    part => if part^ is :Ignored _ then :None else :Some part
-                )
+                |> std.iter.find_map(part => if part^ is :Ignored _ then :None else :Some part)
                 |> Option.unwrap;
             let last_part = &ast_parts.[parts_len - 1];
             {

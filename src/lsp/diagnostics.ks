@@ -23,12 +23,10 @@ const diagnostics = (
         );
         let file_state = &state^.files
             |> OrdMap.get(&RcStr.from_String(Uri.to_string(&text_document.uri)))
-            |> Option.unwrap_or_else(
-                () => (
-                    # Technically null is not allowed response
-                    return :Null
-                )
-            );
+            |> Option.unwrap_or_else(() => (
+                # Technically null is not allowed response
+                return :Null
+            ));
 
         let mut diagnostics = ArrayList.new();
         for diagnostic in &file_state^.diagnostics |> ArrayList.iter do (
