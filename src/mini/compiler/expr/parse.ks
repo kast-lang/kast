@@ -1050,15 +1050,15 @@ const parse_expr_impl = (
                             .ty,
                         };
                     )
-                    | :String str => (
-                        let open_raw = Token.raw(str.open);
+                    | :String s => (
+                        let open_raw = Token.raw(s.open);
                         let { ty, literal } = if open_raw == "\"" then (
                             {
                                 { .shape = :Named "StringView", .alias_name = :None },
-                                :String str.contents,
+                                :String s.contents,
                             }
                         ) else if open_raw == "'" then (
-                            if String.length(str.contents) == 0 then (
+                            if String.length(s.contents) == 0 then (
                                 let diagnostic = {
                                     .severity = :Error,
                                     .source = :Compiler,
@@ -1070,8 +1070,8 @@ const parse_expr_impl = (
                                 };
                                 Diagnostic.report_and_unwind(diagnostic)
                             );
-                            let c = String.at(str.contents, 0);
-                            if Char.string_encoding_len(c) != String.length(str.contents) then (
+                            let c = String.at(s.contents, 0);
+                            if Char.string_encoding_len(c) != String.length(s.contents) then (
                                 let diagnostic = {
                                     .severity = :Error,
                                     .source = :Compiler,
