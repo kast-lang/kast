@@ -12,7 +12,6 @@ const SyntaxRule = (
         .parts :: ArrayList.t[Part],
         .span :: Span,
         .wrap_mode :: WrapMode,
-        .can_undo_indentation :: Bool,
     };
 
     const is_same = (a :: &SyntaxRule.t, b :: &SyntaxRule.t) -> Bool => (

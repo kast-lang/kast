@@ -297,10 +297,6 @@ const SyntaxParser = (
             token_stream |> expect_and_advance("@wrap");
             read_wrap_mode(token_stream)
         );
-        let can_undo_indentation = if token_stream |> peek_is("@can_undo_indentation") then (
-            token_stream |> TokenStream.advance;
-            true
-        ) else false;
         token_stream |> expect_and_advance("=");
 
         let mut parts = ArrayList.new[SyntaxRule.Part]();
@@ -334,7 +330,6 @@ const SyntaxParser = (
             .priority = rule_priority,
             .parts,
             .wrap_mode,
-            .can_undo_indentation,
             .span = {
                 .start = span_start,
                 .end = span_end,

@@ -40,7 +40,7 @@
 @syntax "generic_non_dependent" 6.5 @wrap never = "[" ""/"\n\t" arg:any ""/"\\\n" "]" " " "->" " " body ->;
 @syntax "core:fn_type" 6.5 @wrap never = raw_fn=("fn" " ")? call_convention=("@call" " " _: >= 5000 " ")? async=("async" _=("=" value)? " ")? arg " " context=("with" " " _ " ")? result=("->" " " _ _=(" " "with" " " context " ")?);
 
-@syntax "core:fn" 7 @wrap never @can_undo_indentation = move=("@move" " ")? raw_fn=("fn" " ")? call_convention=("@call" " " _: >= 5000 " ")? async=("async" _=("=" value)? " ")? arg " " context=("with" " " _ " ")? result=("->" " " _ " " _=("with" " " context " ")?)? "=>" " " body;
+@syntax "core:fn" 7 @wrap never = move=("@move" " ")? raw_fn=("fn" " ")? call_convention=("@call" " " _: >= 5000 " ")? async=("async" _=("=" value)? " ")? arg " " context=("with" " " _ " ")? result=("->" " " _ " " _=("with" " " context " ")?)? "=>" " " body;
 @syntax "comptime_only" 7.1 @wrap never = "@comptime_only" " " _;
 
 @syntax "if_without_else" 7.5 @wrap never = "if" " " cond " " "then" " " then_case;
@@ -94,7 +94,7 @@
 @syntax "%" 17 @wrap if_any_assoc = <- _ " "/"\n" "%" " " _;
 
 @syntax "core:variant_without_value" 42 @wrap never = ":" label: >=1000;
-@syntax "core:variant" 42 @wrap never @can_undo_indentation = ":" label: >=1000 " " value ->;
+@syntax "core:variant" 42 @wrap never = ":" label: >=1000 " " value ->;
 @syntax "unary -" 45 @wrap never = "-" _;
 @syntax "unary +" 45 @wrap never = "+" _;
 @syntax "with_return" 60 @wrap never = "with_return" " " body;
@@ -125,7 +125,7 @@
 @syntax "core:auto_instantiate" 500 @wrap never = "@auto_instantiate" " " _;
 @syntax "core:loop" 500 @wrap if_any = "@loop" " " "(" " "/"\n\t" "" _:any " "/"\\\n" ")";
 @syntax "core:scope" 1000 @wrap if_any = "(" ""/"\n\t" "" _:any ""/"\\\n" ")";
-@syntax "core:record" 1000 @wrap if_any @can_undo_indentation = "{" " "/"\n\t" "" _:any " "/"\\\n" "}";
+@syntax "core:record" 1000 @wrap if_any = "{" " "/"\n\t" "" _:any " "/"\\\n" "}";
 @syntax "core:placeholder" 1000 @wrap never = "_";
 @syntax "core:quote" 1000 @wrap if_any = "`" "(" ""/"\n\t" "" _:any ""/"\\\n" ")";
 @syntax "core:unquote" 1000 @wrap never = "$" _ ->;

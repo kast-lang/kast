@@ -255,7 +255,7 @@ const Format = (
             .ignored_trailing_tokens = ref ignored_trailing_tokens,
             .eof = _,
         } = parsed^;
-        walk_ast(ast, .parent = :None, .can_undo_indentation = false);
+        walk_ast(ast, .parent = :None);
         walk_ignored_tokens(ignored_trailing_tokens);
         queue_newline();
         flush();
@@ -269,50 +269,12 @@ const Format = (
     const walk_ast = (
         ast :: &Ast.t,
         .parent :: Parent,
-        .can_undo_indentation :: Bool,
     ) => (
         let {
             .ignored_tokens_before = ref ignored_tokens_before,
             .shape = ref shape,
             .span = _,
         } = ast^;
-        let undo_indentation = with_return (
-            if not can_undo_indentation then (
-                return false;
-            );
-            if &ignored_tokens_before^^ |> ArrayList.length != 0 then (
-                return false;
-            );
-            match shape^^ with (
-                | :Token ref token => match token^.shape^ with (
-                    | :String {
-                        .stripped_indentation = ref stripped_indentation,
-                        ...
-                    } => (
-                        stripped_indentation |> RcStr.length != 0
-                    )
-                    | _ => false
-                )
-                | :InterpolatedString {
-                    .stripped_indentation = ref stripped_indentation,
-                    ...
-                } => (
-                    stripped_indentation |> RcStr.length != 0
-                )
-                | :Rule { .rule = ref rule, ... } => (
-                    rule^^.can_undo_indentation
-                )
-                | _ => false
-            )
-        );
-        if undo_indentation then (
-            dec_indentation();
-            (@current Context).queued_newlines -= 1;
-        );
-        @defer if undo_indentation then (
-            (@current Context).queued_newlines -= 1;
-            inc_indentation();
-        );
         walk_ignored_tokens(&ignored_tokens_before^^);
         match shape^^ with (
             | :Empty => ()
@@ -357,12 +319,15 @@ const Format = (
                                 ),
                                 .extra_in_string = String.from_str(""),
                             };
-                            let wrapped = open^.span.end.line != close^.span.start.line;
+                            let wrapped = (
+                                open^.span.end.line != inner^.span.start.line
+                                or inner^.span.end.line != close^.span.start.line
+                            );
                             if wrapped then (
                                 queue_newline();
                                 inc_indentation();
                             );
-                            walk_ast(inner, .parent = :None, .can_undo_indentation = false);
+                            walk_ast(inner, .parent = :None);
                             walk_ignored_tokens(ignored_trailing_tokens);
                             if wrapped then (
                                 queue_newline();
@@ -402,7 +367,7 @@ const Format = (
                 );
                 queue_newline();
                 if value_after^ is :Some ref ast then (
-                    walk_ast(ast, .parent = :None, .can_undo_indentation = false);
+                    walk_ast(ast, .parent = :None);
                 );
             )
             | :Error { .parts = ref parts } => (
@@ -418,7 +383,22 @@ const Format = (
         .priority :: SyntaxRule.Priority,
         .parent :: Parent,
     ) => (
-        let group_wrapped = group^.span.start.line != group^.span.end.line;
+        let group_wrapped = with_return (
+            let mut prev = group^.span.start;
+            let mut first = true;
+            for part in &group^.parts |> ArrayList.iter do (
+                if part^ is :Ignored _ then (
+                    if first then continue;
+                );
+                first = false;
+                let part_span = Ast.part_span(part);
+                if prev.line != part_span.start.line then (
+                    return true;
+                );
+                prev = part_span.end;
+            );
+            false
+        );
         let wrapped = match wrap_mode with (
             | :Never => false
             | :Always => true
@@ -459,9 +439,7 @@ const Format = (
             part_idx += 1;
             result
         );
-        let mut can_child_undo_indentation = false;
         for part in rule_parts |> ArrayList.iter do (
-            let mut can_child_undo_indentation_after_this_part = false;
             match part^ with (
                 | :Keyword ref expected_keyword => with_return (
                     skip_ignored_parts();
@@ -484,7 +462,6 @@ const Format = (
                     for c in String.iter(s) do (
                         if c == '\t' then (
                             inc_indentation();
-                            can_child_undo_indentation_after_this_part = true;
                         ) else if c == '\n' then (
                             ensure_newline();
                         ) else if c == '\\' then (
@@ -510,7 +487,6 @@ const Format = (
                             .wrapped,
                             .priority,
                         },
-                        .can_undo_indentation = can_child_undo_indentation,
                     );
                 )
                 | :Group {
@@ -548,7 +524,6 @@ const Format = (
                     );
                 )
             );
-            can_child_undo_indentation = can_child_undo_indentation_after_this_part;
         );
         while part_idx < &group^.parts |> ArrayList.length do (
             let part = &group^.parts |> ArrayList.at(part_idx);
