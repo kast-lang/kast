@@ -5,7 +5,7 @@
 - [x] Interpreter
 - [x] Transpile to JavaScript
   - [ ] JS Bindgen (WebIDL / d.ts)
-- [ ] Transpile C
+- [x] Transpile C
   - [ ] Bindgen (header files)
 - [ ] LLVM for max performance
 
@@ -20,5 +20,5 @@
 
 - [x] Advent of Code
 - [x] twitch bot
-- [ ] game engine
+- [x] game engine
   - [x] participate in game jams
