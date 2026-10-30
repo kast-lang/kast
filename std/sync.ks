@@ -6,12 +6,16 @@ const RawMutex = (
     const t = @opaque_type "pthread_mutex_t*";
 
     const new = () -> RawMutex.t => (
-        let mut mutex = @native "Kast_allocate(TypeInfo_simple(primitive, pthread_mutex_t))";
+        let mut mutex = @native "Kast_allocate_raw(sizeof(pthread_mutex_t))";
         let err :: Int32 = @native "pthread_mutex_init(\(mutex), NULL)";
         if err != 0 then (
             panic("Failed to init mutex");
         );
         mutex
+    );
+
+    const drop = (self :: RawMutex.t) => (
+        @native "Kast_free(\(self))";
     );
 
     const lock = (mutex :: RawMutex.t) => (
@@ -39,19 +43,23 @@ const Mutex = (
 
     const t = [T] newtype {
         .raw :: RawMutex.t,
-        .value :: &mut T,
+        .value :: T,
     };
 
-    const new = [T] (mut value :: T) -> Mutex.t[T] => {
+    const drop = [T] (self :: Mutex.t[T]) => (
+        RawMutex.drop(self.raw);
+    );
+
+    const new = [T] (value :: T) -> Mutex.t[T] => {
         .raw = RawMutex.new(),
-        .value = &mut value,
+        .value,
     };
 
     const lock = [T] (mutex :: &Mutex.t[T]) -> MutexGuard[T] => (
         RawMutex.lock(mutex^.raw);
         {
             .raw = mutex^.raw,
-            .value = mutex^.value,
+            .value = @native "\(&mutex^.value)", # we cast to mutable ref
         }
     );
 

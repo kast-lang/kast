@@ -80,7 +80,7 @@ type ctx =
   ; mutable captured_values : string ValueMap.t
   ; mutable captured_types : transpiled_ty progress ValueMap.t
   ; mutable contexts : Types.value_context_ty Id.Map.t
-  ; runtime_defined_closure_types : string StringListMap.t
+  ; runtime_defined_closure_types : string StringListMap.t StringMap.t
   ; runtime_defined_list_types : string StringMap.t
   ; runtime_defined_box_types : string StringMap.t
   ; runtime_defined_rc_types : string StringMap.t
@@ -215,10 +215,23 @@ module Impl = struct
     Dynarray.add_last block.stmts stmt
 
   and ty_to_string (ty : C_ast.ty) : string =
+    let result = ref "" in
+    let output_fn s = result := !result ^ s in
+    (try C_ast.Print.print_ty ty with
+     | effect C_ast.Print.GetOutput, k -> Effect.continue k output_fn);
+    !result
+
+  and ty_to_ident (ty : C_ast.ty) : string =
     let ctx = Effect.perform GetCtx in
     match ty with
     | T_Unit -> "Unit"
-    | T_Raw { c; is_primitive = _ } -> c
+    | T_Raw { c; is_primitive = _ } ->
+      let rec loop s =
+        if String.get s (String.length s - 1) = Some '*'
+        then String.sub s 0 (String.length s - 1) ^ "_Ptr"
+        else s
+      in
+      loop c
     | T_Named name ->
       name
       (* (match ctx.types |> StringMap.find_opt name with *)
@@ -226,7 +239,7 @@ module Impl = struct
       (*  | Some _ -> name *)
       (*  | None -> fail "type %S is named but not in ctx.types" name) *)
     | T_Ptr p ->
-      let name = ty_to_string p ^ "_Ptr" in
+      let name = ty_to_ident p ^ "_Ptr" in
       let ty_def : C_ast.ty_def = { shape = TD_Alias ty; comment = None } in
       ctx.types <- ctx.types |> StringMap.add name ty_def;
       name
@@ -398,7 +411,7 @@ module Impl = struct
             P_Deref
               (Pure_Native
                  [ N_Raw "Box_"
-                 ; N_Raw (ty_to_string (transpile_ty boxed_ty).c_ty)
+                 ; N_Raw (ty_to_ident (transpile_ty boxed_ty).c_ty)
                  ; N_Raw "_deref("
                  ; N_Interpolated (Pure_AddrOf (transpile_place_expr expr))
                  ; N_Raw ")"
@@ -407,7 +420,7 @@ module Impl = struct
             P_Deref
               (Pure_Native
                  [ N_Raw "RefCounted_"
-                 ; N_Raw (ty_to_string (transpile_ty inner_ty).c_ty)
+                 ; N_Raw (ty_to_ident (transpile_ty inner_ty).c_ty)
                  ; N_Raw "_deref("
                  ; N_Interpolated (Pure_AddrOf (transpile_place_expr expr))
                  ; N_Raw ")"
@@ -570,7 +583,7 @@ module Impl = struct
                   { f =
                       Pure_Native
                         [ N_Raw "RefCounted_"
-                        ; N_Raw (ty_to_string (transpile_ty inner).c_ty)
+                        ; N_Raw (ty_to_ident (transpile_ty inner).c_ty)
                         ; N_Raw "_claim"
                         ]
                   ; args = [ Pure_Copy (P_Ident arg_name) ]
@@ -580,7 +593,7 @@ module Impl = struct
                   { f =
                       Pure_Native
                         [ N_Raw "Box_"
-                        ; N_Raw (ty_to_string (transpile_ty boxed).c_ty)
+                        ; N_Raw (ty_to_ident (transpile_ty boxed).c_ty)
                         ; N_Raw "_claim"
                         ]
                   ; args = [ Pure_Copy (P_Ident arg_name) ]
@@ -670,7 +683,7 @@ module Impl = struct
                 E_Apply
                   { f =
                       Pure_Native
-                        [ N_Raw (ty_to_string (transpile_ty kast_ty).c_ty)
+                        [ N_Raw (ty_to_ident (transpile_ty kast_ty).c_ty)
                         ; N_Raw "_claim"
                         ]
                   ; args = [ Pure_Copy (P_Ident arg_name) ]
@@ -682,7 +695,7 @@ module Impl = struct
                   E_Apply
                     { f =
                         Pure_Copy
-                          (P_Ident (ty_to_string (transpile_ty kast_ty).c_ty ^ "_claim"))
+                          (P_Ident (ty_to_ident (transpile_ty kast_ty).c_ty ^ "_claim"))
                     ; args = [ Pure_Copy (P_Ident arg_name) ]
                     }
                 else copy
@@ -817,7 +830,7 @@ module Impl = struct
                     { f =
                         Pure_Native
                           [ N_Raw "RefCounted_"
-                          ; N_Raw (ty_to_string (transpile_ty inner).c_ty)
+                          ; N_Raw (ty_to_ident (transpile_ty inner).c_ty)
                           ; N_Raw "_dbg_write"
                           ]
                     ; args = [ Pure_Copy (P_Ident var); Pure_Copy (P_Ident fmt_var) ]
@@ -829,7 +842,7 @@ module Impl = struct
                     { f =
                         Pure_Native
                           [ N_Raw "Box_"
-                          ; N_Raw (ty_to_string (transpile_ty boxed).c_ty)
+                          ; N_Raw (ty_to_ident (transpile_ty boxed).c_ty)
                           ; N_Raw "_dbg_write"
                           ]
                     ; args = [ Pure_Copy (P_Ident var); Pure_Copy (P_Ident fmt_var) ]
@@ -933,7 +946,7 @@ module Impl = struct
             insert_stmt
               (S_Expr
                  (E_Apply
-                    { f = Pure_Copy (P_Ident (ty_to_string c_ty ^ "_dbg_write"))
+                    { f = Pure_Copy (P_Ident (ty_to_ident c_ty ^ "_dbg_write"))
                     ; args = [ Pure_Copy (P_Ident var); Pure_Copy (P_Ident fmt_var) ]
                     }))
           | Types.T_Ty -> printf "<ty>" []
@@ -1023,7 +1036,7 @@ module Impl = struct
                     { f =
                         Pure_Native
                           [ N_Raw "RefCounted_"
-                          ; N_Raw (ty_to_string (transpile_ty inner).c_ty)
+                          ; N_Raw (ty_to_ident (transpile_ty inner).c_ty)
                           ; N_Raw "_drop"
                           ]
                     ; args = [ Pure_Copy (P_Ident var) ]
@@ -1035,7 +1048,7 @@ module Impl = struct
                     { f =
                         Pure_Native
                           [ N_Raw "Box_"
-                          ; N_Raw (ty_to_string (transpile_ty boxed).c_ty)
+                          ; N_Raw (ty_to_ident (transpile_ty boxed).c_ty)
                           ; N_Raw "_drop"
                           ]
                     ; args = [ Pure_Copy (P_Ident var) ]
@@ -1089,7 +1102,7 @@ module Impl = struct
             insert_stmt
               (S_Expr
                  (E_Apply
-                    { f = Pure_Copy (P_Ident (ty_to_string c_ty ^ "_drop"))
+                    { f = Pure_Copy (P_Ident (ty_to_ident c_ty ^ "_drop"))
                     ; args = [ Pure_Copy (P_Ident var) ]
                     }))
           | Types.T_Ty -> ()
@@ -1100,7 +1113,7 @@ module Impl = struct
               insert_stmt
                 (S_Expr
                    (E_Apply
-                      { f = Pure_Copy (P_Ident (ty_to_string c_ty ^ "_drop"))
+                      { f = Pure_Copy (P_Ident (ty_to_ident c_ty ^ "_drop"))
                       ; args = [ Pure_Copy (P_Ident var) ]
                       }))
           | Types.T_Generic _ -> ()
@@ -1144,7 +1157,7 @@ module Impl = struct
                   ctx.types <- ctx.types |> StringMap.add name def);
                 T_Named name
             in
-            let c_ty_as_str = ty_to_string c_ty in
+            let c_ty_as_str = ty_to_ident c_ty in
             let gen_lazy_named (type a) suffix f : a LazyNamed.t =
               let name = gen_name (make_string "%s_%s" c_ty_as_str suffix) in
               LazyNamed.make name (fun () -> f name)
@@ -1376,7 +1389,7 @@ module Impl = struct
     | Types.T_Char -> runtime_defined "Char"
     | Types.T_Rc inner ->
       let inner = transpile_ty inner in
-      let macro_arg = ty_to_string inner.c_ty in
+      let macro_arg = ty_to_ident inner.c_ty in
       (match ctx.runtime_defined_rc_types |> StringMap.find_opt macro_arg with
        | Some name -> runtime_defined name
        | None ->
@@ -1387,13 +1400,13 @@ module Impl = struct
                  TD_Raw
                    { def = make_string "define_RefCounted(%s)" macro_arg
                    ; impl = Some (make_string "impl_RefCounted(%s)" macro_arg)
-                   ; need_declared = [ T_Named macro_arg ]
+                   ; need_declared = [ inner.c_ty ]
                    ; need_completed = []
                    })
            })
     | Types.T_Box boxed ->
       let boxed = transpile_ty boxed in
-      let macro_arg = ty_to_string boxed.c_ty in
+      let macro_arg = ty_to_ident boxed.c_ty in
       (match ctx.runtime_defined_box_types |> StringMap.find_opt macro_arg with
        | Some name -> runtime_defined name
        | None ->
@@ -1404,7 +1417,7 @@ module Impl = struct
                  TD_Raw
                    { def = make_string "define_Box(%s)" macro_arg
                    ; impl = Some (make_string "impl_Box(%s)" macro_arg)
-                   ; need_declared = [ T_Named macro_arg ]
+                   ; need_declared = [ boxed.c_ty ]
                    ; need_completed = []
                    })
            })
@@ -1448,7 +1461,7 @@ module Impl = struct
       T_Named { name = ty_name; def = make_with (fun () -> TD_Struct (fields ())) }
     | Types.T_List { element_ty } ->
       let element_ty = transpile_ty element_ty in
-      let macro_arg = ty_to_string element_ty.c_ty in
+      let macro_arg = ty_to_ident element_ty.c_ty in
       (match ctx.runtime_defined_list_types |> StringMap.find_opt macro_arg with
        | Some name -> runtime_defined name
        | None ->
@@ -1459,7 +1472,7 @@ module Impl = struct
                  TD_Raw
                    { def = make_string "define_ArrayList(%s)" macro_arg
                    ; impl = Some (make_string "impl_ArrayList(%s)" macro_arg)
-                   ; need_declared = [ T_Named macro_arg ]
+                   ; need_declared = [ element_ty.c_ty ]
                    ; need_completed = []
                    })
            })
@@ -1490,17 +1503,25 @@ module Impl = struct
         | Some "C" -> "_C", args
         | _ -> fail "unknown call convention"
       in
+      let name prefix =
+        let name_prefix = prefix ^ ty_to_ident result_ty in
+        let name =
+          List.fold_left (fun s arg -> s ^ "_" ^ ty_to_ident arg) name_prefix args
+        in
+        name ^ cc_suffix
+      in
       (match is_closure with
        | true ->
          Log.trace (fun log ->
            log "Looking for %a" (List.print String.print) define_macro_args);
          (match
-            ctx.runtime_defined_closure_types |> StringListMap.find_opt define_macro_args
+            ctx.runtime_defined_closure_types
+            |> StringMap.find cc_suffix
+            |> StringListMap.find_opt define_macro_args
           with
           | Some name -> runtime_defined name
           | None ->
-            let name = List.fold_left (fun s n -> s ^ "_" ^ n) "Fn" define_macro_args in
-            let name = name ^ cc_suffix in
+            let name = name "Fn_" in
             let macro_arg =
               List.fold_left (fun s n -> s ^ ", " ^ n) name define_macro_args
             in
@@ -1512,13 +1533,12 @@ module Impl = struct
                       { def = make_string "define_closure_type%s(%s)" cc_suffix macro_arg
                       ; impl =
                           Some (make_string "impl_closure_type%s(%s)" cc_suffix macro_arg)
-                      ; need_declared =
-                          List.map (fun name : C_ast.ty -> T_Named name) define_macro_args
+                      ; need_declared = result_ty :: args
                       ; need_completed = []
                       })
               })
        | false ->
-         let name = List.fold_left (fun s n -> s ^ "_" ^ n) "N_RawFn" define_macro_args in
+         let name = name "RawFn_" in
          T_Named { name; def = make_with (fun () -> TD_Fn { args; result_ty }) })
     | Types.T_Generic _ when true -> alias T_Unit
     | Types.T_Generic { args; result } ->
@@ -1547,15 +1567,16 @@ module Impl = struct
     | Types.T_ImplicitContext -> runtime_defined "Context"
     | Types.T_CompilerScope -> alias T_Unit
     | Types.T_Opaque { name; native_name } ->
-      let name = gen_name (make_string "%a" Print.print_name name) in
       (match native_name with
        | Some native_name ->
-         T_Named
-           { name
-           ; def =
-               make_with (fun () ->
-                 TD_Alias (T_Raw { c = native_name; is_primitive = false }))
-           }
+         alias (T_Raw { c = native_name; is_primitive = true })
+         (* let name = gen_name (make_string "%a" Print.print_name name) in *)
+         (* T_Named *)
+         (*   { name *)
+         (*   ; def = *)
+         (*       make_with (fun () -> *)
+         (*         TD_Alias (T_Raw { c = native_name; is_primitive = false })) *)
+         (*   } *)
        | None ->
          fail
            "native name must be set for opaque types when transpiling to C: %a"
@@ -2201,7 +2222,7 @@ module Impl = struct
                 var
                 (Some
                    (E_Native
-                      [ N_Raw (ty_to_string ty.c_ty)
+                      [ N_Raw (ty_to_ident ty.c_ty)
                       ; N_Raw "_new(&"
                       ; N_Raw (type_info_name_for element_ty)
                       ; N_Raw ")"
@@ -2211,7 +2232,7 @@ module Impl = struct
               |> Dynarray.iter (fun element ->
                 insert_stmt
                   (S_Native
-                     [ N_Raw (ty_to_string ty.c_ty)
+                     [ N_Raw (ty_to_ident ty.c_ty)
                      ; N_Raw "_push_back("
                      ; N_Interpolated (Pure_AddrOf (P_Ident var))
                      ; N_Raw ", "
@@ -2820,8 +2841,7 @@ module Impl = struct
               | Raw s -> N_Raw s
               | TyExpr e ->
                 N_Raw
-                  ((Interpreter.eval_ty interpreter e |> transpile_ty).c_ty
-                   |> ty_to_string)
+                  ((Interpreter.eval_ty interpreter e |> transpile_ty).c_ty |> ty_to_ident)
               | Expr e ->
                 N_Interpolated
                   (make_pure
@@ -3215,7 +3235,9 @@ end
 let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.program =
   Kast_inference_completion.enable := true;
   Kast_inference_completion.complete_compiled Expr expr;
-  let runtime_defined_closure_types = ref StringListMap.empty in
+  let runtime_defined_closure_types =
+    ref (StringMap.of_list [ "", StringListMap.empty; "_C", StringListMap.empty ])
+  in
   let runtime_defined_list_types = ref StringMap.empty in
   let runtime_defined_box_types = ref StringMap.empty in
   let runtime_defined_rc_types = ref StringMap.empty in
@@ -3223,8 +3245,10 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
     source
     |> String.split_on_char '\n'
     |> List.iter (fun s ->
-      let check_defined_closure () =
-        let* s = s |> String.strip_prefix ~prefix:"define_closure_type(" in
+      let check_defined_closure cc_suffix =
+        let* s =
+          s |> String.strip_prefix ~prefix:("define_closure_type" ^ cc_suffix ^ "(")
+        in
         let* s = s |> String.strip_suffix ~suffix:");" in
         let args = s |> String.split_on_char ',' |> List.map String.trim in
         match args with
@@ -3232,7 +3256,9 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
           Log.trace (fun log ->
             log "Found defined closure type %a = %s" (List.print String.print) args name);
           runtime_defined_closure_types
-          := !runtime_defined_closure_types |> StringListMap.add args name;
+          := !runtime_defined_closure_types
+             |> StringMap.update cc_suffix (fun existing ->
+               Some (existing |> Option.unwrap |> StringListMap.add args name));
           Some ()
         | _ -> failwith __LOC__
       in
@@ -3257,7 +3283,8 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
         := !runtime_defined_rc_types |> StringMap.add arg ("Box_" ^ arg);
         Some ()
       in
-      let _ : unit option = check_defined_closure () in
+      let _ : unit option = check_defined_closure "" in
+      let _ : unit option = check_defined_closure "_C" in
       let _ : unit option = check_defined_list () in
       let _ : unit option = check_defined_box () in
       let _ : unit option = check_defined_rc () in
@@ -3353,8 +3380,10 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
             (fun () ->
                Impl.insert_stmt (S_Native [ N_Raw "Kast_init(argc, argv)" ]);
                Impl.insert_stmt (S_Native [ N_Raw "Kast_init_user_type_infos()" ]);
-               Impl.let_c_var (T_Named "Context") ctx_var None;
-               Impl.memset_0 (P_Ident ctx_var);
+               Impl.let_c_var
+                 (T_Named "Context")
+                 ctx_var
+                 (Some (E_Native [ N_Raw "Context_new()" ]));
                Impl.insert_stmt
                  (S_Expr
                     (E_Apply { f = Pure_Copy (P_Ident "KAST_init_statics"); args = [] }));
@@ -3372,6 +3401,19 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
     in
     ctx.fns <- ctx.fns |> StringMap.add "main" main;
     ctx.fns <- ctx.fns |> StringMap.add "KAST_init_statics" init_statics;
+    let context_new : C_ast.fn_def =
+      { args = []
+      ; result_ty = T_Named "Context"
+      ; body =
+          Impl.new_block (fun () ->
+            let var = Impl.gen_name "ctx" in
+            Impl.let_c_var (T_Named "Context") var None;
+            Impl.memset_0 (P_Ident var);
+            Impl.insert_stmt (S_Return (E_Pure (Pure_Copy (P_Ident var)))))
+      ; comment = None
+      }
+    in
+    ctx.fns <- ctx.fns |> StringMap.add "Context_new" context_new;
     context_ty_def
     := Some
          ({ shape =
@@ -3394,11 +3436,15 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
        |> StringMap.union
             (fun _ a _ -> Some a)
             (ctx.runtime_defined_closure_types
-             |> StringListMap.to_list
-             |> List.map (fun (_, name) ->
-               ( name
-               , ({ shape = TD_RuntimeDefined { is_primitive = false }; comment = None }
-                  : C_ast.ty_def) ))
+             |> StringMap.to_list
+             |> List.map (fun (_cc, by_cc) ->
+               by_cc
+               |> StringListMap.to_list
+               |> List.map (fun (_, name) ->
+                 ( name
+                 , ({ shape = TD_RuntimeDefined { is_primitive = false }; comment = None }
+                    : C_ast.ty_def) )))
+             |> List.flatten
              |> StringMap.of_list)
        |> StringMap.union
             (fun _ a _ -> Some a)
