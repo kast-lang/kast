@@ -3,7 +3,7 @@ use (import "./state.ks").*;
 
 module:
 
-const hover = (state :: &mut State, request :: Json.t) -> Json.t => with_return (
+const hover = (state :: &State, request :: Json.t) -> Json.t => with_return (
     let :Object ref fields = request;
     let (&(:Object ref params)) = fields
         |> OrdMap.get(&RcStr.allocate("params"))
@@ -43,8 +43,7 @@ const hover = (state :: &mut State, request :: Json.t) -> Json.t => with_return 
 
     let uri_str = RcStr.from_String(Uri.to_string(&text_document.uri));
     eprintln!("Hovering \(uri_str)");
-    let file_state = &state^.files
-        |> OrdMap.get(&uri_str)
+    let file_state = get_latest_file_state(state, &text_document.uri)
         |> Option.unwrap_or_else(() => return :Null);
     let hovered_char :: Option.t[_] = with_return (
         if (

@@ -8,6 +8,7 @@ use (import "../token_stream.ks").*;
 use (import "../syntax_parser.ks").*;
 use (import "../parser.ks").*;
 use (import "../ast.ks").*;
+use (import "../log.ks").*;
 
 module:
 
@@ -57,26 +58,20 @@ const Parse = (
             | :Some ref path => path |> as_str
             | :None => "kast:///std/syntax.ks"
         );
-        ansi.with_mode(
-            :Bold,
-            () => (
-                write_str("Parsing syntax rules from ");
-                write_str(ruleset_path);
-                write_str("\n\n");
-            ),
-        );
+        Log.info_fn(() => (
+            locked_output.write_str("Parsing syntax rules from ");
+            locked_output.write_str(ruleset_path);
+            locked_output.write_str("\n\n");
+        ));
         let mut lexer = Lexer.new(Source.read(&SourcePath.parse(ruleset_path)));
         let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
         let mut ruleset = SyntaxParser.parse_syntax_ruleset(&mut token_stream);
         let process = (path :: &SourcePath) => (
-            ansi.with_mode(
-                :Bold,
-                () => (
-                    write_str("Parsing ");
-                    SourcePath.print(path);
-                    write_str("\n\n");
-                ),
-            );
+            Log.info_fn(() => (
+                locked_output.write_str("Parsing ");
+                SourcePath.print(path);
+                locked_output.write_str("\n\n");
+            ));
             let source = Source.read(path);
             let mut lexer = Lexer.new(source);
             let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
@@ -87,13 +82,15 @@ const Parse = (
                 .token_stream = &mut token_stream,
             );
 
-            match common_args.output_mode with (
-                | :None => ()
-                | :Human => (
-                    Ast.print(&parsed.ast);
-                    write_str("\n");
-                )
-            );
+            lock_output(() => (
+                match common_args.output_mode with (
+                    | :None => ()
+                    | :Human => (
+                        Ast.print(&parsed.ast);
+                        locked_output.write_str("\n");
+                    )
+                );
+            ));
         );
         if &args.paths |> ArrayList.length == 0 then (
             process(&(:Stdin));

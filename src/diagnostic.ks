@@ -11,14 +11,15 @@ const Diagnostic = (
 
     const default_abort_handler = (msg :: &str) -> Never => (
         with Output = (@current Stderr);
-        ansi.with_mode(
-            :Red,
-            () => (
-                let output = @current Output;
-                output.write(msg);
-                output.write("\n");
-            )
-        );
+        lock_output(() => (
+            ansi.with_mode(
+                :Red,
+                () => (
+                    locked_output.write_str(msg);
+                    locked_output.write_str("\n");
+                )
+            );
+        ));
         std.sys.exit(-1)
     );
     ## Similar to panic but we don't care about stacktrace in this case
@@ -37,7 +38,7 @@ const Diagnostic = (
 
     const unstack_message = (message :: () -> ()) -> (() -> ()) => (
         let message = output_to_string(message);
-        @move () => write_str(&message |> as_str)
+        @move () => locked_output.write_str(&message |> as_str)
     );
 
     const unstack = (self :: Diagnostic.t) -> Diagnostic.t => {
@@ -91,53 +92,54 @@ const Diagnostic = (
         .unwind_on_error :: () -> Never,
     };
 
-    const print = (diagnostic :: &Diagnostic.t) => (
+    const print_to_stderr = (diagnostic :: &Diagnostic.t) => (
         with Output = (@current Stderr);
-        let output = @current Output;
-        ansi.with_mode(
-            :Red,
-            () => (
-                let source_name :: Option.t[&str] = match diagnostic^.source with (
-                    | :Internal => :Some "Internal"
-                    | :Lexer => :Some "Lexer"
-                    | :Parser => :Some "Parser"
-                    | :Compiler => :Some "Compiler"
-                    | :Interpreter => :Some "Interpreter"
-                    | :Other => :None
-                );
-                match source_name with (
-                    | :Some source_name => (
-                        output.write(source_name);
-                        output.write(" error at ");
-                    )
-                    | :None => (
-                        output.write("Error at ");
-                    )
-                );
-                &diagnostic^.span |> Span.print;
-                output.write(":\n");
-                diagnostic^.message();
-                for info in &diagnostic^.related |> ArrayList.iter do (
-                    output.write("\n");
-                    ansi.with_mode(
-                        :Dim,
-                        () => (
-                            output.write("Note: at ");
-                            Span.print(&info^.span);
-                            output.write("\n");
-                        ),
+        lock_output(() => (
+            ansi.with_mode(
+                :Red,
+                () => (
+                    let source_name :: Option.t[&str] = match diagnostic^.source with (
+                        | :Internal => :Some "Internal"
+                        | :Lexer => :Some "Lexer"
+                        | :Parser => :Some "Parser"
+                        | :Compiler => :Some "Compiler"
+                        | :Interpreter => :Some "Interpreter"
+                        | :Other => :None
                     );
-                    info^.message();
-                );
-                output.write("\n\n");
-            ),
-        );
+                    match source_name with (
+                        | :Some source_name => (
+                            locked_output.write_str(source_name);
+                            locked_output.write_str(" error at ");
+                        )
+                        | :None => (
+                            locked_output.write_str("Error at ");
+                        )
+                    );
+                    &diagnostic^.span |> Span.print;
+                    locked_output.write_str(":\n");
+                    diagnostic^.message();
+                    for info in &diagnostic^.related |> ArrayList.iter do (
+                        locked_output.write_str("\n");
+                        ansi.with_mode(
+                            :Dim,
+                            () => (
+                                locked_output.write_str("Note: at ");
+                                Span.print(&info^.span);
+                                locked_output.write_str("\n");
+                            ),
+                        );
+                        info^.message();
+                    );
+                    locked_output.write_str("\n\n");
+                ),
+            );
+        ));
     );
 
     const default_handler = (.stop_on_error :: Bool) -> Handler => {
         .stop_on_error,
         .handle = @move (diagnostic :: Diagnostic.t) => (
-            print(&diagnostic);
+            print_to_stderr(&diagnostic);
             if stop_on_error then (
                 std.sys.exit(-1);
             );

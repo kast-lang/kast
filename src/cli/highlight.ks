@@ -72,15 +72,10 @@ const Highlight = (
 
         let output = root_scope.Highlight.new_output(args.mode);
         let process = (path :: &SourcePath) => (
-            Log.info_fn(
-                () => ansi.with_mode(
-                    :Bold,
-                    () => (
-                        SourcePath.print(path);
-                        write_str("\n\n");
-                    ),
-                ),
-            );
+            Log.info_fn(() => (
+                SourcePath.print(path);
+                locked_output.write_str("\n\n");
+            ));
             let source = Source.read(path);
             let entire_source_span = (
                 let start = Position.beginning();
@@ -103,8 +98,10 @@ const Highlight = (
                 .token_stream = &mut token_stream,
             );
 
-            root_scope.Highlight.highlight(&parsed, output);
-            (@current Output).write("\n");
+            lock_output(() => (
+                root_scope.Highlight.highlight(&parsed, output);
+                locked_output.write_str("\n");
+            ));
             # Reset for next file
             output.move_to(Position.beginning(), .print_whitespace = false);
         );

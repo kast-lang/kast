@@ -55,7 +55,7 @@ const error_with_span = [T] (span, message) -> T => (
         .severity = :Error,
         .source = :Lexer,
         .span,
-        .message = () => (@current Output).write(message),
+        .message = () => locked_output.write_str(message),
         .related = ArrayList.new(),
     };
     Diagnostic.report_and_unwind(diagnostic)

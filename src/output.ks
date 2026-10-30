@@ -1,39 +1,72 @@
 use (import "./rc_str.ks").*;
+use std.rc.Rc;
+use std.sync.Mutex;
 
 module:
 
-const OutputT = newtype {
+const OutputSync = newtype {
+    .inner :: Rc.t[Mutex.t[OutputUnsync]],
+};
+
+const OutputUnsync = newtype {
     .color :: Bool,
     .write :: &str -> (),
     .inc_indentation :: () -> (),
     .dec_indentation :: () -> (),
 };
-const Output = @context OutputT;
-const Stdout = @context OutputT;
-const Stderr = @context OutputT;
 
-const write_str = (s :: &str) => (
-    (@current Output).write(s);
+const Output = @context OutputSync;
+const LockedOutput = @context type (&OutputUnsync);
+
+const Stdout = @context OutputSync;
+const Stderr = @context OutputSync;
+
+# TODO drop trait
+const Output_drop = (output :: OutputSync) => (
+    Mutex.drop(output.inner^);
 );
 
-const write = (s :: &RcStr) => (
-    write_str(RcStr.as_str(s));
+const lock_output = [T] (f :: () -> T) -> T => (
+    let lock = Mutex.lock(&(@current Output).inner^);
+    @defer Mutex.unlock(lock);
+    with LockedOutput = &lock.value^;
+    f()
 );
 
-const write_escaped = (s :: &RcStr) => (
-    let escaped = String.escape(s |> RcStr.as_str);
-    write_str(&escaped |> as_str);
-);
+const locked_output = (
+    module:
 
-const write_escaped_contents = (s :: &RcStr, .delimiter :: &RcStr) => (
-    let escaped = String.escape_contents(
-        s |> RcStr.as_str,
-        .delimiter = delimiter |> RcStr.as_str,
+    const inc_indentation = () => (
+        (@current LockedOutput)^.inc_indentation();
     );
-    write_str(&escaped |> as_str);
+
+    const dec_indentation = () => (
+        (@current LockedOutput)^.dec_indentation();
+    );
+
+    const write_str = (s :: &str) => (
+        (@current LockedOutput)^.write(s);
+    );
+
+    const write = (s :: &RcStr) => (
+        write_str(RcStr.as_str(s));
+    );
+
+    const write_escaped = (s :: &RcStr) => (
+        let escaped = String.escape(s |> RcStr.as_str);
+        write_str(&escaped |> as_str);
+    );
+
+    const write_escaped_contents = (s :: &RcStr, .delimiter :: &RcStr) => (
+        let escaped = String.escape_contents(
+            s |> RcStr.as_str,
+            .delimiter = delimiter |> RcStr.as_str,
+        );
+        write_str(&escaped |> as_str);
+    );
 );
 
-const new_std_output = (write :: &str -> (), .color :: Bool) -> OutputT => (
+const new_std_output = (write :: &str -> (), .color :: Bool) -> OutputSync => (
     let indentation_string = if color then "│   " else "    ";
     new_output(.write, .indentation_string, .color)
 );
@@ -47,7 +80,8 @@ const output_to_string = (f :: () -> ()) -> String => (
         .indentation_string = "    ",
         .color = false,
     );
-    f();
+    @defer Output_drop(@current Output);
+    lock_output(f);
     result |> std.StringBuilder.into_string
 );
 
@@ -55,7 +89,7 @@ const new_output = (
     .write :: &str -> (),
     .indentation_string :: &str,
     .color :: Bool,
-) -> OutputT => (
+) -> OutputSync => (
     let indentation_string = String.from_str(indentation_string);
     let indentation = std.rc.Rc.new(0);
     let mut started_line = false;
@@ -64,7 +98,7 @@ const new_output = (
             if s == "" then break;
             let i = s |> String.index_of('\n');
             if not started_line and i != 0 then (
-                if (@current Output).color then (
+                if (@current LockedOutput)^.color then (
                     write("\x1b[");
                     write(ansi.Mode.open_code(:Dim));
                     write("m");
@@ -72,7 +106,7 @@ const new_output = (
                 for _ in 0..indentation^ do (
                     write(&indentation_string |> as_str);
                 );
-                if (@current Output).color then (
+                if (@current LockedOutput)^.color then (
                     write("\x1b[");
                     write(ansi.Mode.close_code(:Dim));
                     write("m");
@@ -89,7 +123,7 @@ const new_output = (
             started_line = false;
         );
     );
-    {
+    let unsync = {
         .color,
         .inc_indentation = @move () => (
             indentation^ += 1;
@@ -98,7 +132,8 @@ const new_output = (
             indentation^ -= 1;
         ),
         .write,
-    }
+    };
+    { .inner = Rc.new(Mutex.new(unsync)) }
 );
 
 const ansi = (
@@ -190,12 +225,12 @@ const ansi = (
     );
 
     const write_code = (code :: &str) => (
-        let output = @current Output;
-        if output.color then (
-            output.write("\x1b[");
-            output.write(code);
+        let output = @current LockedOutput;
+        if output^.color then (
+            output^.write("\x1b[");
+            output^.write(code);
             # if multiple code can separate with ";"
-            output.write("m");
+            output^.write("m");
         );
     );
 

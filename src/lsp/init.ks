@@ -4,7 +4,7 @@ use (import "./semantic_tokens.ks").*;
 
 module:
 
-const initialize = (state :: &mut State, request :: Json.t) -> Json.t => (
+const initialize = (state :: &State, request :: Json.t) -> Json.t => (
     let init_json = @eval (
         std.fs.read_file(&format!("\(std.path.dirname(__FILE__))/init.json") |> as_str)
     );

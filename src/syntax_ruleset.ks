@@ -167,17 +167,17 @@ const SyntaxRuleset = (
                         .source = :Other,
                         .span = rule^.span,
                         .message = () => (
-                            write_str("Conflicting syntax rules ");
-                            write_escaped(&existing_rule^.name);
-                            write_str(" and ");
-                            write_escaped(&rule^.name);
+                            locked_output.write_str("Conflicting syntax rules ");
+                            locked_output.write_escaped(&existing_rule^.name);
+                            locked_output.write_str(" and ");
+                            locked_output.write_escaped(&rule^.name);
                         ),
                         .related = (
                             let mut related = ArrayList.new();
                             let existing_rule_info = {
                                 .span = existing_rule^.span,
                                 .message = () => (
-                                    write_str("Existing rule is defined here");
+                                    locked_output.write_str("Existing rule is defined here");
                                 ),
                             };
                             &mut related |> ArrayList.push_back(existing_rule_info);
@@ -197,34 +197,33 @@ const SyntaxRuleset = (
     );
 
     const print_node = (node :: &Node) => (
-        let output = @current Output;
         if node^.terminal is :Some rule then (
             ansi.with_mode(
                 :Green,
-                () => write_escaped(&rule^.name),
+                () => locked_output.write_escaped(&rule^.name),
             );
-            write_str("\n");
+            locked_output.write_str("\n");
         );
         for &{ .key = _, .value = ref edge } in &node^.next |> OrdMap.iter do (
             match edge^.key with (
                 | :Keyword ref keyword => (
                     ansi.with_mode(
                         :Magenta,
-                        () => write(keyword),
+                        () => locked_output.write(keyword),
                     );
                 )
                 | :Value => (
                     ansi.with_mode(
                         :Yellow,
-                        () => write_str("<value>"),
+                        () => locked_output.write_str("<value>"),
                     );
                 )
             );
-            write_str(" {\n");
-            output.inc_indentation();
+            locked_output.write_str(" {\n");
+            locked_output.inc_indentation();
             print_node(&edge^.target);
-            output.dec_indentation();
-            write_str("}\n");
+            locked_output.dec_indentation();
+            locked_output.write_str("}\n");
         );
     );
 );

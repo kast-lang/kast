@@ -47,7 +47,7 @@ const Highlight = (
             .before_new_line = () => (
                 ansi.with_mode(
                     :Dim,
-                    () => (@current Output).write(" ..."),
+                    () => locked_output.write_str(" ..."),
                 );
                 return;
             ),
@@ -81,12 +81,12 @@ const Highlight = (
                         before_new_line();
                         state^.position.line += 1;
                         state^.position.column = PositionColumn.zero();
-                        (@current Output).write("\n");
+                        locked_output.write_str("\n");
                     );
                     let current_column = state^.position.column.string_encoding;
                     let target_column = target_position.column.string_encoding;
                     for _ in current_column..target_column do (
-                        (@current Output).write(" ");
+                        locked_output.write_str(" ");
                     );
                 );
                 state^.position = target_position;
@@ -108,8 +108,8 @@ const Highlight = (
                     | :SyntaxCommand => :Some :Yellow
                 );
                 match mode with (
-                    | :Some mode => ansi.with_mode(mode, () => (@current Output).write(s))
-                    | :None => (@current Output).write(s)
+                    | :Some mode => ansi.with_mode(mode, () => locked_output.write_str(s))
+                    | :None => locked_output.write_str(s)
                 );
                 state^.position = span.end;
                 state^.printed_something_after_moving = true;

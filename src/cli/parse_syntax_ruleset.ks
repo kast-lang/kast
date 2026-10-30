@@ -6,6 +6,7 @@ use (import "../lexer/_lib.ks").*;
 use (import "../token_stream.ks").*;
 use (import "../syntax_parser.ks").*;
 use (import "../syntax_ruleset.ks").*;
+use (import "../log.ks").*;
 use std.rc.Rc;
 
 module:
@@ -34,14 +35,11 @@ const ParseSyntaxRuleset = (
     const run = (common_args :: Common.Args.t, args :: Args.t) => (
         let mut ruleset = SyntaxRuleset.new();
         let process = (path :: SourcePath) => (
-            ansi.with_mode(
-                :Bold,
-                () => (
-                    write_str("Parsing syntax rules from ");
-                    SourcePath.print(&path);
-                    write_str("\n\n");
-                ),
-            );
+            Log.info_fn(() => (
+                locked_output.write_str("Parsing syntax rules from ");
+                SourcePath.print(&path);
+                locked_output.write_str("\n\n");
+            ));
             let mut lexer = Lexer.new(Source.read(&path));
             let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
             let rules = SyntaxParser.parse_syntax_rules(&mut token_stream);
@@ -55,6 +53,8 @@ const ParseSyntaxRuleset = (
         for path in &args.paths |> ArrayList.iter do (
             process(SourcePath.parse(path |> as_str));
         );
-        SyntaxRuleset.print(&ruleset);
+        lock_output(() => (
+            SyntaxRuleset.print(&ruleset);
+        ));
     )
 )

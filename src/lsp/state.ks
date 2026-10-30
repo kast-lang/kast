@@ -2,11 +2,19 @@ use (import "./common.ks").*;
 
 module:
 
+const FileVersion = Int32;
+
 const FileState = newtype {
+    .processed :: Mutex.t[Option.t[Rc.t[ProcessedFile]]],
+    .latest_version :: Mutex.t[FileVersion],
+};
+
+const ProcessedFile = newtype {
     .contents :: RcStr,
     .lines :: ArrayList.t[RcStr],
     .parsed :: Option.t[Parser.Parsed],
     .diagnostics :: ArrayList.t[Diagnostic.t],
+    .version :: FileVersion,
 };
 
 const State = newtype {
@@ -14,7 +22,7 @@ const State = newtype {
         .kast :: SyntaxRuleset.t,
         .minikast :: SyntaxRuleset.t,
     },
-    .files :: OrdMap.t[RcStr, FileState],
+    .files :: Mutex.t[OrdMap.t[RcStr, Rc.t[FileState]]],
 };
 
 const get_ext = (path :: &str) -> Option.t[&str] => (
@@ -26,10 +34,77 @@ const get_ext = (path :: &str) -> Option.t[&str] => (
     )
 );
 
-const open_or_change_doc = (state :: &mut State, uri :: Uri, contents :: &RcStr) => (
-    let contents = contents^;
+const get_latest_file_state = (state :: &State, uri :: &Uri) -> Option.t[Rc.t[ProcessedFile]] => with_return (
+    let file_state :: Rc.t[FileState] = (
+        let files = Mutex.lock(&state^.files);
+        @defer Mutex.unlock(files);
+        let file_state = &files.value^
+            |> OrdMap.get(&RcStr.from_String(Uri.to_string(uri)))
+            |> Option.unwrap_or_else(() => return :None);
+        file_state^
+    );
+    @loop (unwindable l (
+        let processed :: Rc.t[ProcessedFile] = (
+            let file_state = Mutex.lock(&file_state^.processed);
+            @defer Mutex.unlock(file_state);
+            match file_state.value^ with (
+                | :Some file_state => file_state
+                | :None => unwind l ()
+            )
+        );
+        let latest_version = Mutex.lock(&file_state^.latest_version);
+        @defer Mutex.unlock(latest_version);
+        if processed^.version == latest_version.value^ then (
+            return :Some processed;
+        ) else (
+            return :None;
+        );
+    ))
+);
+
+const open_or_change_doc = (state :: &State, uri :: Uri, contents :: &RcStr) => (
     let uri_str = RcStr.from_String(Uri.to_string(&uri));
     Log.info!("open_or_change_doc \(uri_str)");
+    let { file :: Rc.t[FileState], my_version } = (
+        let files = Mutex.lock(&state^.files);
+        @defer Mutex.unlock(files);
+        match files.value |> OrdMap.get_mut(&uri_str) with (
+            | :Some file => (
+                let latest_version = Mutex.lock(&file^^.latest_version);
+                @defer Mutex.unlock(latest_version);
+                latest_version.value^ += 1;
+                { file^, latest_version.value^ }
+            )
+            | :None => (
+                let version = 0;
+                let file = Rc.new({
+                    .latest_version = Mutex.new(version),
+                    .processed = Mutex.new(:None),
+                });
+                files.value |> OrdMap.add(uri_str, file);
+                { file, version }
+            )
+        )
+    );
+    let processed = Mutex.lock(&file^.processed);
+    @defer Mutex.unlock(processed);
+    let is_latest_version = (
+        let latest_version = Mutex.lock(&file^.latest_version);
+        @defer Mutex.unlock(latest_version);
+        latest_version.value^ == my_version
+    );
+    if is_latest_version then (
+        processed.value^ = :Some Rc.new(do_process(state, uri, contents, my_version));
+    );
+);
+
+const do_process = (
+    state :: &State,
+    uri :: Uri,
+    contents :: &RcStr,
+    version :: FileVersion,
+) -> ProcessedFile => (
+    let contents = contents^;
     let source :: Source = { .path = :Uri Rc.new(uri), .contents };
     let mut diagnostics = ArrayList.new();
     let parsed = (
@@ -58,7 +133,7 @@ const open_or_change_doc = (state :: &mut State, uri :: Uri, contents :: &RcStr)
         );
         :Some parsed
     );
-    let file_state = {
+    {
         .contents,
         .lines = (
             let mut lines = ArrayList.new();
@@ -69,12 +144,11 @@ const open_or_change_doc = (state :: &mut State, uri :: Uri, contents :: &RcStr)
         ),
         .parsed,
         .diagnostics,
-    };
-    eprintln!("parsed \(uri_str)");
-    &mut state^.files |> OrdMap.add(uri_str, file_state);
+        .version,
+    }
 );
 
-const did_open = (state :: &mut State, n :: Json.t) -> () => (
+const did_open = (state :: &State, n :: Json.t) -> () => (
     let :Object ref fields = n;
     let (&(:Object ref params)) = fields
         |> OrdMap.get(&RcStr.allocate("params"))
@@ -95,7 +169,7 @@ const did_open = (state :: &mut State, n :: Json.t) -> () => (
     state |> open_or_change_doc(text_document.uri, text_document.text)
 );
 
-const did_change = (state :: &mut State, n :: Json.t) -> () => (
+const did_change = (state :: &State, n :: Json.t) -> () => (
     let :Object ref fields = n;
     let (&(:Object ref params)) = fields
         |> OrdMap.get(&RcStr.allocate("params"))

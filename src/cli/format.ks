@@ -102,7 +102,7 @@ const Format = (
                 );
                 stdext.fs.write(path, &formatted |> as_str);
             ) else match args.highlight with (
-                | :None => root_scope.Format.format(&parsed, @current Output)
+                | :None => root_scope.Format.format_into(&parsed, @current Output)
                 | :Some highlight_mode => (
                     let source = {
                         .contents = RcStr.from_String(root_scope.Format.format_to_string(&parsed)),
@@ -116,7 +116,9 @@ const Format = (
                         .path = source.path,
                         .token_stream = &mut token_stream,
                     );
-                    Highlight.highlight(&parsed, Highlight.new_output(highlight_mode));
+                    lock_output(() => (
+                        Highlight.highlight(&parsed, Highlight.new_output(highlight_mode));
+                    ));
                 )
             );
         );

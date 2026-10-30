@@ -17,12 +17,11 @@ const Token = (
         self :: &Token.t,
         .verbose :: Bool,
     ) => (
-        let output = @current Output;
         &self^.shape^ |> Token.Shape.print_impl(.verbose);
         ansi.with_mode(
             :Dim,
             () => (
-                write_str(" at ");
+                locked_output.write_str(" at ");
                 &self^.span |> Span.print;
             )
         );
@@ -126,19 +125,18 @@ const Token = (
             self :: &Token.Shape.t,
             .verbose :: Bool,
         ) => (
-            let output = @current Output;
             match self^ with (
                 | :Comment { .raw = ref raw, ... } => (
                     for c in RcStr.iter(raw) do (
                         if c == '\n' then (
                             ansi.with_mode(
                                 :Cyan,
-                                () => write_str("\\n"),
+                                () => locked_output.write_str("\\n"),
                             );
                         ) else (
                             ansi.with_mode(
                                 :Gray,
-                                () => write_str(&to_string(c) |> as_str),
+                                () => locked_output.write_str(&to_string(c) |> as_str),
                             );
                         );
                     );
@@ -146,7 +144,7 @@ const Token = (
                 | :Punct { .raw = ref raw, ... } => (
                     ansi.with_mode(
                         :Magenta,
-                        () => write(raw),
+                        () => locked_output.write(raw),
                     );
                 )
                 | :Ident {
@@ -157,24 +155,24 @@ const Token = (
                     if not verbose or raw == name then (
                         ansi.with_mode(
                             :Under,
-                            () => write(raw),
+                            () => locked_output.write(raw),
                         );
                     ) else (
                         ansi.with_mode(
                             :Under,
-                            () => write(raw),
+                            () => locked_output.write(raw),
                         );
-                        write_str(" = ");
+                        locked_output.write_str(" = ");
                         ansi.with_mode(
                             :Green,
-                            () => write_escaped(name),
+                            () => locked_output.write_escaped(name),
                         );
                     );
                 )
                 | :Number { .raw = ref raw, ... } => (
                     ansi.with_mode(
                         :Italic,
-                        () => write(raw),
+                        () => locked_output.write(raw),
                     );
                 )
                 | :String {
@@ -184,19 +182,19 @@ const Token = (
                 } => (
                     ansi.with_mode(
                         :Green,
-                        () => write(raw),
+                        () => locked_output.write(raw),
                     );
                     if verbose then (
-                        write_str(" {\n");
-                        output.inc_indentation();
-                        write_str(".contents = ");
+                        locked_output.write_str(" {\n");
+                        locked_output.inc_indentation();
+                        locked_output.write_str(".contents = ");
                         ansi.with_mode(
                             :Green,
-                            () => write_escaped(contents),
+                            () => locked_output.write_escaped(contents),
                         );
-                        write_str("\n");
-                        output.dec_indentation();
-                        write_str("}");
+                        locked_output.write_str("\n");
+                        locked_output.dec_indentation();
+                        locked_output.write_str("}");
                     );
                 )
                 | :InterpolatedString {
@@ -208,17 +206,17 @@ const Token = (
                         ansi.with_mode(
                             :Green,
                             () => (
-                                write(delimiter);
-                                write_str("interpolated");
-                                write(delimiter);
+                                locked_output.write(delimiter);
+                                locked_output.write_str("interpolated");
+                                locked_output.write(delimiter);
                             ),
                         );
-                        write_str(" {\n");
-                        output.inc_indentation();
+                        locked_output.write_str(" {\n");
+                        locked_output.inc_indentation();
                     ) else (
                         ansi.with_mode(
                             :Green,
-                            () => write(delimiter),
+                            () => locked_output.write(delimiter),
                         );
                     );
                     for part in parts |> ArrayList.iter do (
@@ -232,25 +230,25 @@ const Token = (
                                     ansi.with_mode(
                                         :Green,
                                         () => (
-                                            write(delimiter);
-                                            write_escaped_contents(raw, .delimiter);
-                                            write(delimiter);
+                                            locked_output.write(delimiter);
+                                            locked_output.write_escaped_contents(raw, .delimiter);
+                                            locked_output.write(delimiter);
                                         ),
                                     );
-                                    write_str(" {\n");
-                                    output.inc_indentation();
-                                    write_str(".contents = ");
+                                    locked_output.write_str(" {\n");
+                                    locked_output.inc_indentation();
+                                    locked_output.write_str(".contents = ");
                                     ansi.with_mode(
                                         :Green,
-                                        () => write_escaped(contents),
+                                        () => locked_output.write_escaped(contents),
                                     );
-                                    write_str("\n");
-                                    output.dec_indentation();
-                                    write_str("}");
+                                    locked_output.write_str("\n");
+                                    locked_output.dec_indentation();
+                                    locked_output.write_str("}");
                                 ) else (
                                     ansi.with_mode(
                                         :Green,
-                                        () => write(raw),
+                                        () => locked_output.write(raw),
                                     );
                                 );
                             )
@@ -261,61 +259,61 @@ const Token = (
                                 if verbose then (
                                     ansi.with_mode(
                                         :Cyan,
-                                        () => write_str("\\"),
+                                        () => locked_output.write_str("\\"),
                                     );
-                                    write_str(" {\n");
-                                    output.inc_indentation();
+                                    locked_output.write_str(" {\n");
+                                    locked_output.inc_indentation();
                                     for token in tokens |> ArrayList.iter do (
                                         Token.Shape.print_impl(&token^.shape^, .verbose);
-                                        write_str("\n");
+                                        locked_output.write_str("\n");
                                     );
-                                    output.dec_indentation();
-                                    write_str("}");
+                                    locked_output.dec_indentation();
+                                    locked_output.write_str("}");
                                 ) else (
                                     ansi.with_mode(
                                         :Cyan,
-                                        () => write_str("\\("),
+                                        () => locked_output.write_str("\\("),
                                     );
                                     let mut first = true;
                                     for token in tokens |> ArrayList.iter do (
                                         if first then (
                                             first = false;
                                         ) else (
-                                            write_str(" ");
+                                            locked_output.write_str(" ");
                                         );
                                         Token.Shape.print_impl(&token^.shape^, .verbose);
                                     );
                                     ansi.with_mode(
                                         :Cyan,
-                                        () => write_str(")"),
+                                        () => locked_output.write_str(")"),
                                     );
                                 );
                             )
                         );
                         if verbose then (
-                            write_str("\n");
+                            locked_output.write_str("\n");
                         );
                     );
                     if verbose then (
-                        output.dec_indentation();
-                        write_str("}");
+                        locked_output.dec_indentation();
+                        locked_output.write_str("}");
                     ) else (
                         ansi.with_mode(
                             :Green,
-                            () => write(delimiter),
+                            () => locked_output.write(delimiter),
                         );
                     );
                 )
                 | :Error { .raw = ref raw, ... } => (
                     ansi.with_mode(
                         :Red,
-                        () => write(raw),
+                        () => locked_output.write(raw),
                     );
                 )
                 | :Eof => (
                     ansi.with_mode(
                         :Italic,
-                        () => write_str("<eof>"),
+                        () => locked_output.write_str("<eof>"),
                     );
                 )
             );

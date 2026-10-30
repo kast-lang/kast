@@ -171,25 +171,24 @@ const Tuple = (
         .print_value :: &T -> (),
         .close :: &str,
     ) => (
-        let output = @current Output;
-        write_str(open);
-        write_str("\n");
-        output.inc_indentation();
+        locked_output.write_str(open);
+        locked_output.write_str("\n");
+        locked_output.inc_indentation();
         for value in &self^.unnamed |> ArrayList.iter do (
             print_value(value);
-            write_str(delimiter);
-            write_str("\n");
+            locked_output.write_str(delimiter);
+            locked_output.write_str("\n");
         );
         for name in &self^.name_order |> ArrayList.iter do (
-            write_str(before_field_name);
-            write(name);
-            write_str(after_field_name);
+            locked_output.write_str(before_field_name);
+            locked_output.write(name);
+            locked_output.write_str(after_field_name);
             print_value(&self^.named |> OrdMap.get(name) |> Option.unwrap);
-            write_str(delimiter);
-            write_str("\n");
+            locked_output.write_str(delimiter);
+            locked_output.write_str("\n");
         );
-        output.dec_indentation();
-        write_str(close);
+        locked_output.dec_indentation();
+        locked_output.write_str(close);
     );
 
     const into_iter = [T] (self :: Tuple.t[T]) -> std.iter.Iterable[type { Member, T }] => {

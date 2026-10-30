@@ -150,11 +150,10 @@ const MakeAstModule = (
         );
 
         const print_shape = (self :: &Ast.Shape.t) => (
-            let output = @current Output;
             match self^ with (
                 | :Empty => ansi.with_mode(
                     :Dim,
-                    () => write_str("<empty>"),
+                    () => locked_output.write_str("<empty>"),
                 )
                 | :Token ref token => Token.Shape.print(&token^.shape^)
                 | :InterpolatedString {
@@ -167,19 +166,19 @@ const MakeAstModule = (
                     ansi.with_mode(
                         :Green,
                         () => (
-                            write(delimiter);
-                            write_str("interpolated");
-                            write(delimiter);
+                            locked_output.write(delimiter);
+                            locked_output.write_str("interpolated");
+                            locked_output.write(delimiter);
                         ),
                     );
-                    write_str(" {\n");
-                    output.inc_indentation();
+                    locked_output.write_str(" {\n");
+                    locked_output.inc_indentation();
                     for part in parts |> ArrayList.iter do (
                         match part^ with (
                             | :Content { .contents = ref contents, ... } => (
                                 ansi.with_mode(
                                     :Green,
-                                    () => write_escaped(contents),
+                                    () => locked_output.write_escaped(contents),
                                 );
                             )
                             | :Interpolated {
@@ -190,76 +189,76 @@ const MakeAstModule = (
                             } => (
                                 ansi.with_mode(
                                     :Yellow,
-                                    () => output.write("\\ "),
+                                    () => locked_output.write_str("\\ "),
                                 );
                                 print(ast);
                             )
                         );
-                        output.write(",\n");
+                        locked_output.write_str(",\n");
                     );
-                    output.dec_indentation();
-                    output.write("}");
+                    locked_output.dec_indentation();
+                    locked_output.write_str("}");
                 )
                 | :Rule { .rule = ref rule, .root = ref root } => (
                     ansi.with_mode(
                         :Magenta,
-                        () => write(&rule^^.name),
+                        () => locked_output.write(&rule^^.name),
                     );
-                    write_str(" ");
+                    locked_output.write_str(" ");
                     print_group(root);
                 )
                 | :Syntax { .command = ref command, .value_after = ref value_after } => (
                     if value_after^ is :Some _ then (
-                        write_str("{\n");
-                        output.inc_indentation();
+                        locked_output.write_str("{\n");
+                        locked_output.inc_indentation();
                     );
                     ansi.with_mode(
                         :Yellow,
                         () => (
-                            write_str("@syntax");
+                            locked_output.write_str("@syntax");
                             match command^.shape with (
-                                | :FromScratch => write_str("from_scratch")
-                                | :Rule ref rule => write_escaped(&rule^^.name)
+                                | :FromScratch => locked_output.write_str("from_scratch")
+                                | :Rule ref rule => locked_output.write_escaped(&rule^^.name)
                             );
                         ),
                     );
                     if value_after^ is :Some ref value then (
                         print(value);
-                        write_str("\n");
-                        output.dec_indentation();
-                        write_str("}");
+                        locked_output.write_str("\n");
+                        locked_output.dec_indentation();
+                        locked_output.write_str("}");
                     );
                 )
                 | :Error { .parts = ref parts } => (
                     ansi.with_mode(
                         :Red,
-                        () => write_str("<error>"),
+                        () => locked_output.write_str("<error>"),
                     );
-                    write_str("{\n");
-                    output.inc_indentation();
+                    locked_output.write_str("{\n");
+                    locked_output.inc_indentation();
                     for part in parts |> ArrayList.iter do (
                         match part^ with (
                             | :Ignored ref token => (
                                 ansi.with_mode(
                                     :Dim,
-                                    () => write_str("<ignored> "),
+                                    () => locked_output.write_str("<ignored> "),
                                 );
                                 Token.Shape.print_impl(&token^.shape^, .verbose = false);
                             )
                             | :Keyword ref token => (
                                 ansi.with_mode(
                                     :Magenta,
-                                    () => write_str(Token.raw(token)),
+                                    () => locked_output.write_str(Token.raw(token)),
                                 );
                             )
                             | :Value ref ast => (
                                 print(&ast^^);
                             )
                         );
-                        write_str(",\n");
+                        locked_output.write_str(",\n");
                     );
-                    output.dec_indentation();
-                    write_str("}");
+                    locked_output.dec_indentation();
+                    locked_output.write_str("}");
                 )
             );
         );
@@ -282,12 +281,11 @@ const Ast = (
             .t_span_def = `((ast :: &$t) -> Span => ast^.span),
             .print_def = `(
                 (ast :: &$t) => (
-                    let output = @current Output;
                     $Shape.print(&ast^.shape^);
                     ansi.with_mode(
                         :Dim,
                         () => (
-                            output.write(" at ");
+                            locked_output.write_str(" at ");
                             Span.print(&ast^.span);
                         ),
                     );

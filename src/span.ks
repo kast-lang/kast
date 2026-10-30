@@ -16,11 +16,10 @@ impl Span as module = (
 
     # <source_path>:<start.line>.<start.column>-<end.line>.<end.column>
     const print = (self :: &Span) => (
-        let output = @current Output;
         &self^.path |> SourcePath.print;
-        output.write(":");
+        locked_output.write_str(":");
         &self^.start |> Position.print;
-        output.write("-");
+        locked_output.write_str("-");
         &self^.end |> Position.print;
     );
 

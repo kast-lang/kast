@@ -35,16 +35,11 @@ const Tokenize = (
 
     const run = (common_args :: Common.Args.t, args :: Args.t) => (
         let process = (path :: &SourcePath) => (
-            Log.info_fn(
-                () => ansi.with_mode(
-                    :Bold,
-                    () => (
-                        write_str("Lexing ");
-                        SourcePath.print(path);
-                        write_str("\n\n");
-                    ),
-                ),
-            );
+            Log.info_fn(() => (
+                locked_output.write_str("Lexing ");
+                SourcePath.print(path);
+                locked_output.write_str("\n\n");
+            ));
             match common_args.output_mode with (
                 | :None => (
                     let source = Source.read(path);
@@ -59,8 +54,10 @@ const Tokenize = (
                     let mut lexer = Lexer.new(source);
                     loop (
                         let token = &mut lexer |> Lexer.next;
-                        &token |> Token.print_impl(.verbose = true);
-                        (@current Output).write("\n");
+                        lock_output(() => (
+                            &token |> Token.print_impl(.verbose = true);
+                            locked_output.write_str("\n");
+                        ));
                         if token.shape^ is :Eof then break;
                     );
                 )
@@ -75,8 +72,10 @@ const Tokenize = (
                             if token.shape^ is :Eof then break;
                         );
                         let json = :Array json_tokens;
-                        Json.print(&json);
-                        (@current Output).write("\n");
+                        lock_output(() => (
+                            Json.print(&json);
+                            locked_output.write("\n");
+                        ));
                     );
                 )
             );

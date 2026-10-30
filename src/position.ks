@@ -51,9 +51,9 @@ impl Position as module = (
     );
 
     const print = (self :: &Position) => (
-        let output = @current Output;
-        output.write(&to_string(self^.line + 1) |> as_str);
-        output.write(".");
-        output.write(&to_string(self^.column.display_width + 1) |> as_str);
+        let output = @current LockedOutput;
+        output^.write(&to_string(self^.line + 1) |> as_str);
+        output^.write(".");
+        output^.write(&to_string(self^.column.display_width + 1) |> as_str);
     );
 );

@@ -22,10 +22,12 @@ with Stdout = new_std_output(
     std.io.stdout.write,
     .color = Common.output_color(std.io.stdout.isatty(), :Auto),
 );
+@defer Output_drop(@current Stdout);
 with Stderr = new_std_output(
     std.io.stderr.write,
     .color = Common.output_color(std.io.stderr.isatty(), :Auto),
 );
+@defer Output_drop(@current Stderr);
 with Output = (@current Stdout);
 with Diagnostic.AbortHandler = Diagnostic.default_abort_handler;
 
@@ -114,10 +116,12 @@ with Stdout = new_std_output(
     std.io.stdout.write,
     .color = Common.output_color(std.io.stdout.isatty(), common_args.color),
 );
+@defer Output_drop(@current Stdout);
 with Stderr = new_std_output(
     std.io.stderr.write,
     .color = Common.output_color(std.io.stderr.isatty(), common_args.color),
 );
+@defer Output_drop(@current Stderr);
 with Output = (@current Stdout);
 
 with Diagnostic.HandlerContext = Diagnostic.default_handler(.stop_on_error = common_args.stop_on_error);

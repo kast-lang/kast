@@ -6,7 +6,7 @@ module:
 const formatting = (
     module:
 
-    const format = (state :: &mut State, request :: Json.t) -> Json.t => with_return (
+    const format = (state :: &State, request :: Json.t) -> Json.t => with_return (
         let :Object ref fields = request;
         let (&(:Object ref params)) = fields
             |> OrdMap.get(&RcStr.allocate("params"))
@@ -22,8 +22,7 @@ const formatting = (
             { .uri = parse(uri |> RcStr.as_str) }
         );
 
-        let file_state = &state^.files
-            |> OrdMap.get(&RcStr.from_String(Uri.to_string(&text_document.uri)))
+        let file_state = get_latest_file_state(state, &text_document.uri)
             |> Option.unwrap_or_else(() => return :Null);
         let parsed = &file_state^.parsed
             |> Option.as_ref

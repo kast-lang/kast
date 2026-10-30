@@ -21,6 +21,7 @@ use (import "../rc_str.ks").*;
 use (import "../../deps/uri/src/lib.ks").*;
 use std.collections.OrdMap;
 use std.rc.Rc;
+use std.sync.Mutex;
 
 const span_to_lsp_range = (span :: Span) -> Json.t => (
     let mut fields = OrdMap.new();

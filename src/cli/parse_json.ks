@@ -57,8 +57,10 @@ const ParseJson = (
                     );
                 Json.from_dep(json)
             );
-            Json.print(&json);
-            (@current Output).write("\n");
+            lock_output(() => (
+                Json.print(&json);
+                locked_output.write_str("\n");
+            ));
         );
         if &args.paths |> ArrayList.length == 0 then (
             process(&(:Stdin));

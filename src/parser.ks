@@ -179,7 +179,7 @@ const Parser = (
                 | _ => break
             );
             Log.debug_fn(() => (
-                write_str("Skipping ");
+                locked_output.write_str("Skipping ");
                 Token.print(&peek);
             ));
             &mut ctx^.ignored_tokens |> ArrayList.push_back(peek);
@@ -329,19 +329,20 @@ const Parser = (
         let parent_parsing_rule_context = @current ParsingRuleCtx;
         with ParsingRuleCtx = {
             .print = () => (
-                let output = @current Output;
-                write_str("Parsing");
+                locked_output.write_str("Parsing");
                 for part in &parts |> ArrayList.iter do (
-                    write_str(" ");
+                    locked_output.write_str(" ");
                     match part^ with (
-                        | :Keyword ref token => write_str(token |> Token.raw)
+                        | :Keyword ref token => (
+                            locked_output.write_str(token |> Token.raw);
+                        )
                         | :Value ref ast => (
-                            write_str("_ at ");
+                            locked_output.write_str("_ at ");
                             Span.print(&ast^.span);
                         )
                     );
                 );
-                write_str("\nwhile ");
+                locked_output.write_str("\nwhile ");
                 parent_parsing_rule_context.print();
             ),
         };
@@ -353,15 +354,14 @@ const Parser = (
             let peek_raw = &peek |> Token.raw;
 
             Log.debug_fn(() => (
-                let output = @current Output;
-                write_str("Looking at ");
+                locked_output.write_str("Looking at ");
                 Token.print(&peek);
-                write_str("\ncontinuation keywords:");
+                locked_output.write_str("\ncontinuation keywords:");
                 for keyword in &dyn_ctx^.continuation_keywords |> OrdSet.iter do (
-                    write_str(" ");
-                    write_escaped(keyword);
+                    locked_output.write_str(" ");
+                    locked_output.write_escaped(keyword);
                 );
-                output.write("\n");
+                locked_output.write_str("\n");
                 (@current ParsingRuleCtx).print();
             ));
 
@@ -491,15 +491,17 @@ const Parser = (
                         .source = :Parser,
                         .span,
                         .message = () => (
-                            write_str("Can't finish parsing");
+                            locked_output.write_str("Can't finish parsing");
                             for part in &parts |> ArrayList.iter do (
                                 match part^ with (
                                     | :Ignored _ => ()
                                     | :Keyword token => (
-                                        write_str(" ");
-                                        write_str(&token |> Token.raw);
+                                        locked_output.write_str(" ");
+                                        locked_output.write_str(&token |> Token.raw);
                                     )
-                                    | :Value _ => write_str(" _")
+                                    | :Value _ => (
+                                        locked_output.write_str(" _");
+                                    )
                                 );
                             );
                         ),
@@ -509,7 +511,7 @@ const Parser = (
                             let unexpected_token = {
                                 .span = peek.span,
                                 .message = () => (
-                                    write_str("Unexpected token ");
+                                    locked_output.write_str("Unexpected token ");
                                     Token.Shape.print(&peek.shape^);
                                 )
                             };
@@ -534,9 +536,9 @@ const Parser = (
             .span,
         };
         Log.debug_fn(() => (
-            write_str("Parsed at ");
+            locked_output.write_str("Parsed at ");
             Span.print(&span);
-            write_str("\n");
+            locked_output.write_str("\n");
             Ast.print(&ast);
         ));
         :MadeProgress ast
@@ -544,19 +546,19 @@ const Parser = (
 
     const print_parsed_parts = (parts :: &ArrayList.t[ParsedPart]) => (
         for part in parts |> ArrayList.iter do (
-            write_str("- ");
+            locked_output.write_str("- ");
             match part^ with (
                 | :Ignored token => (
                     ansi.with_mode(
                         :Dim,
-                        () => write_str("<ignored> "),
+                        () => locked_output.write_str("<ignored> "),
                     );
-                    write_str(&token |> Token.raw)
+                    locked_output.write_str(&token |> Token.raw)
                 )
-                | :Keyword token => write_str(&token |> Token.raw)
+                | :Keyword token => locked_output.write_str(&token |> Token.raw)
                 | :Value ref ast => Ast.print(ast)
             );
-            write_str("\n");
+            locked_output.write_str("\n");
         );
     );
 
@@ -619,8 +621,7 @@ const Parser = (
             match ({ parsed_part, rule_part } :: { _, _ }) with (
                 | { &(:Value ast), &(:Value { .name, ... }) } => (
                     Log.debug_fn(() => (
-                        let output = @current Output;
-                        output.write("Matched value ");
+                        locked_output.write_str("Matched value ");
                         Span.print(&ast.span);
                     ));
                     let ast = Rc.new(ast);
@@ -633,12 +634,11 @@ const Parser = (
                     if token |> Token.raw != keyword |> RcStr.as_str then (
                         internal_error(
                             error_span,
-                            () => (@current Output).write("Incorrectly matched keyword")
+                            () => locked_output.write_str("Incorrectly matched keyword")
                         );
                     );
                     Log.debug_fn(() => (
-                        let output = @current Output;
-                        output.write("Matched keyword ");
+                        locked_output.write_str("Matched keyword ");
                         Token.print(token);
                     ));
                     &mut ast_parts |> ArrayList.push_back(:Keyword token^);
@@ -678,8 +678,7 @@ const Parser = (
                         )
                     );
                     Log.debug_fn(() => (
-                        let output = @current Output;
-                        output.write("Matching group at ");
+                        locked_output.write_str("Matching group at ");
                         Span.print(&rule_group^.span);
                     ));
                     let group = collect_values_from(
@@ -702,11 +701,10 @@ const Parser = (
                     internal_error(
                         error_span,
                         () => (
-                            let output = @current Output;
-                            write_str("mismatch matching parsed part #");
-                            write_str(&to_string(parsed_part_idx^) |> as_str);
-                            write_str(" and rule_group_part #");
-                            write_str(&to_string(rule_part_idx) |> as_str);
+                            locked_output.write_str("mismatch matching parsed part #");
+                            locked_output.write_str(&to_string(parsed_part_idx^) |> as_str);
+                            locked_output.write_str(" and rule_group_part #");
+                            locked_output.write_str(&to_string(rule_part_idx) |> as_str);
                         ),
                     );
                 )
@@ -717,13 +715,13 @@ const Parser = (
             let fail = (type_name :: &str, name :: Option.t[RcStr], span :: Span) => internal_error(
                 error_span,
                 () => (
-                    write_str("Rule parts were not fully matched - didn't match ");
-                    write_str(type_name);
+                    locked_output.write_str("Rule parts were not fully matched - didn't match ");
+                    locked_output.write_str(type_name);
                     if name is :Some ref name then (
-                        write_str(" ");
-                        write(name);
+                        locked_output.write_str(" ");
+                        locked_output.write(name);
                     );
-                    write_str(" at ");
+                    locked_output.write_str(" at ");
                     Span.print(&span);
                 ),
             );
@@ -752,8 +750,7 @@ const Parser = (
                 internal_error(
                     error_span,
                     () => (
-                        let output = @current Output;
-                        output.write("Collected zero parts?");
+                        locked_output.write_str("Collected zero parts?");
                     ),
                 );
             );
@@ -855,10 +852,9 @@ const Parser = (
                     .source = :Parser,
                     .span = peek.span,
                     .message = () => (
-                        let output = @current Output;
-                        output.write("Expected ");
-                        output.write(eof_name);
-                        output.write(", got ");
+                        locked_output.write_str("Expected ");
+                        locked_output.write_str(eof_name);
+                        locked_output.write_str(", got ");
                         Token.Shape.print_impl(&peek.shape^, .verbose = false);
                     ),
                     .related = ArrayList.new(),

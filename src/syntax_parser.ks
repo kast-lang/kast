@@ -35,12 +35,12 @@ const SyntaxParser = (
             report_error_and_unwind(
                 actual.span,
                 () => (
-                    write_str("Expected ");
+                    locked_output.write_str("Expected ");
                     ansi.with_mode(
                         :Magenta,
-                        () => write_str(expected_raw),
+                        () => locked_output.write_str(expected_raw),
                     );
-                    write_str(", got ");
+                    locked_output.write_str(", got ");
                     &actual.shape^ |> Token.Shape.print;
                 ),
             );
@@ -85,7 +85,7 @@ const SyntaxParser = (
         report_error_and_unwind(
             peek.span,
             () => (
-                write_str("Expected wrap mode (never/always/if_any/if_any_assoc), got ");
+                locked_output.write_str("Expected wrap mode (never/always/if_any/if_any_assoc), got ");
                 &peek.shape^ |> Token.Shape.print;
             ),
         )
@@ -147,7 +147,7 @@ const SyntaxParser = (
             report_error_and_unwind(
                 peek.span,
                 () => (
-                    write_str("Expected syntax rule priority (number token), got ");
+                    locked_output.write_str("Expected syntax rule priority (number token), got ");
                     &peek.shape^ |> Token.Shape.print;
                 ),
             )
@@ -168,7 +168,7 @@ const SyntaxParser = (
                     report_error_and_unwind(
                         peek.span,
                         () => (
-                            write_str("\"<-\" can only be specified in beginning of the rule");
+                            locked_output.write_str("\"<-\" can only be specified in beginning of the rule");
                         ),
                     );
                 );
@@ -216,7 +216,7 @@ const SyntaxParser = (
                         report_error_and_unwind(
                             peek.span,
                             () => (
-                                write_str("Expected priority filter (\"any\" or \">\" or \">=\"), got ");
+                                locked_output.write_str("Expected priority filter (\"any\" or \">\" or \">=\"), got ");
                                 &peek.shape^ |> Token.Shape.print;
                             ),
                         )
@@ -245,7 +245,7 @@ const SyntaxParser = (
                             report_error_and_unwind(
                                 peek.span,
                                 () => (
-                                    write_str("Expected whitespace when wrapped (string token), got ");
+                                    locked_output.write_str("Expected whitespace when wrapped (string token), got ");
                                     &peek.shape^ |> Token.Shape.print;
                                 ),
                             )
@@ -261,7 +261,7 @@ const SyntaxParser = (
                 report_error_and_unwind(
                     peek.span,
                     () => (
-                        write_str("Expected syntax rule part, got ");
+                        locked_output.write_str("Expected syntax rule part, got ");
                         &peek.shape^ |> Token.Shape.print;
                     ),
                 )
@@ -285,7 +285,7 @@ const SyntaxParser = (
                 report_error_and_unwind(
                     peek.span,
                     () => (
-                        write_str("Expected syntax rule name (string token), got ");
+                        locked_output.write_str("Expected syntax rule name (string token), got ");
                         &peek.shape^ |> Token.Shape.print;
                     ),
                 )
@@ -310,7 +310,7 @@ const SyntaxParser = (
                 report_error_and_unwind(
                     peek.span,
                     () => (
-                        write_str("Expected \";\" to finish rule, got ");
+                        locked_output.write_str("Expected \";\" to finish rule, got ");
                         &peek.shape^ |> Token.Shape.print;
                     ),
                 )

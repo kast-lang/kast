@@ -36,18 +36,20 @@ const Log = (
             | :Warn => { :Yellow, "WARN" }
             | :Error => { :Red, "ERROR" }
         );
-        ansi.with_mode(
-            mode,
-            () => (
-                let output = @current Stderr;
-                with Output = output;
-                output.write("[");
-                output.write(level_text);
-                output.write("] ");
-                message();
-                output.write("\n");
-            ),
-        );
+        with Output = (@current Stderr);
+        lock_output(() => (
+            let output = @current LockedOutput;
+            ansi.with_mode(
+                mode,
+                () => (
+                    output^.write("[");
+                    output^.write(level_text);
+                    output^.write("] ");
+                    message();
+                    output^.write("\n");
+                ),
+            );
+        ));
     );
 
     const trace_fn = message => with_level_impl(:Trace, message);
@@ -70,7 +72,7 @@ const Log = (
                     $level,
                     () => (
                         # TODO still dont need to allocate a String
-                        (@current Output).write(&format!($format_string) |> as_str);
+                        (@current LockedOutput)^.write(&format!($format_string) |> as_str);
                     ),
                 );
             );

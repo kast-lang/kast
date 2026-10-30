@@ -70,6 +70,6 @@ impl SourcePath as module = (
     );
 
     const print = (self :: &SourcePath) => (
-        write_str(&format!("\(self^)") |> as_str);
+        locked_output.write_str(&format!("\(self^)") |> as_str);
     );
 );

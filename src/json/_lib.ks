@@ -156,8 +156,7 @@ const Json = (
         error(
             ast^.span,
             () => (
-                let output = @current Output;
-                output.write("Expected field name");
+                locked_output.write_str("Expected field name");
             ),
         )
     );
@@ -187,8 +186,8 @@ const Json = (
             error(
                 field^.span,
                 () => (
-                    write_str("Expected field, got ");
-                    write(&rule^.name);
+                    locked_output.write_str("Expected field, got ");
+                    locked_output.write(&rule^.name);
                 )
             );
         );
@@ -199,7 +198,7 @@ const Json = (
         match ast^.shape^ with (
             | :Empty => error(
                 ast^.span,
-                () => (@current Output).write("json can't be empty"),
+                () => locked_output.write_str("json can't be empty"),
             )
             | :Token ref token => (
                 match token^.shape^ with (
@@ -208,7 +207,7 @@ const Json = (
                     | _ => error(
                         token^.span,
                         () => (
-                            (@current Output).write("json can't be ");
+                            locked_output.write_str("json can't be ");
                             Token.Shape.print(&token^.shape^);
                         )
                     )
@@ -217,7 +216,7 @@ const Json = (
             | :InterpolatedString _ => (
                 error(
                     ast^.span,
-                    () => (@current Output).write("Interpolated strings aren't supported")
+                    () => locked_output.write_str("Interpolated strings aren't supported")
                 )
             )
             | :Rule { .rule = ref rule, .root = { .children = ref children, ... } } => (
@@ -230,7 +229,7 @@ const Json = (
                         | _ => (
                             error(
                                 inner^.span,
-                                () => (@current Output).write("Expected a number to be negated"),
+                                () => locked_output.write_str("Expected a number to be negated"),
                             )
                         )
                     )
@@ -253,8 +252,8 @@ const Json = (
                 error(
                     ast^.span,
                     () => (
-                        write(&rule^.name);
-                        write_str(" is not valid json");
+                        locked_output.write(&rule^.name);
+                        locked_output.write_str(" is not valid json");
                     ),
                 )
             )
@@ -287,69 +286,67 @@ const Json = (
             | :Number value => (
                 ansi.with_mode(
                     :Italic,
-                    () => write_str(&to_string(value) |> as_str),
+                    () => locked_output.write_str(&to_string(value) |> as_str),
                 );
             )
             | :String ref s => (
                 ansi.with_mode(
                     :Green,
-                    () => write_escaped(s),
+                    () => locked_output.write_escaped(s),
                 );
             )
             | :Object ref fields => (
-                let output = @current Output;
-                output.write("{");
+                locked_output.write_str("{");
                 let mut is_empty = true;
                 for { i, field } in fields |> OrdMap.iter |> std.iter.enumerate do (
                     is_empty = false;
-                    if i != 0 then output.write(",");
-                    output.write("\n");
+                    if i != 0 then locked_output.write_str(",");
+                    locked_output.write_str("\n");
                     if i == 0 then (
-                        output.inc_indentation();
+                        locked_output.inc_indentation();
                     );
                     print(&(:String field^.key));
-                    output.write(": ");
+                    locked_output.write_str(": ");
                     print(&field^.value);
                 );
                 if is_empty then (
-                    output.write(" ");
+                    locked_output.write_str(" ");
                 ) else (
-                    output.write("\n");
-                    output.dec_indentation();
+                    locked_output.write_str("\n");
+                    locked_output.dec_indentation();
                 );
-                output.write("}");
+                locked_output.write_str("}");
             )
             | :Array ref a => (
-                let output = @current Output;
-                output.write("[");
+                locked_output.write_str("[");
                 let mut is_empty = true;
                 for { i, element } in a |> ArrayList.iter |> std.iter.enumerate do (
                     is_empty = false;
-                    if i != 0 then output.write(",");
-                    output.write("\n");
+                    if i != 0 then locked_output.write_str(",");
+                    locked_output.write_str("\n");
                     if i == 0 then (
-                        output.inc_indentation();
+                        locked_output.inc_indentation();
                     );
                     print(element);
                 );
                 if is_empty then (
-                    output.write(" ");
+                    locked_output.write_str(" ");
                 ) else (
-                    output.write("\n");
-                    output.dec_indentation();
+                    locked_output.write_str("\n");
+                    locked_output.dec_indentation();
                 );
-                output.write("]");
+                locked_output.write_str("]");
             )
             | :Bool value => (
                 ansi.with_mode(
                     :Magenta,
-                    () => (@current Output).write(&to_string(value) |> as_str),
+                    () => locked_output.write_str(&to_string(value) |> as_str),
                 );
             )
             | :Null => (
                 ansi.with_mode(
                     :Magenta,
-                    () => (@current Output).write("null"),
+                    () => locked_output.write_str("null"),
                 );
             )
         );

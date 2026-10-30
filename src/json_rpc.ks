@@ -124,37 +124,47 @@ const JsonRpc = (
             );
             if message |> OrdMap.get(&RcStr.allocate("id")) is :Some id then (
                 let id = Json.clone(id);
-                let result = handler.on_request(json);
-                let mut response_fields = OrdMap.new();
-                &mut response_fields |> OrdMap.add(RcStr.allocate("id"), id);
-                match result with (
-                    | :Ok result => (
-                        &mut response_fields |> OrdMap.add(RcStr.allocate("result"), result)
-                    )
-                    | :Error error_message => (
-                        let mut error_fields = OrdMap.new();
-                        const INTERNAL_ERROR = -32603 :: Float64;
-                        &mut error_fields
-                            |> OrdMap.add(
-                                RcStr.allocate("code"),
-                                :Number INTERNAL_ERROR,
-                            );
-                        &mut error_fields
-                            |> OrdMap.add(
-                                RcStr.allocate("message"),
-                                :String RcStr.from_String(error_message),
-                            );
-                        &mut response_fields
-                            |> OrdMap.add(
-                                RcStr.allocate("error"),
-                                :Object error_fields,
-                            );
-                    )
-                );
-                let response :: Json.t = :Object response_fields;
-                write(io, response);
+                let parent_ctx = @context;
+                std.thread.spawn(@move () => (
+                    let mut context = parent_ctx;
+                    let &@context = &mut context;
+                    let result = handler.on_request(json);
+                    let mut response_fields = OrdMap.new();
+                    &mut response_fields |> OrdMap.add(RcStr.allocate("id"), id);
+                    match result with (
+                        | :Ok result => (
+                            &mut response_fields |> OrdMap.add(RcStr.allocate("result"), result)
+                        )
+                        | :Error error_message => (
+                            let mut error_fields = OrdMap.new();
+                            const INTERNAL_ERROR = -32603 :: Float64;
+                            &mut error_fields
+                                |> OrdMap.add(
+                                    RcStr.allocate("code"),
+                                    :Number INTERNAL_ERROR,
+                                );
+                            &mut error_fields
+                                |> OrdMap.add(
+                                    RcStr.allocate("message"),
+                                    :String RcStr.from_String(error_message),
+                                );
+                            &mut response_fields
+                                |> OrdMap.add(
+                                    RcStr.allocate("error"),
+                                    :Object error_fields,
+                                );
+                        )
+                    );
+                    let response :: Json.t = :Object response_fields;
+                    write(io, response);
+                ));
             ) else (
-                handler.on_notification(json);
+                let parent_ctx = @context;
+                std.thread.spawn(@move () => (
+                    let mut context = parent_ctx;
+                    let &@context = &mut context;
+                    handler.on_notification(json);
+                ));
             );
         );
     );

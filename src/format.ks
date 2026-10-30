@@ -43,7 +43,7 @@ const Format = (
         let ref mut ctx = @current Context;
         let ref mut indentation = @current Indentation;
         for _ in 0..ctx^.queued_newlines do (
-            write_str("\n");
+            locked_output.write_str("\n");
             ctx^.just_printed_newline = true;
         );
         ctx^.queued_newlines = 0;
@@ -68,9 +68,9 @@ const Format = (
         flush();
         let ref mut ctx = @current Context;
         if ctx^.just_printed_newline then (
-            write_str(&(@current Indentation).string |> as_str);
+            locked_output.write_str(&(@current Indentation).string |> as_str);
         );
-        write_str(raw);
+        locked_output.write_str(raw);
         ctx^.just_printed_newline = false;
     );
 
@@ -94,7 +94,6 @@ const Format = (
     );
 
     const print_token = (token :: &Token.t) => (
-        let output = @current Output;
         let ref mut ctx = @current Context;
         let flush_before = () => (
             flush();
@@ -111,7 +110,7 @@ const Format = (
                 not ctx^.just_printed_newline
                 and ctx^.prev_span.end.line == token^.span.start.line
             ) then (
-                output.write(" ");
+                locked_output.write_str(" ");
             ) else (
                 if not ctx^.just_printed_newline and ctx^.queued_newlines == 0 then (
                     queue_newline();
@@ -120,9 +119,9 @@ const Format = (
             );
             flush();
             if ctx^.just_printed_newline then (
-                write_str(&(@current Indentation).string |> as_str);
+                locked_output.write_str(&(@current Indentation).string |> as_str);
             );
-            write(raw);
+            locked_output.write(raw);
             ctx^.just_printed_newline = false;
             match ty with (
                 | :Line => (
@@ -135,7 +134,7 @@ const Format = (
             );
         ) else (
             if ctx^.prev_was_block_comment and ctx^.prev_span.end.line == token^.span.start.line then (
-                write_str(" ");
+                locked_output.write_str(" ");
             );
             flush_before();
             if token^.shape^ is :String {
@@ -228,11 +227,12 @@ const Format = (
             # should depend on user setting
             .color = false,
         );
-        format(parsed, output);
+        @defer Output_drop(output);
+        format_into(parsed, output);
         std.StringBuilder.into_string(result)
     );
 
-    const format = (parsed :: &Parser.Parsed, output :: OutputT) => (
+    const format_into = (parsed :: &Parser.Parsed, output :: OutputSync) => (
         with Context = {
             .queued_newlines = 0,
             .queued_indentation = 0,
@@ -245,7 +245,6 @@ const Format = (
             .prev_was_block_comment = false,
             .prev_was_string_content = false,
         };
-        with Output = output;
         with Indentation = {
             .string = String.from_str(""),
             .extra_in_string = String.from_str(""),
@@ -255,10 +254,13 @@ const Format = (
             .ignored_trailing_tokens = ref ignored_trailing_tokens,
             .eof = _,
         } = parsed^;
-        walk_ast(ast, .parent = :None);
-        walk_ignored_tokens(ignored_trailing_tokens);
-        queue_newline();
-        flush();
+        with Output = output;
+        lock_output(() => (
+            walk_ast(ast, .parent = :None);
+            walk_ignored_tokens(ignored_trailing_tokens);
+            queue_newline();
+            flush();
+        ));
     );
 
     const Parent = Option.t[type {

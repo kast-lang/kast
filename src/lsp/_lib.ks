@@ -29,7 +29,7 @@ const Lsp = (
     );
 
     const on_request = (
-        state :: &mut State,
+        state :: &State,
         request :: Json.t,
     ) -> Json.t => with_return (
         let :Object ref request_fields = request;
@@ -61,7 +61,7 @@ const Lsp = (
         );
         panic_fmt!("TODO respond to \(method)")
     );
-    const on_notification = (state :: &mut State, notification :: Json.t) -> () => with_return (
+    const on_notification = (state :: &State, notification :: Json.t) -> () => with_return (
         let :Object ref fields = notification;
         let (&(:String ref method)) = fields
             |> OrdMap.get(&RcStr.allocate("method"))
@@ -77,8 +77,6 @@ const Lsp = (
     );
 
     const run = (arg :: CliArgs.t) => (
-        (@current Stdout).color = false;
-        (@current Stderr).color = false;
         let kast_syntax_file :: Source = Source.read(&SourcePath.parse("kast:///std/syntax.ks"));
         let minikast_syntax_file :: Source = Source.read(&SourcePath.parse("kast:///mini/syntax.ks"));
         let get_syntax = source => (
@@ -86,12 +84,12 @@ const Lsp = (
             let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
             SyntaxParser.parse_syntax_ruleset(&mut token_stream)
         );
-        let mut state :: State = {
+        let state :: State = {
             .@"syntax" = {
                 .kast = get_syntax(kast_syntax_file),
                 .minikast = get_syntax(minikast_syntax_file),
             },
-            .files = OrdMap.new(),
+            .files = Mutex.new(OrdMap.new()),
         };
         JsonRpc.run(
             JsonRpc.stdio(),
@@ -101,10 +99,10 @@ const Lsp = (
                         return :Error String.from_str(msg)
                     );
                     with Diagnostic.AbortHandler = abort_handler;
-                    :Ok on_request(&mut state, request)
+                    :Ok on_request(&state, request)
                 ),
                 .on_notification = notification => (
-                    on_notification(&mut state, notification)
+                    on_notification(&state, notification)
                 ),
             }
         )
