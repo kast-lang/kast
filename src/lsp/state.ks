@@ -43,7 +43,7 @@ const get_latest_file_state = (state :: &State, uri :: &Uri) -> Option.t[Rc.t[Pr
             |> Option.unwrap_or_else(() => return :None);
         file_state^
     );
-    @loop (unwindable l (
+    @loop ( unwindable l (
         let processed :: Rc.t[ProcessedFile] = (
             let file_state = Mutex.lock(&file_state^.processed);
             @defer Mutex.unlock(file_state);
@@ -59,7 +59,7 @@ const get_latest_file_state = (state :: &State, uri :: &Uri) -> Option.t[Rc.t[Pr
         ) else (
             return :None;
         );
-    ))
+    ) )
 );
 
 const open_or_change_doc = (state :: &State, uri :: Uri, contents :: &RcStr) => (

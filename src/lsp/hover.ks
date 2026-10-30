@@ -62,7 +62,7 @@ const hover = (state :: &State, request :: Json.t) -> Json.t => with_return (
         | :Some c => (
             format!(''
                 Hovered char: `\(c)`
-
+                
                 position: \(position.line + 1):\(position.column.string_encoding + 1)'')
         )
         | :None => format!("Hovering out of range?")
