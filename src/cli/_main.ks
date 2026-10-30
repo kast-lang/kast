@@ -12,7 +12,7 @@ use (import "./parse_syntax_ruleset.ks").*;
 use (import "./parse.ks").*;
 # use (import "./repl.ks").*;
 # use (import "./run.ks").*;
-# use (import "./structural_find_and_replace.ks").*;
+use (import "./structural_find_and_replace.ks").*;
 use (import "./tokenize.ks").*;
 # use (import "./mini.ks").*;
 
@@ -43,7 +43,7 @@ const Args = (
         | :Highlight Highlight.Args.t
         | :Format Format.Args.t
         | :Lsp Lsp.CliArgs.t
-        # | :StructuralFindAndReplace StructuralFindAndReplace.Args.t
+        | :StructuralFindAndReplace StructuralFindAndReplace.Args.t
         # | :Repl Repl.Args.t
         # | :Run Run.Args.t
         # | :Mini Mini.Args.t
@@ -84,10 +84,10 @@ const Args = (
                 if arg == "lsp" then (
                     unwind subcommand (:Lsp Lsp.CliArgs.parse(i + 1));
                 );
+                if arg == "find-ast" then (
+                    unwind subcommand (:StructuralFindAndReplace StructuralFindAndReplace.Args.parse(i + 1, .fix_syntax = :None));
+                );
                 @comment_out (
-                    if arg == "find-ast" then (
-                        unwind subcommand (:StructuralFindAndReplace StructuralFindAndReplace.Args.parse(i + 1, .fix_syntax = :None));
-                    );
                     if arg == "repl" then (
                         unwind subcommand (:Repl Repl.Args.parse(i + 1));
                     );
@@ -134,7 +134,7 @@ match subcommand with (
     | :Highlight args => Highlight.run(common_args, args)
     | :Format args => Format.run(common_args, args)
     | :Lsp args => Lsp.run(args)
-    # | :StructuralFindAndReplace args => StructuralFindAndReplace.run(common_args, args)
+    | :StructuralFindAndReplace args => StructuralFindAndReplace.run(common_args, args)
     # | :Repl args => Repl.run(common_args, args)
     # | :Run args => Run.run(common_args, args)
     # | :Mini args => Mini.run(common_args, args)

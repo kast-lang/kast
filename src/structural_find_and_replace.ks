@@ -5,6 +5,7 @@
 #
 # kast find-ast --pattern '&$arr |> ArrayList.at($idx)' --replace '$arr.[$idx]'
 use (import "./tuple.ks").*;
+use (import "./rc_str.ks").*;
 use (import "./span.ks").*;
 use (import "./source.ks").*;
 use (import "./source_path.ks").*;
@@ -19,6 +20,7 @@ use (import "./syntax_ruleset.ks").*;
 use (import "./ast.ks").*;
 use (import "./highlight.ks").*;
 use std.collections.OrdMap;
+use std.rc.Rc;
 
 module:
 
@@ -27,12 +29,12 @@ const StructuralFindAndReplace = (
 
     const Pattern = newtype {
         .ast :: Ast.t,
-        .bindings :: OrdMap.t[String, type (&Ast.t)],
+        .bindings :: OrdMap.t[&str, type (&Ast.t)],
     };
 
     const compile_pattern = (
         source :: Source,
-        .ruleset :: SyntaxRuleset.t,
+        .ruleset :: &SyntaxRuleset.t,
     ) -> Pattern => (
         let mut lexer = Lexer.new(source);
         let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
@@ -54,7 +56,7 @@ const StructuralFindAndReplace = (
     );
 
     const FindBindingsContext = @context newtype {
-        .bindings :: &mut OrdMap.t[String, type (&Ast.t)],
+        .bindings :: &mut OrdMap.t[&str, type (&Ast.t)],
     };
 
     const find_bindings_ast = (ast :: &Ast.t) => with_return (
@@ -62,14 +64,14 @@ const StructuralFindAndReplace = (
             (@current FindBindingsContext).bindings |> OrdMap.add(name, ast);
             return;
         );
-        match ast^.shape with (
+        match ast^.shape^ with (
             | :Empty => ()
             | :Token _ => ()
             | :Rule { .root = ref root, ... } => (
                 find_bindings_ast_group(root);
             )
-            | :Syntax { .value_after, ... } => (
-                if value_after is :Some ref ast then (
+            | :Syntax { .value_after = ref value_after, ... } => (
+                if value_after^ is :Some ref ast then (
                     find_bindings_ast(ast);
                 );
             )
@@ -81,8 +83,8 @@ const StructuralFindAndReplace = (
             match part^ with (
                 | :Ignored _ => ()
                 | :Keyword _ => ()
-                | :Value ref ast => find_bindings_ast(ast)
-                | :Group ref group => find_bindings_ast_group(group)
+                | :Value ref ast => find_bindings_ast(&ast^^)
+                | :Group ref group => find_bindings_ast_group(&group^^)
             );
         );
     );
@@ -92,7 +94,7 @@ const StructuralFindAndReplace = (
 
         const t = newtype {
             .ast :: &Ast.t,
-            .bindings :: OrdMap.t[String, type (&Ast.t)],
+            .bindings :: OrdMap.t[&str, type (&Ast.t)],
         };
 
         const print_ast = (ast :: &Ast.t) => (
@@ -101,28 +103,27 @@ const StructuralFindAndReplace = (
             ansi.with_mode(
                 :Dim,
                 () => (
-                    output.write(" at ");
-                    Span.print(ast^.span);
+                    locked_output.write_str(" at ");
+                    Span.print(&ast^.span);
                 ),
             );
         );
 
         const print = (self :: &Found.t) => (
-            let output = @current Output;
-            output.write("Found ");
+            locked_output.write_str("Found ");
             print_ast(self^.ast);
-            output.write(":\n");
+            locked_output.write_str(":\n");
             for &{ .key = name, .value = ast } in &self^.bindings |> OrdMap.iter do (
-                output.write(name);
-                output.write(" = ");
+                locked_output.write_str(name);
+                locked_output.write_str(" = ");
                 print_ast(ast);
-                output.write("\n");
+                locked_output.write_str("\n");
             );
         );
     );
 
     const TryMatchContext = @context newtype {
-        .bindings :: &mut OrdMap.t[String, type (&Ast.t)],
+        .bindings :: &mut OrdMap.t[&str, type (&Ast.t)],
         .fail :: () -> Never,
     };
 
@@ -139,11 +140,11 @@ const StructuralFindAndReplace = (
         :Some { .ast, .bindings }
     );
 
-    const unquote_name = (ast :: &Ast.t) -> Option.t[String] => with_return (
-        if ast^.shape is :Rule { .rule, .root } then (
-            if rule.name == "core:unquote" then (
-                let child = root.children |> Tuple.unwrap_unnamed_1 |> Ast.unwrap_child_value;
-                if child.shape is :Token token then (
+    const unquote_name = (ast :: &Ast.t) -> Option.t[&str] => with_return (
+        if ast^.shape^ is :Rule { .rule = ref rule, .root = ref root } then (
+            if &rule^^.name |> RcStr.as_str == "core:unquote" then (
+                let child = &root^.children |> Tuple.get_unnamed(0) |> Ast.unwrap_child_value;
+                if child^.shape^ is :Token ref token then (
                     return :Some Token.raw(token);
                 );
             );
@@ -160,18 +161,18 @@ const StructuralFindAndReplace = (
             ctx.bindings |> OrdMap.add(name, ast);
             return;
         );
-        match { ast^.shape, pattern^.shape } with (
-            | { :Empty, :Empty } => ()
-            | { :Token a, :Token b } => (
+        match { &ast^.shape^, &pattern^.shape^ } with (
+            | { &(:Empty), &(:Empty) } => ()
+            | { &(:Token ref a), &(:Token ref b) } => (
                 if Token.raw(a) != Token.raw(b) then (
                     ctx.fail();
                 );
             )
             | {
-                :Rule { .rule = ref ast_rule, .root = ref ast_root },
-                :Rule { .rule = ref pattern_rule, .root = ref pattern_root },
+                &(:Rule { .rule = ref ast_rule, .root = ref ast_root }),
+                &(:Rule { .rule = ref pattern_rule, .root = ref pattern_root }),
             } => (
-                if not SyntaxRule.is_same(ast_rule, pattern_rule) then (
+                if not Rc.ptr_eq(ast_rule, pattern_rule) then (
                     ctx.fail();
                 );
                 walk_and_match_ast_group(ast_root, .pattern = pattern_root);
@@ -202,17 +203,17 @@ const StructuralFindAndReplace = (
             let pattern_part = next_respected_part(&mut pattern_part_idx, &pattern^.parts);
             match { group_part, pattern_part } with (
                 | { :None, :None } => break
-                | { :Some a, :Some b } => match { a^, b^ } with (
-                    | { :Keyword a, :Keyword b } => (
+                | { :Some a, :Some b } => match { a, b } with (
+                    | { &(:Keyword ref a), &(:Keyword ref b) } => (
                         if Token.raw(a) != Token.raw(b) then (
                             ctx.fail();
                         );
                     )
-                    | { :Value ref a, :Value ref b } => (
-                        walk_and_match_ast(a, .pattern = b);
+                    | { &(:Value ref a), &(:Value ref b) } => (
+                        walk_and_match_ast(&a^^, .pattern = &b^^);
                     )
-                    | { :Group ref a, :Group ref b } => (
-                        walk_and_match_ast_group(a, .pattern = b);
+                    | { &(:Group ref a), &(:Group ref b) } => (
+                        walk_and_match_ast_group(&a^^, .pattern = &b^^);
                     )
                     | _ => ctx.fail() |> from_never
                 )
@@ -240,7 +241,7 @@ const StructuralFindAndReplace = (
         let ctx = @current FindContext;
         if try_match(ast, ctx.pattern) is :Some found then (
             ctx.found |> ArrayList.push_back(found);
-        ) else match ast^.shape with (
+        ) else match ast^.shape^ with (
             | :Empty => ()
             | :Token _ => ()
             | :InterpolatedString { .parts = ref parts, ... } => (
@@ -265,8 +266,8 @@ const StructuralFindAndReplace = (
     const walk_ast_group = (group :: &Ast.Group) => (
         for { _member, child } in &group^.children |> Tuple.iter do (
             match child^ with (
-                | :Value ref ast => walk_ast(ast)
-                | :Group ref group => walk_ast_group(group)
+                | :Value ref ast => walk_ast(&ast^^)
+                | :Group ref group => walk_ast_group(&group^^)
             )
         );
     );

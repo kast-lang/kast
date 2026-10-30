@@ -14,12 +14,6 @@ const SyntaxRule = (
         .wrap_mode :: WrapMode,
     };
 
-    const is_same = (a :: &SyntaxRule.t, b :: &SyntaxRule.t) -> Bool => (
-        # TODO can have same name rule defined in different places
-        # should compare identity, but no way to do it currently
-        a^.name == b^.name
-    );
-
     const Priority = Float64;
 
     const PriorityFilter = newtype (
