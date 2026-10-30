@@ -196,6 +196,7 @@
             prettier
             hyperfine
             clang-tools
+            gdb
             tcc
           ] ++ c-deps);
           shellHook = ''
