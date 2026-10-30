@@ -23,7 +23,7 @@ void RefCounted_ref_dump_func(void* key, void* value);
 
 #define impl_RefCounted(T)                                                     \
     typedef struct RefCountedData_##T {                                        \
-        size_t ref_count;                                                      \
+        _Atomic size_t ref_count;                                              \
         /* PtrMap refs; */                                                     \
         TypeInfo* T_TypeInfo;                                                  \
         T value;                                                               \
@@ -47,7 +47,7 @@ void RefCounted_ref_dump_func(void* key, void* value);
         return &rc->data->value;                                               \
     }                                                                          \
     RefCounted_##T RefCounted_##T##_claim(RefCounted_##T* rc) {                \
-        rc->data->ref_count++;                                                 \
+        atomic_fetch_add(&rc->data->ref_count, 1);                             \
         /* Kast_Backtrace* this_trace = Kast_Backtrace_get_boxed(); */         \
         /* PtrMap_add(&rc->data->refs, this_trace, NULL); */                   \
         return (RefCounted_##T) {                                              \
@@ -55,8 +55,8 @@ void RefCounted_ref_dump_func(void* key, void* value);
         };                                                                     \
     }                                                                          \
     size_t RefCounted_##T##_drop(RefCounted_##T rc) {                          \
-        rc.data->ref_count--;                                                  \
-        size_t left_refs = rc.data->ref_count;                                 \
+        size_t ref_count_before = atomic_fetch_sub(&rc.data->ref_count, 1);    \
+        size_t left_refs = ref_count_before - 1;                               \
         /* PtrMap_remove(&rc.data->refs, rc.this_trace); */                    \
         if (left_refs == 0) {                                                  \
             if (rc.data->T_TypeInfo->drop != NULL) {                           \

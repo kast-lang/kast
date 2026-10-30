@@ -24,9 +24,9 @@
 #define USE_LIBBACKTRACE
 // #endif
 #include <pthread.h>
-// #define thread_local __thread
+#define thread_local __thread
 // TODO tcc doesnt have thread locals so noone has it now
-#define thread_local
+// #define thread_local
 // NOTE: never use <threads.h> its borked (with beohmgc specifically)
 #define GC_THREADS
 #endif
@@ -49,6 +49,7 @@
 #include <errno.h>
 #include <stdalign.h>
 #include <stdarg.h>
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
