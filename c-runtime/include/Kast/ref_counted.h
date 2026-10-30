@@ -19,6 +19,7 @@ void RefCounted_ref_dump_func(void* key, void* value);
     RefCounted_##T RefCounted_##T##_claim(RefCounted_##T* rc);                 \
     size_t RefCounted_##T##_drop(RefCounted_##T rc);                           \
     void RefCounted_##T##_dbg_write(RefCounted_##T* rc, Kast_Formatter* fmt);  \
+    Bool RefCounted_##T##_ptr_eq(RefCounted_##T* a, RefCounted_##T* b);        \
     void RefCounted_##T##_debug_dump_refs(RefCounted_##T* rc);
 
 #define impl_RefCounted(T)                                                     \
@@ -71,6 +72,9 @@ void RefCounted_ref_dump_func(void* key, void* value);
     void RefCounted_##T##_dbg_write(RefCounted_##T* rc, Kast_Formatter* fmt) { \
         Kast_Formatter_printf(fmt, "rc ");                                     \
         Kast_dbg_write(&rc->data->value, rc->data->T_TypeInfo, fmt);           \
+    }                                                                          \
+    Bool RefCounted_##T##_ptr_eq(RefCounted_##T* a, RefCounted_##T* b) {       \
+        return a->data == b->data;                                             \
     }                                                                          \
     void RefCounted_##T##_debug_dump_refs(RefCounted_##T* rc) {                \
         fprintf(stderr, "debug dump refs is commented out\n");                 \

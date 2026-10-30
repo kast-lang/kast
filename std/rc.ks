@@ -14,7 +14,7 @@ const Rc = (
 
     const ptr_eq = [T] (a :: &Rc.t[T], b :: &Rc.t[T]) -> Bool => @cfg (
         | target.name == "c" => (
-            @native "*\(a) == *\(b)"
+            @native "RefCounted_\(type T)_ptr_eq(\(a), \(b))"
         )
         | true => panic("rc is only c")
     );
