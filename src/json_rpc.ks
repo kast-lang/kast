@@ -17,10 +17,7 @@ const JsonRpc = (
 
     const Io = newtype {
         .input :: BufferedReader,
-        .output :: {
-            .write :: &str -> (),
-            .flush :: () -> (),
-        },
+        .output :: (&mut std.fmt.Formatter -> ()) -> (),
     };
 
     const stdio = () -> Io => {
@@ -28,12 +25,12 @@ const JsonRpc = (
             .read_exactly = std.io.stdin.read_exactly,
             .read_until = std.io.stdin.read_until,
         },
-        .output = {
-            .write = std.io.stdout.write,
-            .flush = () => (
-                @native "fflush(stdout)";
-            ),
-        },
+        .output = f => (
+            f(&mut {
+                .write_str = std.io.stdout.write,
+            });
+            @native "fflush(stdout)";
+        ),
     };
 
     const Handler = newtype {
@@ -88,13 +85,14 @@ const JsonRpc = (
     const write = (io :: Io, message :: Json.t) => (
         let contents = message |> Json.into_dep |> to_string;
         let contents = &contents |> as_str;
-        dbg.print(contents);
         let content_length = String.utf8_length(contents);
-        io.output.write("Content-Length: ");
-        io.output.write(&to_string(content_length) |> as_str);
-        io.output.write("\r\n\r\n");
-        io.output.write(contents);
-        io.output.flush();
+        dbg.print(contents);
+        io.output(fmt => (
+            std.fmt.write!(fmt, ''
+                Content-Length: \(content_length)\r
+                \r
+                \(contents)'');
+        ));
     );
 
     const Ctx = @context newtype {
