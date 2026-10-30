@@ -86,7 +86,7 @@
             '')
             faketty
             rlwrap
-            nixfmt-classic
+            nixfmt
             nodejs
             just
             fd
