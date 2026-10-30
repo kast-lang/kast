@@ -100,7 +100,7 @@ let run ({ compiler; argv_except_program; enable_source_maps } as args : Args.t)
     in
     let cc_args = [ c_path; "-o"; exe_path ] in
     Kast_cc.run cc_args;
-    let exe_args = [] in
+    let exe_args = argv_except_program in
     if not !quiet
     then
       Log.info (fun log ->
