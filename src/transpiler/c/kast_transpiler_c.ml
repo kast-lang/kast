@@ -791,7 +791,7 @@ module Impl = struct
           | Types.T_Bool ->
             insert_stmt
               (S_If
-                 { cond = E_Pure (Pure_Copy (P_Ident var))
+                 { cond = E_Pure (Pure_Copy (P_Deref (Pure_Copy (P_Ident var))))
                  ; then_case = new_block (fun () -> printf "true" [])
                  ; else_case = Some (new_block (fun () -> printf "false" []))
                  })
