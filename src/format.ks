@@ -65,6 +65,10 @@ const Format = (
         if String.length(raw) == 0 then (
             return;
         );
+        print_raw_force(raw);
+    );
+
+    const print_raw_force = (raw :: &str) => (
         flush();
         let ref mut ctx = @current Context;
         if ctx^.just_printed_newline then (
@@ -212,7 +216,7 @@ const Format = (
                     line |> String.substring(0, i)
                 );
             );
-            print_raw(line);
+            print_raw_force(line);
         );
         ctx.prev_was_string_content = true;
     );
