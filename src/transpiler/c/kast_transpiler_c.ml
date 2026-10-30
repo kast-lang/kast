@@ -1569,14 +1569,14 @@ module Impl = struct
     | Types.T_Opaque { name; native_name } ->
       (match native_name with
        | Some native_name ->
-         alias (T_Raw { c = native_name; is_primitive = true })
-         (* let name = gen_name (make_string "%a" Print.print_name name) in *)
-         (* T_Named *)
-         (*   { name *)
-         (*   ; def = *)
-         (*       make_with (fun () -> *)
-         (*         TD_Alias (T_Raw { c = native_name; is_primitive = false })) *)
-         (*   } *)
+         (* alias (T_Raw { c = native_name; is_primitive = true }) *)
+         let name = gen_name (make_string "%a" Print.print_name name) in
+         T_Named
+           { name
+           ; def =
+               make_with (fun () ->
+                 TD_Alias (T_Raw { c = native_name; is_primitive = false }))
+           }
        | None ->
          fail
            "native name must be set for opaque types when transpiling to C: %a"
