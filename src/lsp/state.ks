@@ -18,6 +18,27 @@ const ProcessedFile = newtype {
     .version :: FileVersion,
 };
 
+impl ProcessedFile as module = (
+    module:
+
+    const char_at = (
+        file :: &ProcessedFile,
+        position :: Position,
+    ) -> Option.t[Char] => with_return (
+        if (
+            position.line < 0
+            or position.line >= ArrayList.length(&file^.lines)
+        ) then (
+            return :None;
+        );
+        let line_contents = &file^.lines |> ArrayList.at(position.line);
+        if position.column.string_encoding >= RcStr.length(line_contents) then (
+            return :None;
+        );
+        :Some RcStr.at(line_contents, position.column.string_encoding)
+    );
+);
+
 const State = newtype {
     .@"syntax" :: {
         .kast :: SyntaxRuleset.t,

@@ -131,19 +131,7 @@ const Hover = newtype {
 const hover_impl = (file :: &ProcessedFile, position :: Position) -> Option.t[Hover] => (
     let mut hovered_ast = :None;
     let mut sections = ArrayList.new[String]();
-    let hovered_char :: Option.t[Char] = with_return (
-        if (
-            position.line < 0
-            or position.line >= ArrayList.length(&file^.lines)
-        ) then (
-            return :None;
-        );
-        let line_contents = &file^.lines |> ArrayList.at(position.line);
-        if position.column.string_encoding >= RcStr.length(line_contents) then (
-            return :None;
-        );
-        :Some RcStr.at(line_contents, position.column.string_encoding)
-    );
+    let hovered_char :: Option.t[Char] = ProcessedFile.char_at(file, position);
     let span = Span.single_char(
         .position,
         .char = hovered_char,

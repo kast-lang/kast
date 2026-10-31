@@ -84,38 +84,33 @@ const position_to_lsp = (position :: Position) -> Json.t => (
     :Object fields
 );
 
-const iter_ast_from_span_outwards = (
-    ast :: &Ast.t,
-    span :: Span,
-) -> std.iter.Iterable[type (&Ast.t)] => (
-    const @"impl" = (
-        module:
+const AstVisitor = newtype {
+    .visit_ast :: (&Ast.t, .go_deeper :: () -> ()) -> (),
+};
 
-        const Context = @context newtype {
-            .span :: Span,
-            .consumer :: &Ast.t -> (),
-        };
+const walk_ast_impl = (
+    module:
 
-        const walk_group = (group :: &Ast.Group) => (
-            walk_parts(&group^.parts);
-        );
+    const Context = @context AstVisitor;
 
-        const walk_parts = (parts :: &ArrayList.t[Ast.Part]) => (
-            for part in ArrayList.iter(parts) do (
-                match part^ with (
-                    | :Ignored _ => ()
-                    | :Keyword _ => ()
-                    | :Value ref ast => walk_ast(&ast^^)
-                    | :Group ref group => walk_group(&group^^)
-                );
+    const walk_group = (group :: &Ast.Group) => (
+        walk_parts(&group^.parts);
+    );
+
+    const walk_parts = (parts :: &ArrayList.t[Ast.Part]) => (
+        for part in ArrayList.iter(parts) do (
+            match part^ with (
+                | :Ignored _ => ()
+                | :Keyword _ => ()
+                | :Value ref ast => walk_ast(&ast^^)
+                | :Group ref group => walk_group(&group^^)
             );
         );
+    );
 
-        const walk_ast = (ast :: &Ast.t) => with_return (
-            let ref ctx = @current Context;
-            if not (ast^.span |> Span.contains(ctx^.span)) then (
-                return;
-            );
+    const walk_ast = (ast :: &Ast.t) => with_return (
+        let ref ctx = @current Context;
+        ctx^.visit_ast(ast, .go_deeper = () => (
             match ast^.shape^ with (
                 | :Empty => ()
                 | :Token _ => ()
@@ -148,16 +143,39 @@ const iter_ast_from_span_outwards = (
                     walk_parts(parts);
                 )
             );
-            ctx^.consumer(ast);
-        );
+        ));
     );
-    {
-        .iter = @move consumer => (
-            with @"impl".Context = {
-                .span,
-                .consumer,
-            };
-            @"impl".walk_ast(ast);
-        ),
-    }
 );
+const walk_ast = (ast :: &Ast.t, visitor :: AstVisitor) => (
+    with walk_ast_impl.Context = visitor;
+    walk_ast_impl.walk_ast(ast);
+);
+
+const iter_ast_to_span_inwards = (
+    ast :: &Ast.t,
+    span :: Span,
+) -> std.iter.Iterable[type (&Ast.t)] => {
+    .iter = @move consumer => walk_ast(ast, {
+        .visit_ast = (ast, .go_deeper) => with_return (
+            if not (ast^.span |> Span.contains(span)) then (
+                return;
+            );
+            consumer(ast);
+            go_deeper();
+        ),
+    }),
+};
+const iter_ast_from_span_outwards = (
+    ast :: &Ast.t,
+    span :: Span,
+) -> std.iter.Iterable[type (&Ast.t)] => {
+    .iter = @move consumer => walk_ast(ast, {
+        .visit_ast = (ast, .go_deeper) => with_return (
+            if not (ast^.span |> Span.contains(span)) then (
+                return;
+            );
+            go_deeper();
+            consumer(ast);
+        ),
+    }),
+};
