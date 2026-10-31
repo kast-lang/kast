@@ -262,7 +262,6 @@ const MakeAstModule = (
                 )
             );
         );
-
     )
 );
 

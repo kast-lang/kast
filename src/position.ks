@@ -8,6 +8,16 @@ const Position = newtype {
     .column :: PositionColumn,
 };
 
+impl Position as std.cmp.Ord = {
+    .compare = (a, b) => with_return (
+        match std.cmp.default_compare(&a^.line, &b^.line) with (
+            | :Equal => ()
+            | other => return other
+        );
+        std.cmp.default_compare(&a^.column.string_encoding, &b^.column.string_encoding)
+    ),
+};
+
 const PositionColumn = newtype {
     .string_encoding :: Int32,
     .display_width :: Int32,

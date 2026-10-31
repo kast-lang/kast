@@ -1,5 +1,6 @@
 use (import "./json/_lib.ks").*;
 use (import "./rc_str.ks").*;
+use (import "./output.ks").*;
 const dep_json = import "../deps/json/lib.ks";
 use std.collections.OrdMap;
 
@@ -26,10 +27,12 @@ const JsonRpc = (
             .read_until = std.io.stdin.read_until,
         },
         .output = f => (
-            f(&mut {
-                .write_str = std.io.stdout.write,
-            });
-            @native "fflush(stdout)";
+            lock_output(() => (
+                f(&mut {
+                    .write_str = locked_output.write_str,
+                });
+                @native "fflush(stdout)";
+            ));
         ),
     };
 

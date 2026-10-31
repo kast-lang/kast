@@ -7,10 +7,11 @@ const FileVersion = Int32;
 const FileState = newtype {
     .processed :: Mutex.t[Option.t[Rc.t[ProcessedFile]]],
     .latest_version :: Mutex.t[FileVersion],
+    .path :: SourcePath,
 };
 
 const ProcessedFile = newtype {
-    .contents :: RcStr,
+    .source :: Source,
     .lines :: ArrayList.t[RcStr],
     .parsed :: Option.t[Parser.Parsed],
     .diagnostics :: ArrayList.t[Diagnostic.t],
@@ -63,7 +64,8 @@ const get_latest_file_state = (state :: &State, uri :: &Uri) -> Option.t[Rc.t[Pr
 );
 
 const open_or_change_doc = (state :: &State, uri :: Uri, contents :: &RcStr) => (
-    let uri_str = RcStr.from_String(Uri.to_string(&uri));
+    let uri = Rc.new(uri);
+    let uri_str = RcStr.from_String(Uri.to_string(&uri^));
     Log.info!("open_or_change_doc \(uri_str)");
     let { file :: Rc.t[FileState], my_version } = (
         let files = Mutex.lock(&state^.files);
@@ -80,6 +82,7 @@ const open_or_change_doc = (state :: &State, uri :: Uri, contents :: &RcStr) => 
                 let file = Rc.new({
                     .latest_version = Mutex.new(version),
                     .processed = Mutex.new(:None),
+                    .path = :Uri uri,
                 });
                 files.value |> OrdMap.add(uri_str, file);
                 { file, version }
@@ -100,12 +103,12 @@ const open_or_change_doc = (state :: &State, uri :: Uri, contents :: &RcStr) => 
 
 const do_process = (
     state :: &State,
-    uri :: Uri,
+    uri :: Rc.t[Uri],
     contents :: &RcStr,
     version :: FileVersion,
 ) -> ProcessedFile => (
     let contents = contents^;
-    let source :: Source = { .path = :Uri Rc.new(uri), .contents };
+    let source :: Source = { .path = :Uri uri, .contents };
     let mut diagnostics = ArrayList.new();
     let parsed = (
         with Diagnostic.HandlerContext = {
@@ -116,7 +119,7 @@ const do_process = (
         };
         let mut lexer = Lexer.new(source);
         let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
-        let is_mks = match get_ext(&uri.path |> as_str) with (
+        let is_mks = match get_ext(&uri^.path |> as_str) with (
             | :Some ext => ext == "mks"
             | :None => false
         );
@@ -134,7 +137,7 @@ const do_process = (
         :Some parsed
     );
     {
-        .contents,
+        .source,
         .lines = (
             let mut lines = ArrayList.new();
             for line in RcStr.lines(&contents) do (
@@ -148,8 +151,8 @@ const do_process = (
     }
 );
 
-const did_open = (state :: &State, n :: Json.t) -> () => (
-    let :Object ref fields = n;
+const did_open = (state :: &State, notifitication :: Json.t) -> () => (
+    let :Object ref fields = notifitication;
     let (&(:Object ref params)) = fields
         |> OrdMap.get(&RcStr.allocate("params"))
         |> Option.unwrap;
@@ -169,8 +172,8 @@ const did_open = (state :: &State, n :: Json.t) -> () => (
     state |> open_or_change_doc(text_document.uri, text_document.text)
 );
 
-const did_change = (state :: &State, n :: Json.t) -> () => (
-    let :Object ref fields = n;
+const did_change = (state :: &State, notifitication :: Json.t) -> () => (
+    let :Object ref fields = notifitication;
     let (&(:Object ref params)) = fields
         |> OrdMap.get(&RcStr.allocate("params"))
         |> Option.unwrap;

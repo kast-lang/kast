@@ -44,4 +44,8 @@ impl Span as module = (
         ),
         .path,
     };
+
+    const contains = (self :: Span, other :: Span) -> Bool => (
+        self.start <= other.start and other.end <= self.end
+    );
 );

@@ -53,3 +53,81 @@ const position_to_lsp = (position :: Position) -> Json.t => (
     &mut fields |> OrdMap.add(RcStr.allocate("character"), character);
     :Object fields
 );
+
+const iter_ast_from_span_outwards = (
+    ast :: &Ast.t,
+    span :: Span,
+) -> std.iter.Iterable[type (&Ast.t)] => (
+    const @"impl" = (
+        module:
+
+        const Context = @context newtype {
+            .span :: Span,
+            .consumer :: &Ast.t -> (),
+        };
+
+        const walk_group = (group :: &Ast.Group) => (
+            walk_parts(&group^.parts);
+        );
+
+        const walk_parts = (parts :: &ArrayList.t[Ast.Part]) => (
+            for part in ArrayList.iter(parts) do (
+                match part^ with (
+                    | :Ignored _ => ()
+                    | :Keyword _ => ()
+                    | :Value ref ast => walk_ast(&ast^^)
+                    | :Group ref group => walk_group(&group^^)
+                );
+            );
+        );
+
+        const walk_ast = (ast :: &Ast.t) => with_return (
+            let ref ctx = @current Context;
+            if not (ast^.span |> Span.contains(ctx^.span)) then (
+                return;
+            );
+            match ast^.shape^ with (
+                | :Empty => ()
+                | :Token _ => ()
+                | :InterpolatedString {
+                    .parts = ref parts,
+                    ...
+                } => (
+                    for part in parts |> ArrayList.iter do (
+                        match part^ with (
+                            | :Content _ => ()
+                            | :Interpolated { .ast = ref ast, ... } => (
+                                walk_ast(ast);
+                            )
+                        );
+                    );
+                )
+                | :Rule {
+                    .rule = _,
+                    .root = ref root,
+                } => walk_group(root)
+                | :Syntax {
+                    .command = _,
+                    .value_after = ref value_after,
+                } => (
+                    if value_after^ is :Some ref value_after then (
+                        walk_ast(value_after);
+                    );
+                )
+                | :Error { .parts = ref parts } => (
+                    walk_parts(parts);
+                )
+            );
+            ctx^.consumer(ast);
+        );
+    );
+    {
+        .iter = @move consumer => (
+            with @"impl".Context = {
+                .span,
+                .consumer,
+            };
+            @"impl".walk_ast(ast);
+        ),
+    }
+);
