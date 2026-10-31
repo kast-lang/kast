@@ -15,6 +15,7 @@
         "documentFormattingProvider": {
             "workDoneProgress": false
         },
+        "definitionProvider": {},
         "diagnosticProvider": {
             "identifier": "kast",
             "workDoneProgress": false,

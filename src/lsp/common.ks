@@ -23,6 +23,15 @@ use std.collections.OrdMap;
 use std.rc.Rc;
 use std.sync.Mutex;
 
+const path_to_uri_lsp = (path :: SourcePath) -> Json.t => (
+    let uri_str = match path with (
+        | :Stdin => format!("stdin://")
+        | :Uri ref uri => Uri.to_string(&uri^^)
+        | :Special ref s => format!("special://\(s^)")
+    );
+    :String RcStr.from_String(uri_str)
+);
+
 const span_to_lsp_range = (span :: Span) -> Json.t => (
     let mut fields = OrdMap.new();
     &mut fields |> OrdMap.add(RcStr.allocate("start"), position_to_lsp(span.start));
@@ -39,6 +48,27 @@ const span_to_lsp_location = (span :: Span) -> Json.t => (
     );
     &mut fields |> OrdMap.add(RcStr.allocate("uri"), uri);
     :Object fields
+);
+
+const position_from_lsp = (position :: &Json.t) -> Position => (
+    let :Object ref fields = position^;
+    let (&(:Number line)) = fields
+        |> OrdMap.get(&RcStr.allocate("line"))
+        |> Option.unwrap;
+    let (&(:Number column)) = fields
+        |> OrdMap.get(&RcStr.allocate("character"))
+        |> Option.unwrap;
+    let line = std.convert.float64_to_int32(line);
+    let column = std.convert.float64_to_int32(column);
+    # TODO zeros are because we dont use them, but maybe should initialize them still?
+    {
+        .string_encoding_index = 0,
+        .line,
+        .column = {
+            .string_encoding = column,
+            .display_width = 0,
+        },
+    }
 );
 
 const position_to_lsp = (position :: Position) -> Json.t => (

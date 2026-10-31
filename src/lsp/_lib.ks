@@ -47,6 +47,9 @@ const Lsp = (
         if method == "textDocument/hover" then (
             return state |> hover(request);
         );
+        if method == "textDocument/definition" then (
+            return state |> definition(request);
+        );
         if method == "textDocument/semanticTokens/full" then (
             return state |> semantic_tokens.full(request);
         );
