@@ -122,10 +122,7 @@ and ty_def =
 
 and ty =
   | T_Unit
-  | T_Raw of
-      { c : string
-      ; is_primitive : bool
-      }
+  | T_Raw of string
   | T_Named of string
   | T_Ptr of ty
   | T_Void
@@ -234,7 +231,7 @@ module Print = struct
   and print_ty (ty : ty) =
     match ty with
     | T_Unit -> write "Unit"
-    | T_Raw { c; is_primitive = _ } -> write c
+    | T_Raw c -> write c
     | T_Named name -> write name
     | T_Ptr referenced ->
       print_ty referenced;

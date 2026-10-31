@@ -41,13 +41,19 @@
     }
 
 #define define_closure_type(name, Ret, ...)                                    \
-    define_closure_type_C(name, Ret, Context*, ##__VA_ARGS__)
+    define_closure_type_C(                                                     \
+        name,                                                                  \
+        Ret,                                                                   \
+        UnwindState* unwind,                                                   \
+        Context*,                                                              \
+        ##__VA_ARGS__                                                          \
+    )
 #define impl_closure_type(name, Ret, ...)                                      \
-    impl_closure_type_C(name, Ret, Context*, ##__VA_ARGS__)
+    impl_closure_type_C(name, Ret, UnwindState* unwind, Context*, ##__VA_ARGS__)
 
 #define call_closure(perform_unwind, closure, ...)                             \
-    (closure).f((closure).captured, ctx, ##__VA_ARGS__);                       \
-    if (are_we_unwinding()) {                                                  \
+    (closure).f((closure).captured, unwind, ctx, ##__VA_ARGS__);               \
+    if (are_we_unwinding(unwind)) {                                            \
         perform_unwind;                                                        \
     }
 

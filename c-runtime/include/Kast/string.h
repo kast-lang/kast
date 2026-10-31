@@ -63,9 +63,24 @@ int StringView_cmp(StringView a, StringView b);
 
 String String_from_StringView(StringView s);
 String String_concat(String a, String b);
-void String_iteri(Context* ctx, StringView s, fn_Int32_Char_Unit consumer);
-void String_iteri_rev(Context* ctx, StringView s, fn_Int32_Char_Unit consumer);
-void String_iter(Context* ctx, StringView s, fn_Char_Unit consumer);
+void String_iteri(
+    UnwindState* unwind,
+    Context* ctx,
+    StringView s,
+    fn_Int32_Char_Unit consumer
+);
+void String_iteri_rev(
+    UnwindState* unwind,
+    Context* ctx,
+    StringView s,
+    fn_Int32_Char_Unit consumer
+);
+void String_iter(
+    UnwindState* unwind,
+    Context* ctx,
+    StringView s,
+    fn_Char_Unit consumer
+);
 StringView String_substring(StringView s, Int32 start, Int32 length);
 
 String Kast_asprintf(const char* fmt, ...);

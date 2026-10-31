@@ -63,7 +63,7 @@ impl String as module = (
                 (@native "string.iter")(s, f)
             )
             | target.name == "c" => (
-                @native "String_iter(\(&(@context)), \(s), \(f))"
+                @native "String_iter(unwind, \(&(@context)), \(s), \(f))"
             )
             | target.name == "javascript" => (
                 (@native "Kast.String.iter")(s, f)

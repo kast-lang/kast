@@ -15,6 +15,7 @@ module CTyMap = Map.Make (struct
 let print_span = Span.print
 let debug = ref false
 let allocation_stats = ref false
+let unwind_state_var = "unwind"
 
 let runtime_defined_types_with_type_info =
   StringSet.of_list [ "Unit"; "String"; "StringView"; "Byte" ]
@@ -214,6 +215,17 @@ module Impl = struct
     Dynarray.add_last block.stmts (S_Comment (make_string "%a" Span.print span));
     Dynarray.add_last block.stmts stmt
 
+  and introduce_unwind_state () =
+    let owned_var = unwind_state_var ^ "_owned" in
+    let_c_var
+      (T_Raw "UnwindState")
+      owned_var
+      (Some (E_Native [ N_Raw "UnwindState_new()" ]));
+    let_c_var
+      (T_Ptr (T_Raw "UnwindState"))
+      unwind_state_var
+      (Some (E_Pure (Pure_AddrOf (P_Ident owned_var))))
+
   and ty_to_string (ty : C_ast.ty) : string =
     let result = ref "" in
     let output_fn s = result := !result ^ s in
@@ -225,7 +237,7 @@ module Impl = struct
     let ctx = Effect.perform GetCtx in
     match ty with
     | T_Unit -> "Unit"
-    | T_Raw { c; is_primitive = _ } ->
+    | T_Raw c ->
       let rec loop s =
         if String.get s (String.length s - 1) = Some '*'
         then String.sub s 0 (String.length s - 1) ^ "_Ptr"
@@ -1499,7 +1511,7 @@ module Impl = struct
       let cc_suffix, args =
         match call_convention with
         | None ->
-          "", [ C_ast.T_Ptr (T_Raw { c = "Context"; is_primitive = false }) ] @ args
+          "", [ C_ast.T_Ptr (T_Raw "UnwindState"); C_ast.T_Ptr (T_Raw "Context") ] @ args
         | Some "C" -> "_C", args
         | _ -> fail "unknown call convention"
       in
@@ -1569,14 +1581,9 @@ module Impl = struct
     | Types.T_Opaque { name; native_name } ->
       (match native_name with
        | Some native_name ->
-         (* alias (T_Raw { c = native_name; is_primitive = true }) *)
+         (* alias (T_Raw native_name) *)
          let name = gen_name (make_string "%a" Print.print_name name) in
-         T_Named
-           { name
-           ; def =
-               make_with (fun () ->
-                 TD_Alias (T_Raw { c = native_name; is_primitive = false }))
-           }
+         T_Named { name; def = make_with (fun () -> TD_Alias (T_Raw native_name)) }
        | None ->
          fail
            "native name must be set for opaque types when transpiling to C: %a"
@@ -1853,7 +1860,11 @@ module Impl = struct
         let args =
           match call_convention with
           | None ->
-            [ ({ name = ctx_var; ty = T_Ptr (T_Named "Context") } : C_ast.fn_arg) ] @ args
+            [ ({ name = unwind_state_var; ty = T_Ptr (T_Named "UnwindState") }
+               : C_ast.fn_arg)
+            ; ({ name = ctx_var; ty = T_Ptr (T_Named "Context") } : C_ast.fn_arg)
+            ]
+            @ args
           | Some "C" -> args
           | Some other -> fail "unknown call convension %S" other
         in
@@ -1866,6 +1877,7 @@ module Impl = struct
           let block =
             new_block
               (fun () ->
+                 if call_convention = Some "C" then introduce_unwind_state ();
                  (match result_ty with
                   | T_Void -> ()
                   | _ -> let_c_var result_ty result_var None);
@@ -2028,7 +2040,7 @@ module Impl = struct
       add_claim_impl_with_type_erased claim_fn_name (T_Named struct_name) claim_fn_impl);
     fun () ->
       c_compound_literal
-        (T_Raw { c = "TypeInfo"; is_primitive = false })
+        (T_Raw "TypeInfo")
         (([ "name", C_ast.Pure_Literal (L_String struct_name)
           ; ( "alignment"
             , C_ast.Pure_Native [ N_Raw "alignof("; N_Raw struct_name; N_Raw ")" ] )
@@ -2423,7 +2435,11 @@ module Impl = struct
     in
     let args =
       match f_ty.call_convention |> Inference.await_inferred_simple with
-      | None -> [ C_ast.Pure_AddrOf (Effect.perform GetScope).ctx_place ] @ args
+      | None ->
+        [ C_ast.Pure_Copy (P_Ident unwind_state_var)
+        ; C_ast.Pure_AddrOf (Effect.perform GetScope).ctx_place
+        ]
+        @ args
       | Some "C" -> args
       | Some other -> fail "unknown conv %S" other
     in
@@ -2442,7 +2458,8 @@ module Impl = struct
      | _ -> let_var ~drop:false f_ty.result result_var (Some apply_expr));
     insert_stmt
       (S_If
-         { cond = E_Native [ N_Raw "are_we_unwinding()" ]
+         { cond =
+             E_Native [ N_Raw "are_we_unwinding("; N_Raw unwind_state_var; N_Raw ")" ]
          ; then_case =
              new_block ~new_scope:false (fun () ->
                (Effect.perform GetUnwindCtx).unwind ())
@@ -2824,6 +2841,8 @@ module Impl = struct
         with_return (fun { return } : C_ast.expr option ->
           (match parts with
            | [ Raw "#unreachable" ] -> return None
+           | [ Raw "#uninitialized" ] ->
+             return (Some (uninitialized (transpile_ty expr.data.signature.ty).c_ty))
            | [ Raw s ] ->
              (match s |> String.strip_prefix ~prefix:"#include <" with
               | None -> ()
@@ -2898,10 +2917,7 @@ module Impl = struct
         Some (E_Pure (Pure_Copy (P_Ident var)))
       | Types.E_And { lhs; rhs } ->
         let result = gen_name "and_result" in
-        let_c_var
-          (T_Raw { c = "Bool"; is_primitive = true })
-          result
-          (Some (transpile_expr lhs));
+        let_c_var (T_Raw "Bool") result (Some (transpile_expr lhs));
         insert_stmt
           (S_If
              { cond = E_Pure (Pure_Copy (P_Ident result))
@@ -2914,10 +2930,7 @@ module Impl = struct
         Some (E_Pure (Pure_Copy (P_Ident result)))
       | Types.E_Or { lhs; rhs } ->
         let result = gen_name "or_result" in
-        let_c_var
-          (T_Raw { c = "Bool"; is_primitive = true })
-          result
-          (Some (transpile_expr lhs));
+        let_c_var (T_Raw "Bool") result (Some (transpile_expr lhs));
         insert_stmt
           (S_If
              { cond = E_Pure (Pure_Not (Pure_Copy (P_Ident result)))
@@ -2980,7 +2993,10 @@ module Impl = struct
           (Some
              (compound_literal
                 token_ty
-                [ "raw", C_ast.E_Native [ N_Raw "RawUnwindToken_new()" ] ]));
+                [ ( "raw"
+                  , C_ast.E_Native
+                      [ N_Raw "RawUnwindToken_new("; N_Raw unwind_state_var; N_Raw ")" ] )
+                ]));
         let token_ref_var = gen_name "unwindable_token_ref" in
         let_c_var
           (T_Ptr (transpile_ty token_ty).c_ty)
@@ -3011,11 +3027,15 @@ module Impl = struct
                  E_Apply
                    { f = Pure_Native [ N_Raw "are_we_unwinding_with" ]
                    ; args =
-                       [ Pure_Copy (P_Field { obj = P_Ident token_var; field = "raw" }) ]
+                       [ Pure_Copy (P_Ident unwind_state_var)
+                       ; Pure_AddrOf (P_Field { obj = P_Ident token_var; field = "raw" })
+                       ]
                    }
              ; then_case =
                  new_block ~new_scope:false (fun () ->
-                   insert_stmt (S_Native [ N_Raw "stop_unwinding()" ]);
+                   insert_stmt
+                     (S_Native
+                        [ N_Raw "stop_unwinding("; N_Raw unwind_state_var; N_Raw ")" ]);
                    insert_stmt (S_Goto { label = label_result }))
              ; else_case =
                  Some (new_block ~new_scope:false (fun () -> old_unwind_ctx.unwind ()))
@@ -3045,7 +3065,8 @@ module Impl = struct
              (E_Apply
                 { f = Pure_Native [ N_Raw "start_unwinding" ]
                 ; args =
-                    [ Pure_Copy
+                    [ Pure_Copy (P_Ident unwind_state_var)
+                    ; Pure_AddrOf
                         (P_Field
                            { obj = P_Deref (Pure_Copy (P_Ident token_var))
                            ; field = "raw"
@@ -3072,10 +3093,7 @@ module Impl = struct
         None
       | Types.E_LetRefContext new_ref ->
         let new_ctx_var = gen_name "ctx" in
-        let_c_var
-          (T_Raw { c = "Context*"; is_primitive = false })
-          new_ctx_var
-          (Some (transpile_expr new_ref));
+        let_c_var (T_Raw "Context*") new_ctx_var (Some (transpile_expr new_ref));
         (Effect.perform GetScope).ctx_place <- P_Deref (Pure_Copy (P_Ident new_ctx_var));
         None
       | Types.E_ImplCast _ -> None
@@ -3126,10 +3144,7 @@ module Impl = struct
         then
           Dynarray.add_last
             ctx.statics
-            { ty = T_Raw { c = "TypeInfo"; is_primitive = false }
-            ; name = ty.type_info_name
-            ; comment = None
-            });
+            { ty = T_Raw "TypeInfo"; name = ty.type_info_name; comment = None });
     while not (Queue.is_empty ctx.queued_work) do
       (Queue.pop ctx.queued_work) ()
     done;
@@ -3143,7 +3158,7 @@ module Impl = struct
       | C_ast.TD_Alias c_ty -> construct_ty_type_info { ty with c_ty }
       | _ ->
         c_compound_literal
-          (T_Raw { c = "TypeInfo"; is_primitive = false })
+          (T_Raw "TypeInfo")
           (([ "name", C_ast.Pure_Literal (L_String name)
             ; "alignment", C_ast.Pure_Native [ N_Raw "alignof("; N_Raw name; N_Raw ")" ]
             ; "size", Pure_Native [ N_Raw "sizeof("; N_Raw name; N_Raw ")" ]
@@ -3170,7 +3185,7 @@ module Impl = struct
       let ctx = Effect.perform GetCtx in
       let raw (raw_ty : string) : C_ast.expr =
         c_compound_literal
-          (T_Raw { c = "TypeInfo"; is_primitive = false })
+          (T_Raw "TypeInfo")
           (([ "name", C_ast.Pure_Literal (L_String (make_string "%a" Ty.print ty.kast_ty))
             ; "alignment", C_ast.Pure_Native [ N_Raw "alignof("; N_Raw raw_ty; N_Raw ")" ]
             ; "size", Pure_Native [ N_Raw "sizeof("; N_Raw raw_ty; N_Raw ")" ]
@@ -3196,7 +3211,7 @@ module Impl = struct
       in
       match ty.c_ty with
       | T_Unit -> raw "Unit"
-      | T_Raw { c = raw_ty; is_primitive } -> raw raw_ty
+      | T_Raw raw_ty -> raw raw_ty
       | T_Named name ->
         let def =
           ctx.types
@@ -3322,7 +3337,13 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
               , { shape = C_ast.TD_RuntimeDefined { is_primitive = true }
                 ; comment = None
                 } )))
-           @ ([ "String"; "TypeInfo"; "Context"; "StringView"; "Kast_Formatter" ]
+           @ ([ "String"
+              ; "TypeInfo"
+              ; "UnwindState"
+              ; "Context"
+              ; "StringView"
+              ; "Kast_Formatter"
+              ]
               |> List.map (fun name : (string * C_ast.ty_def) ->
                 ( name
                 , { shape = C_ast.TD_RuntimeDefined { is_primitive = false }
@@ -3371,13 +3392,14 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
   try
     let main : C_ast.fn_def =
       { args =
-          [ { name = "argc"; ty = T_Raw { c = "int"; is_primitive = true } }
-          ; { name = "argv"; ty = T_Raw { c = "const char**"; is_primitive = false } }
+          [ { name = "argc"; ty = T_Raw "int" }
+          ; { name = "argv"; ty = T_Raw "const char**" }
           ]
-      ; result_ty = T_Raw { c = "int"; is_primitive = true }
+      ; result_ty = T_Raw "int"
       ; body =
           Impl.new_block
             (fun () ->
+               Impl.introduce_unwind_state ();
                Impl.insert_stmt (S_Native [ N_Raw "Kast_init(argc, argv)" ]);
                Impl.insert_stmt (S_Native [ N_Raw "Kast_init_user_type_infos()" ]);
                Impl.let_c_var
@@ -3394,7 +3416,7 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
     in
     let init_statics : C_ast.fn_def =
       { args = []
-      ; result_ty = T_Raw { c = "void"; is_primitive = true }
+      ; result_ty = T_Raw "void"
       ; body = ctx.init_statics.stmts |> Dynarray.to_list
       ; comment = None
       }

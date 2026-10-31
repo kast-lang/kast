@@ -343,7 +343,12 @@ String String_concat(String a, String b) {
     return String_from_raw_parts(buf, length);
 }
 
-void String_iteri(Context* ctx, StringView s, fn_Int32_Char_Unit consumer) {
+void String_iteri(
+    UnwindState* unwind,
+    Context* ctx,
+    StringView s,
+    fn_Int32_Char_Unit consumer
+) {
     const char* iter = s.buf;
     while (iter < s.buf + s.length) {
         Int32 i = iter - s.buf;
@@ -353,7 +358,12 @@ void String_iteri(Context* ctx, StringView s, fn_Int32_Char_Unit consumer) {
     fn_Int32_Char_Unit_drop(consumer);
 }
 
-void String_iteri_rev(Context* ctx, StringView s, fn_Int32_Char_Unit consumer) {
+void String_iteri_rev(
+    UnwindState* unwind,
+    Context* ctx,
+    StringView s,
+    fn_Int32_Char_Unit consumer
+) {
     const char* iter = s.buf + s.length;
     while (iter > s.buf) {
         Char c = utf8_char_decode_step_rev(&iter);
@@ -363,7 +373,12 @@ void String_iteri_rev(Context* ctx, StringView s, fn_Int32_Char_Unit consumer) {
     fn_Int32_Char_Unit_drop(consumer);
 }
 
-void String_iter(Context* ctx, StringView s, fn_Char_Unit consumer) {
+void String_iter(
+    UnwindState* unwind,
+    Context* ctx,
+    StringView s,
+    fn_Char_Unit consumer
+) {
     const char* iter = s.buf;
     while (iter < s.buf + s.length) {
         Char c = utf8_char_decode_step(&iter);

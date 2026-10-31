@@ -24,7 +24,7 @@ const spawn = (f :: () -> ()) -> Id => (
         @native "NULL"
     );
     let f = Box_leak(Box_new(f));
-    let mut id = @native "(pthread_t){}";
+    let mut id = @native "#uninitialized";
     let result :: @opaque_type "int" = @native ''
         pthread_create(\(&mut id), NULL, \(spawn_impl), \(f))
     '';

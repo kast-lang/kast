@@ -4,14 +4,20 @@
 #include "./__common__.h"
 
 typedef struct {
-    uint64_t id;
+    /* we dont need data but we want unique address on stack */
+    char _unused;
 } RawUnwindToken;
 
-RawUnwindToken RawUnwindToken_new(void);
+typedef struct {
+    RawUnwindToken* currently_unwinding;
+} UnwindState;
 
-bool are_we_unwinding(void);
-bool are_we_unwinding_with(RawUnwindToken token);
-void start_unwinding(RawUnwindToken target);
-void stop_unwinding(void);
+UnwindState UnwindState_new(void);
+RawUnwindToken RawUnwindToken_new(UnwindState* state);
+
+bool are_we_unwinding(UnwindState* state);
+bool are_we_unwinding_with(UnwindState* state, RawUnwindToken* token);
+void start_unwinding(UnwindState* state, RawUnwindToken* target);
+void stop_unwinding(UnwindState* state);
 
 #endif
