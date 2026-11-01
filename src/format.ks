@@ -256,8 +256,12 @@ const Format = (
         let {
             .ast = ref ast,
             .ignored_trailing_tokens = ref ignored_trailing_tokens,
+            .has_errors,
             .eof = _,
         } = parsed^;
+        if has_errors then (
+            Diagnostic.abort("Refusing to format code with errors");
+        );
         with Output = output;
         lock_output(() => (
             walk_ast(ast, .parent = :None);

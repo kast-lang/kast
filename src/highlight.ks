@@ -145,6 +145,7 @@ const Highlight = (
         let {
             .ast = ref ast,
             .ignored_trailing_tokens = ref ignored_trailing_tokens,
+            .has_errors = _,
             .eof,
         } = parsed^;
         walk_ast(ast);
@@ -312,9 +313,7 @@ const Highlight = (
             (@current Context).print(token^.span, :Comment, raw |> RcStr.as_str);
         ) else (
             # ignored because of error
-            (
-                @current Context
-            ).print(token^.span, :Error, Token.raw(token));
+            (@current Context).print(token^.span, :Error, Token.raw(token));
         )
     );
 

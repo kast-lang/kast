@@ -793,6 +793,7 @@ const Parser = (
     const Parsed = newtype {
         .ast :: Ast.t,
         .ignored_trailing_tokens :: ArrayList.t[Token.t],
+        .has_errors :: Bool,
         .eof :: Position,
     };
 
@@ -832,6 +833,20 @@ const Parser = (
         };
         with DynamicContext = &mut dyn_ctx;
         with ParsingRuleCtx = { .print = () => () };
+        let mut has_errors = false;
+        let parent_diagnostic_handler = @current Diagnostic.HandlerContext;
+        with Diagnostic.HandlerContext = {
+            .stop_on_error = parent_diagnostic_handler.stop_on_error,
+            .handle = diagnostic => (
+                match diagnostic.severity with (
+                    | :Error => (
+                        has_errors = true;
+                    )
+                    | _ => ()
+                );
+                parent_diagnostic_handler.handle(diagnostic)
+            ),
+        };
         let ast = match try_parse(.priority_filter = :Any) with (
             | :MadeProgress ast => ast
             | :NoProgress => {
@@ -868,6 +883,7 @@ const Parser = (
         {
             .ast,
             .ignored_trailing_tokens = claim_ignored_tokens(),
+            .has_errors,
             .eof,
         }
     );
