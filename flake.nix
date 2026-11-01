@@ -18,26 +18,27 @@
       in
       with pkgs; {
         packages = rec {
-          kast-js = stdenv.mkDerivation {
-            name = "kast-js";
+          kast = stdenv.mkDerivation {
+            name = "kast";
             src = filter {
               root = ./.;
               include = [ ".justfile" "src" "deps" ];
             };
-            buildInputs = [ kast-bootstrap just ];
+            buildInputs = [
+              kast-bootstrap
+              just
+              libbacktrace
+              libunwind
+            ];
             buildPhase = ''
-              KAST_BIN=${kast-bootstrap}/bin/kast just build
+              export KAST_PATH=${kast-bootstrap}
+              CFLAGS='-g -O3 -lbacktrace -lunwind' KAST_BIN=kast just build
             '';
             installPhase = ''
               mkdir $out
-              cp target/kast.mjs $out/kast.mjs
-            '';
-          };
-          kast = pkgs.writeShellApplication {
-            name = "kast";
-            runtimeInputs = [ nodejs ];
-            text = ''
-              KAST_PATH=${./kast_path} node ${kast-js}/kast.mjs "$@"
+              install -d $out/bin
+              install target/kast.exe $out/bin/kast
+              cp -r ${./kast_path} $out/kast_path
             '';
           };
           kast-path = ./kast_path;

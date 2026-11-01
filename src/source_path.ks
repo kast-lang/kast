@@ -34,15 +34,18 @@ impl SourcePath as module = (
     const parse = (s :: &str) -> SourcePath => (
         let mut uri :: Uri = String.parse(s);
         if &uri.scheme |> String.as_str == "kast" then (
-            match std.sys.get_env("KAST_PATH") with (
-                | :Some kast_path => (
-                    # TODO resolve to absolute
-                    let mut new_uri = Uri.spec_path("file", &kast_path |> String.as_str);
-                    new_uri.path = String.concat_owned(new_uri.path, uri.path);
-                    uri = new_uri;
+            let kast_path = match std.sys.get_env("KAST_PATH") with (
+                | :Some kast_path => kast_path
+                | :None => (
+                    let mut exe_path = std.sys.argv_at(0);
+                    let package_path = exe_path |> std.path.dirname |> std.path.dirname;
+                    format!("\(package_path)/kast_path")
                 )
-                | :None => panic("KAST_PATH not set")
-            )
+            );
+            # TODO resolve to absolute
+            let mut new_uri = Uri.spec_path("file", &kast_path |> String.as_str);
+            new_uri.path = String.concat_owned(new_uri.path, uri.path);
+            uri = new_uri;
         ) else if &uri.scheme |> String.as_str == "" then (
             uri.scheme = String.from_str("file");
         );
