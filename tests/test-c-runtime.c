@@ -1,4 +1,5 @@
 #include <Kast.h>
+#include <string.h>
 
 int main(int argc, const char** argv) {
     Kast_init(argc, argv);

@@ -16,6 +16,7 @@ use String.to_string;
 use String.Parse;
 use String.parse;
 use String.as_str;
+use io.print;
 use io.println;
 use io.eprintln;
 use io.input;

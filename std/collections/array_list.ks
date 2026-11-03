@@ -99,3 +99,44 @@ const to_string = [T] (a :: &ArrayList.t[T], t_to_string :: &T -> String) -> Str
     &mut result |> StringBuilder.add_str("]");
     result |> StringBuilder.into_string
 );
+
+const sort_with = [T] (
+    a :: &mut ArrayList.t[T],
+    compare :: std.cmp.Compare[T],
+) => (
+    const void_ptr = @opaque_type "void*";
+    const Ctx = [T] newtype {
+        .compare :: std.cmp.Compare[T],
+        .ctx :: &mut (@context),
+    };
+    let ctx :: Ctx[T] = {
+        .compare,
+        .ctx = &mut (@context),
+    };
+    const compare_impl = [T] fn @call "C" (
+        a :: void_ptr,
+        b :: void_ptr,
+        ctx :: void_ptr,
+    ) -> @opaque_type "int" => (
+        let a :: &T = @native "\(a)";
+        let b :: &T = @native "\(b)";
+        let ctx :: &Ctx[T] = @native "\(ctx)";
+        let &@context = ctx^.ctx;
+        match ctx^.compare(a, b) with (
+            | :Less => @native "-1"
+            | :Equal => @native "0"
+            | :Greater => @native "1"
+        )
+    );
+    @native ''Kast_sort(
+        \(a)->buf,
+        \(a)->length,
+        \(T)->stride,
+        \(compare_impl[T]),
+        \(&ctx)
+    )'';
+);
+
+const sort = [T] (a :: &mut ArrayList.t[T]) => (
+    sort_with(a, (T as std.cmp.Ord).compare);
+);

@@ -1,18 +1,13 @@
 module:
 
-const print = (line :: &str) -> () => (
-    @cfg (
-        | target.name == "interpreter" => (@native "io.print")(line)
-        | target.name == "c" => (
-            @native "Kast_write(stdout, \(line))";
-            @native "fprintf(stdout, \"\\n\")";
-        )
-        | target.name == "javascript" => (@native "Kast.io.print")(line)
-    )
+const print = (args :: Ast) -> Ast => @comptime_only `(
+    std.fmt.write!(&mut stdout.instance(), $args);
 );
-
 const println = (args :: Ast) -> Ast => @comptime_only `(
     std.fmt.writeln!(&mut stdout.instance(), $args);
+);
+const eprint = (args :: Ast) -> Ast => @comptime_only `(
+    std.fmt.write!(&mut stderr.instance(), $args);
 );
 const eprintln = (args :: Ast) -> Ast => @comptime_only `(
     std.fmt.writeln!(&mut stderr.instance(), $args);

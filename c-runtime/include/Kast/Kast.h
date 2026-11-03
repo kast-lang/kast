@@ -11,6 +11,7 @@
 #include "./mem.h"
 #include "./random.h"
 #include "./ref_counted.h"
+#include "./sort.h"
 #include "./string.h"
 #include "./sys.h"
 #include "./tcp.h"
