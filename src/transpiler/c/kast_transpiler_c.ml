@@ -1826,6 +1826,7 @@ module Impl = struct
       <- (fun () -> insert_stmt (S_Goto { label = deferred_unwind_label }))
 
   and transpile_fn
+        ~(name : Types.name_shape option)
         ~(is_closure : bool)
         ~(call_convention : string option)
         ~(captured : Types.interpreter_scope option)
@@ -2072,7 +2073,11 @@ module Impl = struct
           in
           block
         in
-        let name = gen_name "fn" in
+        let name =
+          match name with
+          | None -> gen_name "fn"
+          | Some name -> gen_name (make_string "%a" Print.print_name_shape name)
+        in
         ctx.fns
         <- ctx.fns
            |> StringMap.add
@@ -2229,13 +2234,14 @@ module Impl = struct
              | None -> Some (not_inferred value.var)
              | Some shape ->
                (match shape with
-                | V_Fn { fn = { def; captured; _ }; ty = fn_ty } ->
+                | V_Fn { name; fn = { def; captured; _ }; ty = fn_ty } ->
                   let is_closure = fn_ty.is_closure |> Inference.await_inferred_simple in
                   let call_convention =
                     fn_ty.call_convention |> Inference.await_inferred_simple
                   in
                   let f =
                     transpile_fn
+                      ~name:(Some name)
                       ~call_convention
                       ~is_closure
                       ~captured:(Some captured)
@@ -2251,10 +2257,11 @@ module Impl = struct
                          ])
                   else Some (E_Pure (Pure_Copy (P_Ident f.name)))
                 | V_Generic _ when true -> Some (E_Pure Pure_Unit)
-                | V_Generic { fn = { def; captured; _ }; _ } ->
+                | V_Generic { name; fn = { def; captured; _ }; _ } ->
                   (* TODO memoize generics *)
                   let f =
                     transpile_fn
+                      ~name:(Some name)
                       ~call_convention:(Some "C")
                       ~is_closure:false
                       ~captured:(Some captured)
@@ -2756,7 +2763,7 @@ module Impl = struct
         if is_closure
         then (
           let transpiled_fn =
-            transpile_fn ~call_convention ~is_closure ~captured:None def
+            transpile_fn ~name:None ~call_convention ~is_closure ~captured:None def
           in
           let result_var = gen_name "closure" in
           insert_stmt
@@ -2824,7 +2831,7 @@ module Impl = struct
           Some (E_Pure (Pure_Copy (P_Ident result_var))))
         else (
           let transpiled_fn =
-            transpile_fn ~call_convention ~is_closure ~captured:None def
+            transpile_fn ~name:None ~call_convention ~is_closure ~captured:None def
           in
           Some (E_Pure (Pure_Copy (P_Ident transpiled_fn.name))))
       | Types.E_Generic { def; _ } ->

@@ -452,7 +452,7 @@ and instantiate
 
 and call (span : span) (state : state) (f : value) (arg : value) : value =
   match f |> Value.await_inferred with
-  | V_Fn { fn; ty = _ } -> call_untyped_fn ~sub_mode:None span state fn arg
+  | V_Fn { name = _; fn; ty = _ } -> call_untyped_fn ~sub_mode:None span state fn arg
   | V_NativeFn f -> f.impl ~caller:span ~state arg
   | V_Error -> V_Error |> Value.inferred ~span
   | _ ->
@@ -695,7 +695,8 @@ and eval_expr_fn : state -> expr -> Types.expr_fn -> value =
   fun state expr { def; ty } ->
   let span = expr.data.span in
   V_Fn
-    { ty
+    { name = current_name state
+    ; ty
     ; fn =
         { id = Id.gen ()
         ; def

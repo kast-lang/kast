@@ -91,7 +91,8 @@ module Impl = struct
            complete_ty_variant ty;
            complete_option complete_place data
          | V_Ty ty -> complete_ty ty
-         | V_Fn { ty; fn } ->
+         | V_Fn { name; ty; fn } ->
+           complete_name_shape name;
            complete_ty_fn ty;
            complete_untyped_fn fn
          | V_Generic { name; ty; fn } ->

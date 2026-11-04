@@ -262,7 +262,9 @@ module VarScope = struct
     fun { label = _; data; ty } -> deepest (of_option of_place data) (of_ty_variant ty)
 
   and of_value_fn : value_fn -> var_scope =
-    fun { ty; fn : value_untyped_fn = _ } -> of_ty_fn ty
+    fun { name; ty; fn : value_untyped_fn = _ } ->
+    (* TODO deepest (of_name_shape name) *)
+    of_ty_fn ty
 
   and of_value_generic : value_generic -> var_scope =
     fun { name; fn : value_untyped_fn = _; ty } ->
@@ -814,7 +816,11 @@ module Impl = struct
          | V_Ty a, V_Ty b -> V_Ty (unite_ty ~span a b)
          | V_Ty _, _ -> fail ()
          | V_Fn a, V_Fn b when a.fn.id = b.fn.id ->
-           V_Fn { ty = unite_ty_fn ~span a.ty b.ty; fn = a.fn }
+           V_Fn
+             { name = unite_name_shape ~span a.name b.name
+             ; ty = unite_ty_fn ~span a.ty b.ty
+             ; fn = a.fn
+             }
          | V_Fn _, _ -> fail ()
          | V_Generic a, V_Generic b when a.fn.id = b.fn.id ->
            V_Generic

@@ -81,8 +81,12 @@ module Impl = struct
     | V_Tuple tuple -> print_value_tuple fmt tuple
     | V_Array a -> print_value_array fmt a
     | V_List list -> print_value_list fmt list
-    | V_Fn { ty; fn } ->
-      fprintf fmt "@{<italic><fn %a at %a>@}" print_ty_fn ty Span.print fn.def.span
+    | V_Fn f ->
+      if false
+      then (
+        fprintf fmt "%a" Id.print f.fn.id;
+        fprintf fmt "@{<italic><fn %a :: %a>@}" print_name_shape f.name print_ty_fn f.ty)
+      else print_name_shape fmt f.name
     | V_Variant { label; data; ty = _ } ->
       fprintf fmt ":%a" Label.print label;
       (match data with

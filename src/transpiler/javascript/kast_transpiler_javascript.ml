@@ -534,7 +534,8 @@ module Impl = struct
              |> Kast_interpreter.read_place ~span:ctx.span ~state:ctx.interpreter
              |> transpile_value))
       | V_Ty ty -> transpile_ty ty
-      | V_Fn { ty = _; fn = { def; captured; _ } } -> fn ~captured:(Some captured) def
+      | V_Fn { name = _; ty = _; fn = { def; captured; _ } } ->
+        fn ~captured:(Some captured) def
       | V_Generic { name = _; fn = { def; captured; _ }; ty = _ } ->
         fn ~captured:(Some captured) def
       | V_NativeFn { name; _ } -> todo_value name

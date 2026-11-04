@@ -154,9 +154,14 @@ module Impl = struct
           }
         |> shaped
       | V_Ty ty -> V_Ty (sub_ty ~state ty) |> shaped
-      | V_Fn { ty; fn } ->
+      | V_Fn { name; ty; fn } ->
         let result =
-          V_Fn { ty = sub_ty_fn ~state ty; fn = sub_untyped_fn ~state fn } |> shaped
+          V_Fn
+            { name = sub_name_shape ~state name
+            ; ty = sub_ty_fn ~state ty
+            ; fn = sub_untyped_fn ~state fn
+            }
+          |> shaped
         in
         Log.trace (fun log ->
           log "Subbed fn into %a :: %a" Value.print result Ty.print (Value.ty_of result));

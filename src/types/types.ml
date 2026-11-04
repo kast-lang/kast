@@ -119,7 +119,8 @@ module rec TypesImpl : sig
     }
 
   and value_fn =
-    { ty : ty_fn
+    { name : name_shape [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; ty : ty_fn
     ; fn : value_untyped_fn
     }
 
@@ -919,7 +920,8 @@ end = struct
     }
 
   and value_fn =
-    { ty : ty_fn
+    { name : name_shape [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; ty : ty_fn
     ; fn : value_untyped_fn
     }
 

@@ -136,9 +136,8 @@ module Value = struct
       | V_UnwindToken _ | V_Target _ | V_ContextTy _ | V_ImplicitContext _
       | V_CompilerScope _ | V_Opaque _ | V_Blocked _ | V_Error ->
         None |> OptionalName.new_inferred ~span
-      | V_Fn _ | V_NativeFn _ ->
-        (* TODO *)
-        None |> OptionalName.new_inferred ~span
+      | V_NativeFn f -> Some (Simple (Str f.name)) |> OptionalName.new_inferred ~span
+      | V_Fn f -> Some f.name |> OptionalName.new_inferred ~span
       | V_Generic generic -> Some generic.name |> OptionalName.new_inferred ~span
       | V_Ty ty -> ty |> Ty.name
     ;;
