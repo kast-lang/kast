@@ -14,4 +14,6 @@ void* Kast_reallocate_array(
 void Kast_free(const void* memory);
 void* Kast_allocate_raw(size_t length);
 
+void memswap(void* restrict a, void* restrict b, size_t size);
+
 #endif

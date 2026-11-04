@@ -3,17 +3,6 @@
 
 #define offset_ptr(a, i) (void*)((char*)(a) + (ptrdiff_t)(size) * (i))
 
-void memswap(void* restrict a, void* restrict b, size_t size) {
-    char* a_bytes = a;
-    char* b_bytes = b;
-    while (size > 0) {
-        size--;
-        char t = a_bytes[size];
-        a_bytes[size] = b_bytes[size];
-        b_bytes[size] = t;
-    }
-}
-
 size_t gcd(size_t a, size_t b) {
     if (a == 0) {
         return b;

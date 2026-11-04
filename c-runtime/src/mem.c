@@ -63,3 +63,14 @@ void Kast_free(const void* memory) {
 void* Kast_allocate_raw(size_t length) {
     return Kast_allocate_array(&Byte_TypeInfo, length);
 }
+
+void memswap(void* restrict a, void* restrict b, size_t size) {
+    char* a_bytes = a;
+    char* b_bytes = b;
+    while (size > 0) {
+        size--;
+        char t = a_bytes[size];
+        a_bytes[size] = b_bytes[size];
+        b_bytes[size] = t;
+    }
+}
