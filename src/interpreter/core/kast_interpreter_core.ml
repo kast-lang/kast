@@ -741,6 +741,9 @@ and eval_expr_generic : state -> expr -> Types.expr_generic -> value =
     }
   |> Value.inferred ~span
 
+and eval_expr_array : state -> expr -> Types.expr_array -> value =
+  fun state expr { elements } -> failwith __LOC__
+
 and eval_expr_tuple : state -> expr -> Types.expr_tuple -> value =
   fun state expr { guaranteed_anonymous = _; parts } ->
   let span = expr.data.span in
@@ -1283,6 +1286,7 @@ and eval : state -> expr -> value =
            | E_Defer _ -> failwith __LOC__
            | E_Fn f -> eval_expr_fn state expr f
            | E_Generic f -> eval_expr_generic state expr f
+           | E_Array a -> eval_expr_array state expr a
            | E_Tuple tuple -> eval_expr_tuple state expr tuple
            | E_Variant e -> eval_expr_variant state expr e
            | E_Then e -> eval_expr_then state expr e
@@ -1471,6 +1475,10 @@ and eval_ty : state -> Expr.ty -> ty =
         | TE_Ref { mut; referenced } ->
           let referenced = eval_ty state referenced in
           Ty.inferred ~span <| T_Ref { mut; referenced }
+        | TE_Array { element_ty; length } ->
+          let element_ty = eval_ty state element_ty in
+          let length = eval state length in
+          Ty.inferred ~span <| T_Array { element_ty; length }
         | TE_Fn { is_closure; call_convention; arg; result } ->
           let args = eval_ty state arg in
           let result = eval_ty state result in

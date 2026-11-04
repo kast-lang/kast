@@ -24,6 +24,7 @@ and pure_expr =
   | Pure_Equal of pure_expr * pure_expr
   | Pure_And of pure_expr * pure_expr
   | Pure_Or of pure_expr * pure_expr
+  | Pure_Array_Initializer of pure_expr list
   | Pure_Cast of
       { value : pure_expr
       ; target : ty
@@ -67,7 +68,12 @@ and stmt =
       }
   | S_Goto of { label : string }
   | S_GotoLabel of string
-  | S_For of { body : block }
+  | S_For of
+      { init : stmt option
+      ; cond : expr option
+      ; iter : stmt option
+      ; body : block
+      }
   | S_Scope of block
   | S_Return of expr
   | S_ReturnVoid
@@ -89,6 +95,10 @@ and place_expr =
       { obj : place_expr
       ; field : string
       }
+  | P_Index of
+      { arr : place_expr
+      ; index : pure_expr
+      }
   | P_Deref of pure_expr
 
 and native_expr = native_expr_part list
@@ -105,6 +115,10 @@ and ty_def_shape =
   | TD_Fn of
       { args : ty list
       ; result_ty : ty
+      }
+  | TD_Array of
+      { element_ty : ty
+      ; length : int32
       }
   | TD_Alias of ty
   | TD_Raw of
@@ -205,6 +219,7 @@ module Print = struct
     match expr with
     | Pure_Copy expr -> need_surround_place_expr expr
     | Pure_Literal _ -> false
+    | Pure_Array_Initializer _ -> false
     | _ -> true
 
   and need_surround_expr (expr : expr) : bool =
@@ -253,6 +268,11 @@ module Print = struct
         print_place_expr obj;
         write ".";
         write field
+      | P_Index { arr; index } ->
+        print_place_expr arr;
+        write "[";
+        print_pure_expr index;
+        write "]"
       | P_Deref expr ->
         write "*";
         print_pure_expr expr)
@@ -315,8 +335,20 @@ module Print = struct
       write label;
       write ":";
       write "0;"
-    | S_For { body } ->
-      write "for(;;) ";
+    | S_For { init; cond; iter; body } ->
+      write "for(";
+      (match init with
+       | None -> ()
+       | Some init -> print_stmt init);
+      write "; ";
+      (match cond with
+       | None -> ()
+       | Some cond -> print_expr cond);
+      write "; ";
+      (match iter with
+       | None -> ()
+       | Some iter -> print_stmt iter);
+      write ") ";
       print_block body
     | S_Scope block -> print_block block
     | S_Return value ->
@@ -370,6 +402,13 @@ module Print = struct
         print_ty target;
         write ")";
         print_pure_expr value
+      | Pure_Array_Initializer elements ->
+        write "{ ";
+        elements
+        |> List.iteri (fun i e ->
+          if i <> 0 then write ", ";
+          print_pure_expr e);
+        write " }"
       | Pure_Compound { ty; fields } ->
         write "(";
         print_ty ty;
@@ -458,6 +497,7 @@ module Print = struct
         | TD_Struct _ -> Some "struct"
         | TD_Union _ -> Some "union"
         | TD_Fn _ -> None
+        | TD_Array _ -> None
         | TD_Alias _ -> None
         | TD_Raw _ -> None
         | TD_RuntimeDefined _ -> None
@@ -503,6 +543,7 @@ module Print = struct
          | TD_Fn { args; result_ty } ->
            args |> List.iter ensure_type_declared;
            result_ty |> ensure_type_declared
+         | TD_Array { element_ty; length = _ } -> element_ty |> ensure_type_completed
          | TD_Enum _ -> ()
          | TD_Struct fields ->
            fields |> StringMap.iter (fun _ field_ty -> ensure_type_completed field_ty)
@@ -528,6 +569,15 @@ module Print = struct
              if i <> 0 then write ", ";
              print_ty arg);
            write ");";
+           writeln ()
+         | TD_Array { element_ty; length } ->
+           write "typedef ";
+           print_ty element_ty;
+           write " ";
+           write name;
+           write "[";
+           write (Int32.to_string length);
+           write "];";
            writeln ()
          | TD_Enum variants ->
            write "enum ";

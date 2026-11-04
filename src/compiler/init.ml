@@ -425,6 +425,16 @@ and init_expr : span -> State.t -> Expr.Shape.t -> expr =
               inferred_ty);
           ty |> Inference.Ty.expect_inferred_as ~span inferred_ty);
         { ty }
+      | E_Array { elements } ->
+        let element_ty = Ty.new_not_inferred ~scope ~span in
+        elements
+        |> List.iter (fun (element : expr) ->
+          element.data.signature.ty |> Inference.Ty.expect_inferred_as ~span element_ty);
+        let length =
+          V_Int32 (Int32.of_int (List.length elements)) |> Value.inferred ~span
+        in
+        let ty = Ty.inferred ~span (T_Array { element_ty; length }) in
+        { ty }
       | E_Tuple tuple -> tuple_sig ~scope ~span Expr tuple
       | E_Variant { label; label_span = _; value } ->
         { ty =
@@ -740,6 +750,9 @@ let init_ty_expr : span -> State.t -> (unit -> Expr.Ty.Shape.t) -> Expr.ty =
       match shape with
       | TE_Unit -> ()
       | TE_Ref _ -> ()
+      | TE_Array { element_ty = _; length } ->
+        let length_ty = Ty.inferred ~span T_Int32 in
+        length.data.signature.ty |> Inference.Ty.expect_inferred_as ~span length_ty
       | TE_Fn { is_closure : bool = _; call_convention : string option = _; arg; result }
         ->
         let _ : Expr.ty = arg in

@@ -84,6 +84,7 @@ let inner_compiled_with_handler
          | Some { captures = _; is_move = _; args = { pattern = args }; body } ->
            handler.handle Pattern args;
            handler.handle Expr body)
+      | E_Array { elements } -> elements |> List.iter (handler.handle Expr)
       | E_Tuple tuple -> inner_tuple_compiled_with_handler kind tuple handler
       | E_Variant { label = _; label_span = _; value } ->
         value |> Option.iter (handler.handle Expr)
@@ -168,6 +169,9 @@ let inner_compiled_with_handler
         (match shape with
          | TE_Unit -> ()
          | TE_Ref { mut = _; referenced } -> handler.handle TyExpr referenced
+         | TE_Array { element_ty; length } ->
+           handler.handle TyExpr element_ty;
+           handler.handle Expr length
          | TE_Fn { is_closure = _; call_convention = _; arg; result } ->
            handler.handle TyExpr arg;
            handler.handle TyExpr result

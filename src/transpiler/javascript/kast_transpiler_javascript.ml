@@ -390,6 +390,7 @@ module Impl = struct
       (match name |> OptionalName.await_inferred with
        | Some name -> type_named name
        | None -> todo_ty __LOC__)
+    | T_Array _ -> todo_ty __LOC__
     | T_List _ -> todo_ty __LOC__
     | T_Ty -> todo_ty __LOC__
     | T_Fn _ -> todo_ty __LOC__
@@ -510,7 +511,7 @@ module Impl = struct
                  |> List.of_seq)
           ; span = None
           }
-      | V_List { ty = _; elements } ->
+      | V_Array { ty = _; elements } | V_List { ty = _; elements } ->
         calculate
           { shape =
               JsAst.List
@@ -1309,6 +1310,7 @@ module Impl = struct
         let place = transpile_place_expr place in
         claim place
       | E_Defer e -> failwith __LOC__
+      | E_Array _ -> failwith __LOC__
       | E_Then { list } ->
         let expr = ref None in
         list

@@ -2777,6 +2777,68 @@ let include_ast : core_syntax =
   }
 ;;
 
+let array : core_syntax =
+  { name = "array"
+  ; handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        : a ->
+        let span = ast.data.span in
+        match kind with
+        | Expr ->
+          let elements =
+            children
+            |> Tuple.unwrap_single_unnamed
+            |> Ast.Child.expect_ast
+            |> Ast.collect_list
+                 ~binary_rule_name:"core:comma"
+                 ~trailing_or_leading_rule_name:"core:trailing comma"
+          in
+          E_Array { elements = elements |> List.map (C.compile Expr) }
+          |> init_expr span C.state
+        | PlaceExpr -> Compiler.temp_expr (module C) ast
+        | _ ->
+          error span "array wrong kind";
+          init_error span C.state kind)
+  }
+;;
+
+let array_type : core_syntax =
+  { name = "array_type"
+  ; handle =
+      (fun (type a)
+        (module C : Compiler.S)
+        (kind : a compiled_kind)
+        (ast : Ast.t)
+        ({ children; _ } : Ast.group)
+        : a ->
+        let span = ast.data.span in
+        let inner = children |> Tuple.unwrap_single_unnamed |> Ast.Child.expect_ast in
+        match kind with
+        | TyExpr ->
+          (match
+             inner
+             |> Ast.collect_list
+                  ~binary_rule_name:"core:comma"
+                  ~trailing_or_leading_rule_name:"core:trailing comma"
+           with
+           | [ ty; length ] ->
+             (fun () ->
+               TE_Array
+                 { element_ty = C.compile TyExpr ty; length = C.compile Expr length })
+             |> init_ty_expr span C.state
+           | _ ->
+             error span "Expected [type, length] args for array type";
+             init_error span C.state kind)
+        | _ ->
+          error span "array_type must be type";
+          init_error span C.state kind)
+  }
+;;
+
 let no_hygiene : core_syntax =
   { name = "no_hygiene"
   ; handle =
@@ -2884,6 +2946,8 @@ let core =
   ; let_context
   ; unsafe_copy
   ; defer
+  ; array_type
+  ; array
   ]
 ;;
 

@@ -343,6 +343,24 @@ module Impl = struct
     | effect GetScope, k -> Effect.continue k scope
     | effect GetUnwindCtx, k -> Effect.continue k unwind_ctx
 
+  and actual_array_place (place : C_ast.place_expr) : C_ast.place_expr =
+    P_Field { obj = place; field = "array" }
+
+  and for_array_index (index_var : string) (length : value) (f : unit -> unit) =
+    insert_stmt
+      (S_For
+         { init = Some (S_Native [ N_Raw "size_t "; N_Raw index_var; N_Raw " = 0" ])
+         ; cond =
+             Some
+               (E_Native
+                  [ N_Raw index_var
+                  ; N_Raw " < "
+                  ; N_InterpolatedPlace (transpile_value length)
+                  ])
+         ; iter = Some (S_Native [ N_Raw index_var; N_Raw "++" ])
+         ; body = new_block f
+         })
+
   and new_block
         ?(new_scope = true)
         ?(after_cleanup : (unit -> unit) option)
@@ -541,6 +559,8 @@ module Impl = struct
       |> Tuple.to_seq_stable_order
       |> Seq.for_all (fun ((_member, field) : Tuple.member * Types.ty_tuple_field) ->
         (transpile_ty field.ty).is_copy |> Lazy.force)
+    | Types.T_Array { element_ty; length = _ } ->
+      (transpile_ty element_ty).is_copy |> Lazy.force
     | Types.T_List _ -> false
     | Types.T_Ty -> copy
     | Types.T_Fn { is_closure; _ } -> not (is_closure |> Inference.await_inferred_simple)
@@ -691,6 +711,29 @@ module Impl = struct
                                   { obj = P_Deref (Pure_Copy (P_Ident arg_name))
                                   ; field = member_name member
                                   }) )))
+              | Types.T_Array { element_ty; length } ->
+                let var = gen_name "claimed_array" in
+                let_var ~drop:false kast_ty var None;
+                let i = gen_name "i" in
+                for_array_index i length (fun () ->
+                  insert_stmt
+                    (S_Assign
+                       { assignee =
+                           P_Index
+                             { arr = actual_array_place (P_Ident var)
+                             ; index = Pure_Copy (P_Ident i)
+                             }
+                       ; value =
+                           LazyNamed.force
+                             (transpile_ty element_ty).claim
+                             (P_Index
+                                { arr =
+                                    actual_array_place
+                                      (P_Deref (Pure_Copy (P_Ident arg_name)))
+                                ; index = Pure_Copy (P_Ident i)
+                                })
+                       }));
+                E_Pure (Pure_Copy (P_Ident var))
               | Types.T_List _ ->
                 E_Apply
                   { f =
@@ -954,6 +997,34 @@ module Impl = struct
               println ());
             dec_indent ();
             printf "}" []
+          | Types.T_Array { element_ty; length } ->
+            let i = gen_name "i" in
+            printf "@array {" [];
+            inc_indent ();
+            println ();
+            for_array_index i length (fun () ->
+              insert_stmt
+                (S_Expr
+                   (E_Apply
+                      { f =
+                          Pure_Native
+                            [ N_Raw (LazyNamed.force (transpile_ty element_ty).dbg_write)
+                            ]
+                      ; args =
+                          [ Pure_AddrOf
+                              (P_Index
+                                 { arr =
+                                     actual_array_place
+                                       (P_Deref (Pure_Copy (P_Ident var)))
+                                 ; index = Pure_Copy (P_Ident i)
+                                 })
+                          ; Pure_Copy (P_Ident fmt_var)
+                          ]
+                      }));
+              printf "," [];
+              println ());
+            dec_indent ();
+            printf "}" []
           | Types.T_List _ ->
             insert_stmt
               (S_Expr
@@ -1110,6 +1181,16 @@ module Impl = struct
               LazyNamed.force
                 (transpile_ty field.ty).drop
                 (Pure_Copy (P_Field { obj = P_Ident var; field = member_name member })))
+          | Types.T_Array { element_ty; length } ->
+            let i = gen_name "i" in
+            for_array_index i length (fun () ->
+              LazyNamed.force
+                (transpile_ty element_ty).drop
+                (Pure_Copy
+                   (P_Index
+                      { arr = actual_array_place (P_Ident var)
+                      ; index = Pure_Copy (P_Ident i)
+                      })))
           | Types.T_List _ ->
             insert_stmt
               (S_Expr
@@ -1471,6 +1552,32 @@ module Impl = struct
         |> StringMap.of_seq
       in
       T_Named { name = ty_name; def = make_with (fun () -> TD_Struct (fields ())) }
+    | Types.T_Array { element_ty; length } ->
+      let length =
+        length
+        |> Value.expect_int32
+        |> Option.unwrap_or_else (fun () -> fail "%a is not int32" Value.print length)
+      in
+      let name =
+        make_correct_ident
+          (make_string "Array_%a_%d" Ty.print element_ty (Int32.to_int length))
+      in
+      T_Named
+        { name
+        ; def =
+            make_with (fun () ->
+              let element_ty = transpile_ty element_ty in
+              let actual_array_ty_name = name ^ "_actual_array" in
+              let actual_array_ty_def : C_ast.ty_def =
+                { shape = TD_Array { element_ty = element_ty.c_ty; length }
+                ; comment = None
+                }
+              in
+              ctx.types
+              <- ctx.types |> StringMap.add actual_array_ty_name actual_array_ty_def;
+              TD_Struct
+                (StringMap.of_list [ "array", C_ast.T_Named actual_array_ty_name ]))
+        }
     | Types.T_List { element_ty } ->
       let element_ty = transpile_ty element_ty in
       let macro_arg = ty_to_ident element_ty.c_ty in
@@ -2222,6 +2329,7 @@ module Impl = struct
         |> List.of_seq
       in
       compound_literal (Value.Shape.ty_of shape) fields
+    | V_Array _ -> failwith __LOC__
     | V_List { ty = { element_ty }; elements } ->
       let var = gen_name "list" in
       E_Block
@@ -2723,6 +2831,23 @@ module Impl = struct
         (* TODO memoization? *)
         failwith __LOC__
         (* Fn (transpile_fn ~captured:None def) *)
+      | Types.E_Array { elements } ->
+        let array_ty =
+          expr.data.signature.ty
+          |> Ty.await_inferred
+          |> Ty.Shape.expect_array
+          |> Option.unwrap
+        in
+        let elements =
+          elements
+          |> List.map transpile_expr
+          |> List.map (fun e ->
+            make_pure (transpile_ty array_ty.element_ty).c_ty e "array_element")
+        in
+        Some
+          (compound_literal
+             expr.data.signature.ty
+             [ "array", E_Pure (Pure_Array_Initializer elements) ])
       | Types.E_Tuple { guaranteed_anonymous = _; parts } ->
         let var_name = gen_name "tuple" in
         let var_ty = transpile_ty expr.data.signature.ty in
@@ -2980,7 +3105,13 @@ module Impl = struct
         Some (E_Pure (Pure_Copy (P_Ident result_var)))
       | Types.E_QuoteAst _ -> failwith __LOC__
       | Types.E_Loop { body } ->
-        insert_stmt (S_For { body = new_block (fun () -> execute_expr body) });
+        insert_stmt
+          (S_For
+             { init = None
+             ; cond = None
+             ; iter = None
+             ; body = new_block (fun () -> execute_expr body)
+             });
         None
       | Types.E_Unwindable { token; body } ->
         let label_on_unwind = gen_name "on_unwind" in

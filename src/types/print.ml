@@ -79,6 +79,7 @@ module Impl = struct
       if mut then fprintf fmt "mut ";
       print_place_ref fmt place
     | V_Tuple tuple -> print_value_tuple fmt tuple
+    | V_Array a -> print_value_array fmt a
     | V_List list -> print_value_list fmt list
     | V_Fn { ty; fn } ->
       fprintf fmt "@{<italic><fn %a at %a>@}" print_ty_fn ty Span.print fn.def.span
@@ -116,6 +117,10 @@ module Impl = struct
     | V_Opaque { ty = _; value = _ } -> fprintf fmt "@{<italic><opaque>@}"
     | V_Blocked blocked -> print_blocked_value fmt blocked
     | V_Target target -> print_target fmt target
+
+  and print_value_array : formatter -> value_array -> unit =
+    fun fmt { ty = _; elements } ->
+    List.print (print_place_value_with print_value) fmt (Dynarray.to_list elements)
 
   and print_value_list : formatter -> value_list -> unit =
     fun fmt { ty = _; elements } ->
@@ -221,6 +226,8 @@ module Impl = struct
       fprintf fmt "&%a%a" print_is_mutable mut print_ty referenced
     | T_Variant v -> print_ty_variant ~always_print_shape:always_print_named_shape fmt v
     | T_Tuple t -> print_ty_tuple ~always_print_shape:always_print_named_shape fmt t
+    | T_Array { element_ty; length } ->
+      fprintf fmt "Array[%a, %a]" print_ty element_ty print_value length
     | T_List { element_ty } -> fprintf fmt "ArrayList[%a]" print_ty element_ty
     | T_Ty -> fprintf fmt "Type"
     | T_Fn f -> print_ty_fn fmt f
@@ -312,6 +319,7 @@ module Impl = struct
       | E_Scope _ -> "Scope"
       | E_Fn _ -> "Fn"
       | E_Generic _ -> "Generic"
+      | E_Array _ -> "Array"
       | E_Tuple _ -> "Tuple"
       | E_Variant _ -> "Variant"
       | E_Apply _ -> "Apply"
@@ -402,6 +410,7 @@ module Impl = struct
            (print_expr ~options)
            body
        | None -> fprintf fmt "@{<magenta>fn (not compiled)@}")
+    | E_Array { elements } -> List.print (print_expr ~options) fmt elements
     | E_Tuple tuple -> print_ir_tuple '=' (print_expr ~options) fmt tuple
     | E_Variant { label; label_span = _; value } ->
       fprintf
@@ -684,6 +693,16 @@ module Impl = struct
         mut
         (Tuple.print (print_ty_expr ~options))
         (Tuple.make [ referenced ] [])
+    | TE_Array { element_ty; length } ->
+      fprintf
+        fmt
+        "@{<magenta>array@} %a"
+        (Tuple.print (print_compiled ~options))
+        (Tuple.make
+           []
+           [ "element_ty", Compiled (TyExpr, element_ty)
+           ; "length", Compiled (Expr, length)
+           ])
     | TE_Fn { is_closure; call_convention; arg; result } ->
       fprintf
         fmt
@@ -852,6 +871,7 @@ let print_value = with_cache Impl.print_value
 let print_value_shape = with_cache Impl.print_value_shape
 let print_value_tuple = with_cache Impl.print_value_tuple
 let print_value_list = with_cache Impl.print_value_list
+let print_value_array = with_cache Impl.print_value_array
 
 let print_expr_with_spans =
   with_cache (Impl.print_expr ~options:{ spans = true; types = false })

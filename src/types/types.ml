@@ -71,6 +71,7 @@ module rec TypesImpl : sig
     | V_Box of place
     | V_String of string
     | V_StringView of string
+    | V_Array of value_array
     | V_Tuple of value_tuple
     | V_List of value_list
     | V_Variant of value_variant
@@ -154,6 +155,11 @@ module rec TypesImpl : sig
     ; tuple : value_tuple_field Tuple.t
     }
 
+  and value_array =
+    { ty : ty_array [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; elements : place Dynarray.t
+    }
+
   and value_list =
     { ty : ty_list [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     ; elements : place Dynarray.t
@@ -183,6 +189,11 @@ module rec TypesImpl : sig
   and ty_tuple =
     { name : optional_name
     ; tuple : ty_tuple_field Tuple.t
+    }
+
+  and ty_array =
+    { element_ty : ty
+    ; length : value
     }
 
   and ty_list = { element_ty : ty }
@@ -241,6 +252,7 @@ module rec TypesImpl : sig
     | T_Rc of ty
     | T_Variant of ty_variant
     | T_Tuple of ty_tuple
+    | T_Array of ty_array
     | T_List of ty_list
     | T_Ty
     | T_Fn of ty_fn
@@ -472,6 +484,8 @@ module rec TypesImpl : sig
     ; place : place_expr
     }
 
+  and expr_array = { elements : expr list }
+
   and expr_shape =
     | E_Ref of expr_ref
     | E_Claim of place_expr
@@ -482,6 +496,7 @@ module rec TypesImpl : sig
     | E_Scope of expr_scope
     | E_Fn of expr_fn
     | E_Generic of expr_generic
+    | E_Array of expr_array
     | E_Tuple of expr_tuple
     | E_Variant of expr_variant
     | E_Apply of expr_apply
@@ -581,12 +596,18 @@ module rec TypesImpl : sig
     ; referenced : ty_expr
     }
 
+  and ty_expr_array =
+    { element_ty : ty_expr
+    ; length : expr
+    }
+
   and ty_expr_shape =
     | TE_Unit
     | TE_Ref of ty_expr_ref
     | TE_Fn of ty_expr_fn
     | TE_Expr of expr
     | TE_Tuple of ty_expr_tuple
+    | TE_Array of ty_expr_array
     | TE_Variant of ty_expr_variant
     | TE_Union of ty_expr_union
     | TE_Error
@@ -850,6 +871,7 @@ end = struct
     | V_Box of place
     | V_String of string
     | V_StringView of string
+    | V_Array of value_array
     | V_Tuple of value_tuple
     | V_List of value_list
     | V_Variant of value_variant
@@ -933,6 +955,11 @@ end = struct
     ; tuple : value_tuple_field Tuple.t
     }
 
+  and value_array =
+    { ty : ty_array [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
+    ; elements : place Dynarray.t
+    }
+
   and value_list =
     { ty : ty_list [@equal fun _ _ -> true] [@compare fun _ _ -> 0]
     ; elements : place Dynarray.t
@@ -962,6 +989,11 @@ end = struct
   and ty_tuple =
     { name : optional_name
     ; tuple : ty_tuple_field Tuple.t
+    }
+
+  and ty_array =
+    { element_ty : ty
+    ; length : value
     }
 
   and ty_list = { element_ty : ty }
@@ -1020,6 +1052,7 @@ end = struct
     | T_Rc of ty
     | T_Variant of ty_variant
     | T_Tuple of ty_tuple
+    | T_Array of ty_array
     | T_List of ty_list
     | T_Ty
     | T_Fn of ty_fn
@@ -1251,6 +1284,8 @@ end = struct
     ; place : place_expr
     }
 
+  and expr_array = { elements : expr list }
+
   and expr_shape =
     | E_Ref of expr_ref
     | E_Claim of place_expr
@@ -1261,6 +1296,7 @@ end = struct
     | E_Scope of expr_scope
     | E_Fn of expr_fn
     | E_Generic of expr_generic
+    | E_Array of expr_array
     | E_Tuple of expr_tuple
     | E_Variant of expr_variant
     | E_Apply of expr_apply
@@ -1360,12 +1396,18 @@ end = struct
     ; referenced : ty_expr
     }
 
+  and ty_expr_array =
+    { element_ty : ty_expr
+    ; length : expr
+    }
+
   and ty_expr_shape =
     | TE_Unit
     | TE_Ref of ty_expr_ref
     | TE_Fn of ty_expr_fn
     | TE_Expr of expr
     | TE_Tuple of ty_expr_tuple
+    | TE_Array of ty_expr_array
     | TE_Variant of ty_expr_variant
     | TE_Union of ty_expr_union
     | TE_Error

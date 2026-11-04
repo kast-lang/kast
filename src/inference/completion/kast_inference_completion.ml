@@ -81,6 +81,9 @@ module Impl = struct
          | V_Tuple { ty; tuple } ->
            complete_ty_tuple ty;
            complete_tuple complete_value_tuple_field tuple
+         | V_Array { ty; elements } ->
+           complete_ty_array ty;
+           elements |> Dynarray.iter complete_place
          | V_List { ty; elements } ->
            complete_ty_list ty;
            elements |> Dynarray.iter complete_place
@@ -194,6 +197,7 @@ module Impl = struct
            complete_ty referenced
          | T_Variant ty -> complete_ty_variant ty
          | T_Tuple ty -> complete_ty_tuple ty
+         | T_Array ty -> complete_ty_array ty
          | T_List ty -> complete_ty_list ty
          | T_Ty -> ()
          | T_Fn ty -> complete_ty_fn ty
@@ -208,6 +212,10 @@ module Impl = struct
          | T_Blocked blocked -> complete_blocked_value blocked
          | T_Error -> ())
       (fun fmt -> fprintf fmt "while completing ty shape %a" Ty.Shape.print shape)
+
+  and complete_ty_array ({ element_ty; length } : ty_array) =
+    complete_ty element_ty;
+    complete_value length
 
   and complete_ty_list ({ element_ty } : ty_list) = complete_ty element_ty
   and complete_ty_unwind_token ({ result } : ty_unwind_token) = complete_ty result
@@ -303,6 +311,7 @@ module Impl = struct
     | E_Then { list } -> list |> List.iter complete_expr
     | E_Stmt { expr } -> complete_expr expr
     | E_Scope { expr } -> complete_expr expr
+    | E_Array { elements } -> elements |> List.iter complete_expr
     | E_Fn { ty; def } ->
       complete_ty_fn ty;
       complete_maybe_compiled_fn def
@@ -460,6 +469,9 @@ module Impl = struct
     | TE_Ref { mut; referenced } ->
       complete_is_mutable mut;
       complete_ty_expr referenced
+    | TE_Array { element_ty; length } ->
+      complete_ty_expr element_ty;
+      complete_expr length
     | TE_Fn { is_closure : bool = _; call_convention : string option = _; arg; result } ->
       complete_ty_expr arg;
       complete_ty_expr result

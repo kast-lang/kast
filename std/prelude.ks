@@ -10,6 +10,7 @@ use Float32;
 use Float64;
 use Byte;
 use Char;
+use Array;
 use String;
 use String.ToString;
 use String.to_string;

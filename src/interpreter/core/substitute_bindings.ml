@@ -134,6 +134,12 @@ module Impl = struct
                       })
           }
         |> shaped
+      | V_Array { ty; elements } ->
+        shaped
+        <| V_Array
+             { ty = sub_ty_array ~state ty
+             ; elements = elements |> Dynarray.map (sub_place ~state)
+             }
       | V_List { ty; elements } ->
         shaped
         <| V_List
@@ -384,6 +390,9 @@ module Impl = struct
       ~state
       ty
 
+  and sub_ty_array ~(state : sub_state) ({ element_ty; length } : ty_array) : ty_array =
+    { element_ty = sub_ty ~state element_ty; length = sub_value ~state length }
+
   and sub_ty_list ~(state : sub_state) ({ element_ty } : ty_list) : ty_list =
     { element_ty = sub_ty ~state element_ty }
 
@@ -454,6 +463,7 @@ module Impl = struct
       | T_Ref { mut; referenced } ->
         T_Ref { mut; referenced = sub_ty ~state referenced } |> shaped
       | T_Tuple t -> T_Tuple (sub_ty_tuple ~state t) |> shaped
+      | T_Array t -> T_Array (sub_ty_array ~state t) |> shaped
       | T_List t -> T_List (sub_ty_list ~state t) |> shaped
       | T_Variant t -> T_Variant (sub_ty_variant ~state t) |> shaped
       | T_Fn ty -> T_Fn (sub_ty_fn ~state ty) |> shaped

@@ -158,6 +158,7 @@ let init () =
                                             ]
                                             [])) )
                        ]))
+         | T_Array _ -> failwith __LOC__
          | T_List _ -> failwith __LOC__
          | T_Ty -> failwith __LOC__
          | T_Fn _ -> failwith __LOC__
