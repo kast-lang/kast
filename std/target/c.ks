@@ -1,5 +1,7 @@
 module:
 
+const void_ptr = @opaque_type "void*";
+
 const RawUnwindToken = @opaque_type "RawUnwindToken";
 
 const UnwindTokenImpl = [T] newtype {

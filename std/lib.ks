@@ -49,6 +49,7 @@ const Box_leak = [T] (box :: Box[T]) -> &mut T => @cfg (
 
 const rc = include "./rc.ks";
 include "./array.ks";
+include "./slice.ks";
 
 const mem = include "./mem.ks";
 
