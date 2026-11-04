@@ -29,24 +29,7 @@ const Char :: Type = @native "Char";
 const String :: Type = @native "String";
 const StringView :: Type = @native "&str";
 
-const Box = [T :: Type] ((@native "Box")(T) :: Type);
-const Box_new = [T] (mut value :: T) -> Box[T] => @cfg (
-    | target.name == "c" => (
-        @native "Box_\(type T)_new(\(value), \(T))"
-    )
-    | true => panic("TODO box")
-);
-
-const Box_leak = [T] (box :: Box[T]) -> &mut T => @cfg (
-    | target.name == "c" => (
-        @native "Box_\(type T)_leak(\(box))"
-    )
-    | true => (
-        let mut box = box;
-        &mut box^
-    )
-);
-
+include "./box.ks";
 const rc = include "./rc.ks";
 
 const mem = include "./mem.ks";

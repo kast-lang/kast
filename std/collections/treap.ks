@@ -9,13 +9,13 @@ const data = [T] newtype {
 };
 const t = [T] newtype (
     | :Empty
-    | :Node Box[data[T]]
+    | :Node Box.t[data[T]]
 );
 
 const clone = [T] (self :: &Treap.t[T]) -> Treap.t[T] => (
     match self^ with (
         | :Empty => :Empty
-        | :Node ref data => :Node Box_new({
+        | :Node ref data => :Node Box.new({
             .left = clone[T](&data^^.left),
             .right = clone[T](&data^^.right),
             .value = data^^.value, # TODO Clone trait?
@@ -26,7 +26,7 @@ const clone = [T] (self :: &Treap.t[T]) -> Treap.t[T] => (
 );
 
 const new = [T] () -> Treap.t[T] => :Empty;
-const singleton = [T] (value :: T) -> Treap.t[T] => :Node Box_new(
+const singleton = [T] (value :: T) -> Treap.t[T] => :Node Box.new(
     {
         .left = :Empty,
         .right = :Empty,

@@ -155,6 +155,9 @@ let init_natives () =
         | None ->
           Error.error caller "@parse needs a String as arg";
           V_Error |> Value.inferred ~span)
+    ; native_fn "Box.new" (fun _ty ~caller ~state arg ->
+        let arg = single_arg ~span ~state arg in
+        V_Box (Place.init ~mut:Inherit arg) |> Value.inferred ~span:caller)
     ]
     @ types
     @ Mod_fs.init ()
