@@ -74,6 +74,7 @@ module Impl = struct
     | V_String value -> fprintf fmt "@{<green>%a@}" String.print_debug value
     | V_StringView value -> fprintf fmt "@{<green>&%a@}" String.print_debug value
     | V_Box boxed -> fprintf fmt "boxed %a" (print_place_value_with print_value) boxed
+    | V_Rc place -> fprintf fmt "rc %a" (print_place_value_with print_value) place
     | V_Ref { mut; place } ->
       fprintf fmt "&";
       if mut then fprintf fmt "mut ";

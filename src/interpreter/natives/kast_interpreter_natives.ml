@@ -158,6 +158,23 @@ let init_natives () =
     ; native_fn "Box.new" (fun _ty ~caller ~state arg ->
         let arg = single_arg ~span ~state arg in
         V_Box (Place.init ~mut:Inherit arg) |> Value.inferred ~span:caller)
+    ; native_fn "Rc.new" (fun _ty ~caller ~state arg ->
+        let arg = single_arg ~span ~state arg in
+        V_Rc (Place.init ~mut:Inherit arg) |> Value.inferred ~span:caller)
+    ; native_fn "place_eq" (fun _ty ~caller ~state args ->
+        match args |> Value.await_inferred with
+        | V_Tuple { ty = _; tuple } ->
+          let a, b = tuple |> Tuple.unwrap_unnamed2 in
+          let a =
+            a.place |> claim ~span:caller ~state |> Value.expect_ref |> Option.unwrap
+          in
+          let b =
+            b.place |> claim ~span:caller ~state |> Value.expect_ref |> Option.unwrap
+          in
+          V_Bool (Repr.phys_equal a.place b.place) |> Value.inferred ~span
+        | _ ->
+          Error.error caller "place_eq expected a tuple as arg";
+          V_Error |> Value.inferred ~span)
     ]
     @ types
     @ Mod_fs.init ()

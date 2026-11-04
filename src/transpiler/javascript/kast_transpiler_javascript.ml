@@ -494,6 +494,7 @@ module Impl = struct
       | V_String s -> calculate { shape = JsAst.String s; span = None }
       | V_StringView s -> calculate { shape = JsAst.String s; span = None }
       | V_Box _ -> failwith __LOC__
+      | V_Rc _ -> failwith __LOC__
       | V_Ref _ -> failwith __LOC__
       | V_Tuple { tuple; ty = _ } ->
         calculate

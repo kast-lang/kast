@@ -206,6 +206,7 @@ module VarScope = struct
     | V_Byte (_ : char) -> root ()
     | V_Char (_ : Uchar.t) -> root ()
     | V_Box boxed -> of_place boxed
+    | V_Rc place -> of_place place
     | V_Ref x -> of_value_ref x
     | V_String (_ : string) -> root ()
     | V_StringView (_ : string) -> root ()
@@ -801,6 +802,8 @@ module Impl = struct
          | V_StringView _, _ -> fail ()
          | V_String a, V_String b when a = b -> V_String a
          | V_String _, _ -> fail ()
+         | V_Rc a, V_Rc b -> V_Rc (unite_place ~span a b)
+         | V_Rc _, _ -> fail ()
          | V_Box a, V_Box b -> V_Box (unite_place ~span a b)
          | V_Box _, _ -> fail ()
          | V_Ref a, V_Ref b when Repr.equal a b -> V_Ref a
@@ -1151,6 +1154,7 @@ module Impl = struct
       | V_String _ -> inferred_ty ~span T_String
       | V_StringView _ -> inferred_ty ~span T_StringView
       | V_Opaque { ty; value = _ } -> inferred_ty ~span (T_Opaque ty)
+      | V_Rc place -> inferred_ty ~span (T_Rc place.ty)
       | V_Box boxed -> inferred_ty ~span (T_Box boxed.ty)
       | V_Ref { mut; place } ->
         inferred_ty

@@ -2307,6 +2307,7 @@ module Impl = struct
     | V_Byte b -> E_Pure (Pure_Literal (L_Int32 (Int32.of_int (Char.code b))))
     | V_Char c -> E_Pure (Pure_Literal (L_Int32 (Int32.of_int (Uchar.to_int c))))
     | V_Box _ -> failwith __LOC__
+    | V_Rc _ -> failwith __LOC__
     | V_Ref _ -> failwith __LOC__
     | V_String s ->
       E_Apply

@@ -117,6 +117,7 @@ module Impl = struct
       | V_CompilerScope _ | V_Error ->
         original_value
       | V_Box boxed -> V_Box (sub_place ~state boxed) |> shaped
+      | V_Rc place -> V_Rc (sub_place ~state place) |> shaped
       | V_Ref _ -> original_value (* TODO ??? *)
       | V_Tuple { ty; tuple } ->
         V_Tuple

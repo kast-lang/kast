@@ -131,7 +131,7 @@ module Value = struct
       let span = Span.fake "<Value.Shape.name>" in
       function
       | V_Unit | V_Bool _ | V_Int32 _ | V_UInt32 _ | V_Int64 _ | V_UInt64 _ | V_Float32 _
-      | V_Float64 _ | V_Byte _ | V_Char _ | V_Box _ | V_Ref _ | V_String _
+      | V_Float64 _ | V_Byte _ | V_Char _ | V_Rc _ | V_Box _ | V_Ref _ | V_String _
       | V_StringView _ | V_Tuple _ | V_Array _ | V_List _ | V_Variant _ | V_Ast _
       | V_UnwindToken _ | V_Target _ | V_ContextTy _ | V_ImplicitContext _
       | V_CompilerScope _ | V_Opaque _ | V_Blocked _ | V_Error ->

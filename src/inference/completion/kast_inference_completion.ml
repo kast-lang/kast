@@ -75,6 +75,7 @@ module Impl = struct
          | V_Byte (_ : char) -> ()
          | V_Char (_ : Uchar.t) -> ()
          | V_Box boxed -> complete_place boxed
+         | V_Rc place -> complete_place place
          | V_Ref { mut : bool = _; place } -> complete_place place
          | V_String (_ : string) -> ()
          | V_StringView (_ : string) -> ()

@@ -593,14 +593,16 @@ and eval_place : state -> Types.place_expr -> evaled_place_expr =
         | PE_Deref ref_expr ->
           (match eval_place state ref_expr with
            | RefBlocked _ -> failwith __LOC__
-           | Place (~mut:_, place) ->
+           | Place (~mut, place) ->
              let ref = place |> read_place ~span ~state in
-             (match ref |> Value.expect_ref with
-              | None ->
+             (match ref |> Value.await_inferred with
+              | V_Ref { mut; place } ->
+                Place (~mut:(Place.is_mutable ~parent_mut:mut place), place)
+              | V_Box place -> Place (~mut, place)
+              | V_Rc place -> Place (~mut, place)
+              | _ ->
                 Error.error ref_expr.data.span "Expected a reference";
-                Place (~mut:true, error_place result_ty)
-              | Some { mut; place } ->
-                Place (~mut:(Place.is_mutable ~parent_mut:mut place), place)))
+                Place (~mut:true, error_place result_ty)))
         | PE_Field { obj; field; field_span = _ } ->
           let member : Tuple.member =
             match eval_field_expr state field with

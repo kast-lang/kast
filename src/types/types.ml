@@ -69,6 +69,7 @@ module rec TypesImpl : sig
     | V_Char of Uchar.t
     | V_Ref of value_ref
     | V_Box of place
+    | V_Rc of place
     | V_String of string
     | V_StringView of string
     | V_Array of value_array
@@ -870,6 +871,7 @@ end = struct
     | V_Char of Uchar.t
     | V_Ref of value_ref
     | V_Box of place
+    | V_Rc of place
     | V_String of string
     | V_StringView of string
     | V_Array of value_array
