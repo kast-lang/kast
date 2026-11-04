@@ -189,7 +189,13 @@ const Slice = (
         sort_with[T](right, compare);
     );
 
-    const sort = [T] (a :: Slice.mutable[T]) => (
-        sort_with[T](a, (T as std.cmp.Ord).compare);
+    const sort = [T] (self :: Slice.mutable[T]) => (
+        sort_with[T](self, (T as std.cmp.Ord).compare);
+    );
+
+    const reverse = [T] (self :: Slice.mutable[T]) => (
+        for i in 0..self.length / 2 do (
+            swap_at(self, i, self.length - i);
+        );
     );
 );
