@@ -57,26 +57,15 @@ module Args = struct
       let target = Target.parse target in
       let parsed, ~rest = parse rest in
       { parsed with target }, ~rest
-    | "--use-numbers-instead-of-symbols" :: value :: rest ->
-      Kast_transpiler_javascript.use_numbers_instead_of_symbols := bool_of_string value;
-      parse rest
-    | "--js-ref-vars" :: value :: rest ->
-      Kast_transpiler_javascript.ref_vars_enabled := bool_of_string value;
-      parse rest
+    | "--use-numbers-instead-of-symbols" :: value :: rest -> failwith __LOC__
+    | "--js-ref-vars" :: value :: rest -> failwith __LOC__
     | "--allocation-stats" :: value :: rest ->
       Kast_transpiler_c.allocation_stats := bool_of_string value;
       parse rest
     | "--c-debug" :: value :: rest ->
       Kast_transpiler_c.debug := bool_of_string value;
       parse rest
-    | "--async" :: value :: rest ->
-      (Kast_transpiler_javascript.async_fns
-       := match value with
-          | "never" -> Kast_transpiler_javascript.Never
-          | "always" -> Always
-          | "inference" -> BasedOnInference
-          | _ -> fail "incorrect async mode");
-      parse rest
+    | "--async" :: value :: rest -> failwith __LOC__
     | path :: rest when not (path |> String.starts_with ~prefix:"-") ->
       default (Uri.file path), ~rest
     | rest -> default Uri.stdin, ~rest
@@ -143,21 +132,7 @@ let run : Args.t -> unit =
          let out = fun s -> output_string out s in
          (try Kast_transpiler_c.C_ast.Print.print_program transpiled with
           | effect Kast_transpiler_c.C_ast.Print.GetOutput, k -> Effect.continue k out)
-       | JavaScript ->
-         let transpiled : Kast_transpiler_javascript.result =
-           Kast_transpiler_javascript.transpile_expr
-             ~state:compiler.interpreter
-             ~span:expr.data.span
-             expr
-         in
-         let source_map_path =
-           match output with
-           | None -> "target/source.map"
-           | Some path -> path ^ ".map"
-         in
-         let writer = Kast_transpiler_javascript.Writer.init fmt source_map_path in
-         transpiled.print writer;
-         writer |> Kast_transpiler_javascript.Writer.finish);
+       | JavaScript -> failwith __LOC__);
       close_out out;
       run_formatter_if_needed args;
       (match post_compile_cmd with

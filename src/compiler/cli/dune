@@ -5,7 +5,6 @@
   kast_parser
   kast_compiler
   kast_default_syntax
-  kast_transpiler_javascript
   kast_transpiler_c
   kast_compiler_targets)
  (preprocessor_deps
