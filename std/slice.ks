@@ -170,14 +170,14 @@ const Slice = (
             let ei = self |> at(i);
             let ej = self |> at(j);
             let ek = self |> at(k);
-            if ei^ < ej^ then (
-                if ej^ < ek^ then (
+            if compare(ei, ej) is :Less then (
+                if compare(ej, ek) is :Less then (
                     j
                 ) else (
                     k
                 )
             ) else (
-                if ei^ < ek^ then (
+                if compare(ei, ek) is :Less then (
                     i
                 ) else (
                     k
