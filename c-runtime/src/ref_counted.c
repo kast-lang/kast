@@ -7,4 +7,4 @@ void RefCounted_ref_dump_func(void* key, void* value) {
     Kast_Backtrace_print(trace);
 }
 
-impl_RefCounted(Unit)
+impl_RefCounted(RefCounted_Unit, Unit)

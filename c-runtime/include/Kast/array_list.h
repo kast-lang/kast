@@ -5,29 +5,26 @@
 #include "./claim.h"
 #include "./fmt.h"
 
-#define define_ArrayList(T)                                                    \
+#define define_ArrayList(name, T)                                              \
     typedef struct {                                                           \
         TypeInfo* T_TypeInfo;                                                  \
         T* buf;                                                                \
         size_t capacity;                                                       \
         size_t length;                                                         \
         Kast_Claimed claimed;                                                  \
-    } ArrayList_##T;                                                           \
-    ArrayList_##T ArrayList_##T##_new(TypeInfo* T_TypeInfo);                   \
-    void ArrayList_##T##_dbg_write(ArrayList_##T* list, Kast_Formatter* fmt);  \
-    ArrayList_##T ArrayList_##T##_claim(ArrayList_##T* list);                  \
-    void ArrayList_##T##_drop(ArrayList_##T list);                             \
-    ArrayList_##T ArrayList_##T##_with_capacity(                               \
-        TypeInfo* T_TypeInfo,                                                  \
-        size_t capacity                                                        \
-    );                                                                         \
-    void ArrayList_##T##_reserve(ArrayList_##T* list, size_t capacity);        \
-    void ArrayList_##T##_push_back(ArrayList_##T* list, T x);                  \
-    T ArrayList_##T##_pop_back(ArrayList_##T* list)
+    } name;                                                                    \
+    name name##_new(TypeInfo* T_TypeInfo);                                     \
+    void name##_dbg_write(name* list, Kast_Formatter* fmt);                    \
+    name name##_claim(name* list);                                             \
+    void name##_drop(name list);                                               \
+    name name##_with_capacity(TypeInfo* T_TypeInfo, size_t capacity);          \
+    void name##_reserve(name* list, size_t capacity);                          \
+    void name##_push_back(name* list, T x);                                    \
+    T name##_pop_back(name* list)
 
-#define impl_ArrayList(T)                                                      \
-    ArrayList_##T ArrayList_##T##_new(TypeInfo* T_TypeInfo) {                  \
-        return (ArrayList_##T) {                                               \
+#define impl_ArrayList(name, T)                                                \
+    name name##_new(TypeInfo* T_TypeInfo) {                                    \
+        return (name) {                                                        \
             .T_TypeInfo = T_TypeInfo,                                          \
             .buf = NULL,                                                       \
             .capacity = 0,                                                     \
@@ -36,7 +33,7 @@
         };                                                                     \
     }                                                                          \
                                                                                \
-    void ArrayList_##T##_dbg_write(ArrayList_##T* list, Kast_Formatter* fmt) { \
+    void name##_dbg_write(name* list, Kast_Formatter* fmt) {                   \
         Kast_Formatter_printf(fmt, "[");                                       \
         Kast_Formatter_inc_indent(fmt);                                        \
         Kast_Formatter_println(fmt);                                           \
@@ -49,13 +46,13 @@
         Kast_Formatter_printf(fmt, "]");                                       \
     }                                                                          \
                                                                                \
-    ArrayList_##T ArrayList_##T##_claim(ArrayList_##T* list) {                 \
-        ArrayList_##T moved = *list;                                           \
+    name name##_claim(name* list) {                                            \
+        name moved = *list;                                                    \
         Kast_mark_as_claimed(&list->claimed);                                  \
         return moved;                                                          \
     }                                                                          \
                                                                                \
-    void ArrayList_##T##_drop(ArrayList_##T list) {                            \
+    void name##_drop(name list) {                                              \
         if (Kast_Claimed_drop(list.claimed) == Kast_Claimed_State_Owned) {     \
             if (list.T_TypeInfo->drop != NULL) {                               \
                 for (size_t i = 0; i < list.length; i++) {                     \
@@ -66,11 +63,8 @@
         }                                                                      \
     }                                                                          \
                                                                                \
-    ArrayList_##T ArrayList_##T##_with_capacity(                               \
-        TypeInfo* T_TypeInfo,                                                  \
-        size_t capacity                                                        \
-    ) {                                                                        \
-        return (ArrayList_##T) {                                               \
+    name name##_with_capacity(TypeInfo* T_TypeInfo, size_t capacity) {         \
+        return (name) {                                                        \
             .T_TypeInfo = T_TypeInfo,                                          \
             .buf = Kast_allocate_array(T_TypeInfo, capacity),                  \
             .capacity = capacity,                                              \
@@ -79,7 +73,7 @@
         };                                                                     \
     }                                                                          \
                                                                                \
-    void ArrayList_##T##_reserve(ArrayList_##T* list, size_t capacity) {       \
+    void name##_reserve(name* list, size_t capacity) {                         \
         if (list->capacity < capacity) {                                       \
             size_t old_capacity = list->capacity;                              \
             list->capacity = (list->capacity == 0) ? 4 : (list->capacity * 2); \
@@ -95,16 +89,16 @@
         }                                                                      \
     }                                                                          \
                                                                                \
-    void ArrayList_##T##_push_back(ArrayList_##T* list, T x) {                 \
-        ArrayList_##T##_reserve(list, list->length + 1);                       \
+    void name##_push_back(name* list, T x) {                                   \
+        name##_reserve(list, list->length + 1);                                \
         list->buf[list->length++] = x;                                         \
     }                                                                          \
                                                                                \
-    T ArrayList_##T##_pop_back(ArrayList_##T* list) {                          \
+    T name##_pop_back(name* list) {                                            \
         return list->buf[--list->length];                                      \
     }
 
 // Required by Kast_read_file_bytes
-define_ArrayList(Byte);
+define_ArrayList(ArrayList_Byte, Byte);
 
 #endif

@@ -9,53 +9,53 @@
 
 void RefCounted_ref_dump_func(void* key, void* value);
 
-#define define_RefCounted(T)                                                   \
+#define define_RefCounted(name, T)                                             \
     typedef struct {                                                           \
-        struct RefCountedData_##T* data;                                       \
+        struct name##RcData* data;                                             \
         /* Kast_Backtrace* this_trace; */                                      \
-    } RefCounted_##T;                                                          \
-    RefCounted_##T RefCounted_##T##_new(T value, TypeInfo* T_TypeInfo);        \
-    T* RefCounted_##T##_deref(RefCounted_##T* rc);                             \
-    RefCounted_##T RefCounted_##T##_claim(RefCounted_##T* rc);                 \
-    size_t RefCounted_##T##_drop(RefCounted_##T rc);                           \
-    void RefCounted_##T##_dbg_write(RefCounted_##T* rc, Kast_Formatter* fmt);  \
-    Bool RefCounted_##T##_ptr_eq(RefCounted_##T* a, RefCounted_##T* b);        \
-    void RefCounted_##T##_debug_dump_refs(RefCounted_##T* rc);
+    } name;                                                                    \
+    name name##_new(T value, TypeInfo* T_TypeInfo);                            \
+    T* name##_deref(name* rc);                                                 \
+    name name##_claim(name* rc);                                               \
+    size_t name##_drop(name rc);                                               \
+    void name##_dbg_write(name* rc, Kast_Formatter* fmt);                      \
+    Bool name##_ptr_eq(name* a, name* b);                                      \
+    void name##_debug_dump_refs(name* rc);
 
-#define impl_RefCounted(T)                                                     \
-    typedef struct RefCountedData_##T {                                        \
+#define impl_RefCounted(name, T)                                               \
+    typedef struct name##RcData {                                              \
         _Atomic size_t ref_count;                                              \
         /* PtrMap refs; */                                                     \
         TypeInfo* T_TypeInfo;                                                  \
         T value;                                                               \
-    } RefCountedData_##T;                                                      \
-    RefCounted_##T RefCounted_##T##_new(T value, TypeInfo* T_TypeInfo) {       \
-        RefCountedData_##T* data;                                              \
+    } name##RcData;                                                            \
+    name name##_new(T value, TypeInfo* T_TypeInfo) {                           \
+        name##RcData* data;                                                    \
         data = Kast_allocate_raw(sizeof(*data));                               \
         /* PtrMap refs = PtrMap_new(); */                                      \
         /* Kast_Backtrace* this_trace = Kast_Backtrace_get_boxed(); */         \
         /* PtrMap_add(&refs, this_trace, NULL); */                             \
-        *data = (RefCountedData_##T) {                                         \
+        *data = (name##RcData) {                                               \
             .T_TypeInfo = T_TypeInfo,                                          \
             .ref_count = 1,                                                    \
             .value = value, /* .refs = refs, */                                \
         };                                                                     \
-        return (RefCounted_##T) {                                              \
+        return (name) {                                                        \
             .data = data, /* .this_trace = this_trace, */                      \
         };                                                                     \
     }                                                                          \
-    T* RefCounted_##T##_deref(RefCounted_##T* rc) {                            \
+    T* name##_deref(name* rc) {                                                \
         return &rc->data->value;                                               \
     }                                                                          \
-    RefCounted_##T RefCounted_##T##_claim(RefCounted_##T* rc) {                \
+    name name##_claim(name* rc) {                                              \
         atomic_fetch_add(&rc->data->ref_count, 1);                             \
         /* Kast_Backtrace* this_trace = Kast_Backtrace_get_boxed(); */         \
         /* PtrMap_add(&rc->data->refs, this_trace, NULL); */                   \
-        return (RefCounted_##T) {                                              \
+        return (name) {                                                        \
             .data = rc->data, /* .this_trace = this_trace, */                  \
         };                                                                     \
     }                                                                          \
-    size_t RefCounted_##T##_drop(RefCounted_##T rc) {                          \
+    size_t name##_drop(name rc) {                                              \
         size_t ref_count_before = atomic_fetch_sub(&rc.data->ref_count, 1);    \
         size_t left_refs = ref_count_before - 1;                               \
         /* PtrMap_remove(&rc.data->refs, rc.this_trace); */                    \
@@ -69,18 +69,18 @@ void RefCounted_ref_dump_func(void* key, void* value);
         /* Kast_Backtrace_drop_boxed(rc.this_trace); */                        \
         return left_refs;                                                      \
     }                                                                          \
-    void RefCounted_##T##_dbg_write(RefCounted_##T* rc, Kast_Formatter* fmt) { \
+    void name##_dbg_write(name* rc, Kast_Formatter* fmt) {                     \
         Kast_Formatter_printf(fmt, "rc ");                                     \
         Kast_dbg_write(&rc->data->value, rc->data->T_TypeInfo, fmt);           \
     }                                                                          \
-    Bool RefCounted_##T##_ptr_eq(RefCounted_##T* a, RefCounted_##T* b) {       \
+    Bool name##_ptr_eq(name* a, name* b) {                                     \
         return a->data == b->data;                                             \
     }                                                                          \
-    void RefCounted_##T##_debug_dump_refs(RefCounted_##T* rc) {                \
+    void name##_debug_dump_refs(name* rc) {                                    \
         fprintf(stderr, "debug dump refs is commented out\n");                 \
         /* PtrMap_iter(&rc->data->refs, RefCounted_ref_dump_func); */          \
     }
 
-define_RefCounted(Unit);
+define_RefCounted(RefCounted_Unit, Unit);
 
 #endif

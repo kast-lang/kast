@@ -1482,34 +1482,36 @@ module Impl = struct
     | Types.T_Char -> runtime_defined "Char"
     | Types.T_Rc inner ->
       let inner = transpile_ty inner in
-      let macro_arg = ty_to_ident inner.c_ty in
+      let macro_arg = ty_to_string inner.c_ty in
       (match ctx.runtime_defined_rc_types |> StringMap.find_opt macro_arg with
        | Some name -> runtime_defined name
        | None ->
+         let name = make_string "RefCounted_%s" (ty_to_ident inner.c_ty) in
          T_Named
-           { name = "RefCounted_" ^ macro_arg
+           { name
            ; def =
                make_with (fun () : C_ast.ty_def_shape ->
                  TD_Raw
-                   { def = make_string "define_RefCounted(%s)" macro_arg
-                   ; impl = Some (make_string "impl_RefCounted(%s)" macro_arg)
+                   { def = make_string "define_RefCounted(%s, %s)" name macro_arg
+                   ; impl = Some (make_string "impl_RefCounted(%s, %s)" name macro_arg)
                    ; need_declared = [ inner.c_ty ]
                    ; need_completed = []
                    })
            })
     | Types.T_Box boxed ->
       let boxed = transpile_ty boxed in
-      let macro_arg = ty_to_ident boxed.c_ty in
+      let macro_arg = ty_to_string boxed.c_ty in
       (match ctx.runtime_defined_box_types |> StringMap.find_opt macro_arg with
        | Some name -> runtime_defined name
        | None ->
+         let name = make_string "Box_%s" (ty_to_ident boxed.c_ty) in
          T_Named
-           { name = "Box_" ^ macro_arg
+           { name
            ; def =
                make_with (fun () : C_ast.ty_def_shape ->
                  TD_Raw
-                   { def = make_string "define_Box(%s)" macro_arg
-                   ; impl = Some (make_string "impl_Box(%s)" macro_arg)
+                   { def = make_string "define_Box(%s, %s)" name macro_arg
+                   ; impl = Some (make_string "impl_Box(%s, %s)" name macro_arg)
                    ; need_declared = [ boxed.c_ty ]
                    ; need_completed = []
                    })
@@ -1580,17 +1582,18 @@ module Impl = struct
         }
     | Types.T_List { element_ty } ->
       let element_ty = transpile_ty element_ty in
-      let macro_arg = ty_to_ident element_ty.c_ty in
+      let macro_arg = ty_to_string element_ty.c_ty in
       (match ctx.runtime_defined_list_types |> StringMap.find_opt macro_arg with
        | Some name -> runtime_defined name
        | None ->
+         let name = "ArrayList_" ^ ty_to_ident element_ty.c_ty in
          T_Named
-           { name = "ArrayList_" ^ macro_arg
+           { name
            ; def =
                make_with (fun () ->
                  TD_Raw
-                   { def = make_string "define_ArrayList(%s)" macro_arg
-                   ; impl = Some (make_string "impl_ArrayList(%s)" macro_arg)
+                   { def = make_string "define_ArrayList(%s, %s)" name macro_arg
+                   ; impl = Some (make_string "impl_ArrayList(%s, %s)" name macro_arg)
                    ; need_declared = [ element_ty.c_ty ]
                    ; need_completed = []
                    })
@@ -3439,22 +3442,32 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
       let check_defined_list () =
         let* s = s |> String.strip_prefix ~prefix:"define_ArrayList(" in
         let* arg = s |> String.strip_suffix ~suffix:");" in
-        runtime_defined_list_types
-        := !runtime_defined_list_types |> StringMap.add arg ("ArrayList_" ^ arg);
+        let args = arg |> String.split_on_char ',' |> List.map String.trim in
+        (match args with
+         | [ name; t ] ->
+           runtime_defined_list_types
+           := !runtime_defined_list_types |> StringMap.add t name
+         | _ -> fail "runtime c code incorrect macro usage");
         Some ()
       in
       let check_defined_box () =
         let* s = s |> String.strip_prefix ~prefix:"define_Box(" in
         let* arg = s |> String.strip_suffix ~suffix:");" in
-        runtime_defined_box_types
-        := !runtime_defined_box_types |> StringMap.add arg ("Box_" ^ arg);
+        let args = arg |> String.split_on_char ',' |> List.map String.trim in
+        (match args with
+         | [ name; t ] ->
+           runtime_defined_box_types := !runtime_defined_box_types |> StringMap.add t name
+         | _ -> fail "runtime c code incorrect macro usage");
         Some ()
       in
       let check_defined_rc () =
         let* s = s |> String.strip_prefix ~prefix:"define_RefCounted(" in
         let* arg = s |> String.strip_suffix ~suffix:");" in
-        runtime_defined_rc_types
-        := !runtime_defined_rc_types |> StringMap.add arg ("Box_" ^ arg);
+        let args = arg |> String.split_on_char ',' |> List.map String.trim in
+        (match args with
+         | [ name; t ] ->
+           runtime_defined_rc_types := !runtime_defined_rc_types |> StringMap.add t name
+         | _ -> fail "runtime c code incorrect macro usage");
         Some ()
       in
       let _ : unit option = check_defined_closure "" in

@@ -4,52 +4,52 @@
 #include "./__common__.h"
 #include "./dbg.h"
 
-#define define_Box(T)                                                          \
+#define define_Box(name, T)                                                    \
     typedef struct {                                                           \
         T* value;                                                              \
         TypeInfo* T_TypeInfo;                                                  \
         Kast_Claimed claimed;                                                  \
-    } Box_##T;                                                                 \
-    Box_##T Box_##T##_new(T value, TypeInfo* T_TypeInfo);                      \
-    T* Box_##T##_deref(Box_##T* box);                                          \
-    T* Box_##T##_leak(Box_##T box);                                            \
-    Box_##T Box_##T##_from_raw(T* ptr, TypeInfo* T_TypeInfo);                  \
-    void Box_##T##_dbg_write(Box_##T* box, Kast_Formatter* fmt);               \
-    Box_##T Box_##T##_claim(Box_##T* place);                                   \
-    void Box_##T##_drop(Box_##T box);
+    } name;                                                                    \
+    name name##_new(T value, TypeInfo* T_TypeInfo);                            \
+    T* name##_deref(name* box);                                                \
+    T* name##_leak(name box);                                                  \
+    name name##_from_raw(T* ptr, TypeInfo* T_TypeInfo);                        \
+    void name##_dbg_write(name* box, Kast_Formatter* fmt);                     \
+    name name##_claim(name* place);                                            \
+    void name##_drop(name box);
 
-#define impl_Box(T)                                                            \
-    Box_##T Box_##T##_new(T value, TypeInfo* T_TypeInfo) {                     \
+#define impl_Box(name, T)                                                      \
+    name name##_new(T value, TypeInfo* T_TypeInfo) {                           \
         T* boxed_value = Kast_allocate(T_TypeInfo);                            \
         *boxed_value = value;                                                  \
-        return Box_##T##_from_raw(boxed_value, T_TypeInfo);                    \
+        return name##_from_raw(boxed_value, T_TypeInfo);                       \
     }                                                                          \
-    T* Box_##T##_deref(Box_##T* box) {                                         \
+    T* name##_deref(name* box) {                                               \
         Kast_Claimed_access(&box->claimed);                                    \
         return box->value;                                                     \
     }                                                                          \
-    T* Box_##T##_leak(Box_##T box) {                                           \
+    T* name##_leak(name box) {                                                 \
         Kast_Claimed_access(&box.claimed);                                     \
         return box.value;                                                      \
     }                                                                          \
-    Box_##T Box_##T##_from_raw(T* ptr, TypeInfo* T_TypeInfo) {                 \
-        return (Box_##T) {                                                     \
+    name name##_from_raw(T* ptr, TypeInfo* T_TypeInfo) {                       \
+        return (name) {                                                        \
             .value = ptr,                                                      \
             .T_TypeInfo = T_TypeInfo,                                          \
             .claimed = Kast_Claimed_init("Box"),                               \
         };                                                                     \
     }                                                                          \
-    void Box_##T##_dbg_write(Box_##T* box, Kast_Formatter* fmt) {              \
+    void name##_dbg_write(name* box, Kast_Formatter* fmt) {                    \
         Kast_Formatter_printf(fmt, "box ");                                    \
         Kast_dbg_write(box->value, box->T_TypeInfo, fmt);                      \
     }                                                                          \
-    Box_##T Box_##T##_claim(Box_##T* place) {                                  \
-        Box_##T moved = *place;                                                \
+    name name##_claim(name* place) {                                           \
+        name moved = *place;                                                   \
         Kast_mark_as_claimed(&place->claimed);                                 \
         place->value = NULL;                                                   \
         return moved;                                                          \
     }                                                                          \
-    void Box_##T##_drop(Box_##T box) {                                         \
+    void name##_drop(name box) {                                               \
         if (Kast_Claimed_drop(box.claimed) == Kast_Claimed_State_Owned) {      \
             if (box.T_TypeInfo->drop != NULL) {                                \
                 box.T_TypeInfo->drop(box.value);                               \

@@ -3,4 +3,4 @@
 #include <Kast/mem.h>
 #include <Kast/type_info.h>
 
-impl_ArrayList(Byte);
+impl_ArrayList(ArrayList_Byte, Byte);
