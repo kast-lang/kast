@@ -2306,8 +2306,28 @@ module Impl = struct
     | V_Float64 x | V_Float32 x -> E_Pure (Pure_Literal (L_Float64 x))
     | V_Byte b -> E_Pure (Pure_Literal (L_Int32 (Int32.of_int (Char.code b))))
     | V_Char c -> E_Pure (Pure_Literal (L_Int32 (Int32.of_int (Uchar.to_int c))))
-    | V_Box _ -> failwith __LOC__
-    | V_Rc _ -> failwith __LOC__
+    | V_Box place ->
+      let ty = transpile_ty place.ty in
+      E_Native
+        [ N_Raw "Box_"
+        ; N_Raw (ty_to_string ty.c_ty)
+        ; N_Raw "_from_raw(&"
+        ; N_InterpolatedPlace (transpile_place place)
+        ; N_Raw ", &"
+        ; N_Raw ty.type_info_name
+        ; N_Raw ")"
+        ]
+    | V_Rc place ->
+      let ty = transpile_ty place.ty in
+      E_Native
+        [ N_Raw "RefCounted_"
+        ; N_Raw (ty_to_ident ty.c_ty)
+        ; N_Raw "_new("
+        ; N_Interpolated (Pure_Copy (transpile_place place))
+        ; N_Raw ", &"
+        ; N_Raw ty.type_info_name
+        ; N_Raw ")"
+        ]
     | V_Ref _ -> failwith __LOC__
     | V_String s ->
       E_Apply
