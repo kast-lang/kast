@@ -33,6 +33,10 @@ impl RcStr as module = (
         .s = self^.s |> String.substring(offset, length),
     };
 
+    const substring_from = (self :: &RcStr, offset :: Int32) -> RcStr => (
+        substring(self, offset, length(self) - offset)
+    );
+
     const as_str = (self :: &RcStr) -> &str => (
         self^.s
     );
@@ -56,6 +60,14 @@ impl RcStr as module = (
             );
         ),
     };
+
+    const pop_back = (self :: &mut RcStr) -> Option.t[Char] => with_return (
+        for { i, c } in &self^ |> as_str |> String.iteri_rev do (
+            self^ = &self^ |> substring(0, i);
+            return :Some c;
+        );
+        :None
+    );
 );
 
 impl RcStr as std.fmt.Display = {

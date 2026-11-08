@@ -7,6 +7,7 @@ use (import "../../diagnostic.ks").*;
 use (import "../../tuple.ks").*;
 use (import "../../position.ks").*;
 use (import "../../span.ks").*;
+use (import "../../rc_str.ks").*;
 use (import "../../source.ks").*;
 use (import "../../source_path.ks").*;
 use (import "../../token.ks").*;
@@ -20,6 +21,7 @@ use (import "../../highlight.ks").*;
 use (import "../../queue.ks").*;
 use std.collections.OrdMap;
 use std.collections.OrdSet;
+use std.rc.Rc;
 
 use (import "../ir/_lib.ks").*;
 use (import "../ast_helpers.ks").*;
@@ -40,18 +42,18 @@ const TypeKind = newtype (
 const Ty = Ir.Type;
 
 const TemplateArgs = newtype {
-    .args :: ArrayList.t[Ir.Type],
-    .by_name :: OrdMap.t[String, Ir.Type],
+    .args :: Rc.t[ArrayList.t[Ir.Type]],
+    .by_name :: OrdMap.t[RcStr, Ir.Type],
 };
 
 const Instantiation = newtype {
-    .template_name :: String,
-    .template_args :: ArrayList.t[Ty],
-    .name :: String,
+    .template_name :: RcStr,
+    .template_args :: Rc.t[ArrayList.t[Ir.Type]],
+    .name :: RcStr,
 };
 
 const Template = newtype {
-    .arg_names :: ArrayList.t[String],
+    .arg_names :: ArrayList.t[RcStr],
     .def :: Ast.t,
     .instantiations :: OrdMap.t[TemplateArgs, Instantiation],
 };
@@ -72,7 +74,7 @@ const ConstDeclaration = newtype {
 };
 
 const TopLevelItemDef = newtype {
-    .name :: String,
+    .name :: RcStr,
     .span :: Span,
     .ast :: Ast.t,
     .native :: Bool,
@@ -87,15 +89,15 @@ const TopLevelDecl = newtype (
     | :Context
 );
 
-const print_toplevel_kind = (decl :: TopLevelDecl) => (
-    let kind = match decl with (
+const print_toplevel_kind = (decl :: &TopLevelDecl) => (
+    let kind = match decl^ with (
         | :Fn _ => "function"
         | :Type { .is_alias } => if is_alias then "type alias" else "type"
         | :Template => "template"
         | :Const _ => "constant"
         | :Context => "context"
     );
-    (@current Output).write(kind);
+    locked_output.write_str(kind);
 );
 
 const TopLevelImpl = newtype (
@@ -108,14 +110,14 @@ const TopLevelImpl = newtype (
 );
 
 const CompilerT = newtype {
-    .program :: Ir.Program,
-    .parse_expr :: (Option.t[Ty], Ast.t) -> Ir.Expr,
-    .parse_type :: Ast.t -> Ty,
-    .find_ident_ty :: (String, .span :: Span) -> Ty,
-    .lookup_type :: (String, .span :: Span) -> Ty,
+    .program :: &mut Ir.Program,
+    .parse_expr :: (Option.t[Ty], &Ast.t) -> Ir.Expr,
+    .parse_type :: &Ast.t -> Ty,
+    .find_ident_ty :: (&RcStr, .span :: Span) -> Ty,
+    .lookup_type :: (&RcStr, .span :: Span) -> Ty,
     .add_toplevel_item :: TopLevelItemDef -> (),
-    .get_toplevel_decl :: String -> Option.t[TopLevelDecl],
-    .get_toplevel_impl :: String -> Option.t[TopLevelImpl],
+    .get_toplevel_decl :: &RcStr -> Option.t[type (&TopLevelDecl)],
+    .get_toplevel_impl :: &RcStr -> Option.t[type (&TopLevelImpl)],
 };
 
 const Compiler = @context CompilerT;

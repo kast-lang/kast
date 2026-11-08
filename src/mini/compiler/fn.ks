@@ -4,14 +4,14 @@ use (import "./scope.ks").*;
 module:
 
 const parse_call_convention = (
-    root :: Ast.Group
-) -> Option.t[String] => (
+    root :: &Ast.Group
+) -> Option.t[RcStr] => (
     match (
-        &root.children
+        &root^.children
             |> Tuple.get_named_opt("call_convention")
     ) with (
         | :None => :None
-        | :Some &child => :Some (
+        | :Some child => :Some (
             child
                 |> Ast.unwrap_child_group
                 |> AstHelpers.expect_single_child(:None)
@@ -21,15 +21,15 @@ const parse_call_convention = (
 );
 
 const process_toplevel_fn_declaration = (
-    name :: String,
-    def :: Ast.t,
+    name :: &RcStr,
+    def :: &Ast.t,
 ) -> Ir.FnType => (
     let root = def |> AstHelpers.expect_rule("fn");
     let args_ast = root
         |> AstHelpers.get_child_ast("args");
-    let result_ty = &root.children
+    let result_ty = &root^.children
         |> Tuple.get_named_opt("result_ty")
-        |> Option.map(&child => child
+        |> Option.map(child => child
             |> Ast.unwrap_child_group
             |> AstHelpers.expect_single_child(:None));
     let body = root
@@ -50,7 +50,7 @@ const process_toplevel_fn_declaration = (
         &mut arg_types |> ArrayList.push_back(ty);
     );
     let result_ty = match result_ty with (
-        | :None => { .shape = :Unit, .alias_name = :None }
+        | :None => { .shape = Rc.new(:Unit), .alias_name = :None }
         | :Some ast => (@current Compiler).parse_type(ast)
     );
     let fn_type = {
@@ -60,32 +60,31 @@ const process_toplevel_fn_declaration = (
         .args = arg_types,
         .result = result_ty,
     };
-    Log.debug(() => (
-        let output = @current Output;
-        output.write("fn ");
-        output.write(name);
-        output.write(" :: ");
+    Log.debug_fn(() => (
+        locked_output.write_str("fn ");
+        locked_output.write(name);
+        locked_output.write_str(" :: ");
         Ir.Print.fn_type(&fn_type);
     ));
     fn_type
 );
 
 const parse_fn_def = (
-    def :: Ast.t,
-    .parent_scope :: Option.t[Scope],
+    def :: &Ast.t,
+    .parent_scope :: Option.t[Rc.t[Scope]],
 ) -> Ir.FnDef => (
     let root = def |> AstHelpers.expect_rule("fn");
     let capture_mode = match (
-        &root.children |> Tuple.get_named_opt("move")
+        &root^.children |> Tuple.get_named_opt("move")
     ) with (
         | :Some _ => :Move
         | :None => :ByRef
     );
     let args_ast = root
         |> AstHelpers.get_child_ast("args");
-    let result_ty = &root.children
+    let result_ty = &root^.children
         |> Tuple.get_named_opt("result_ty")
-        |> Option.map(&child => child
+        |> Option.map(child => child
             |> Ast.unwrap_child_group
             |> AstHelpers.expect_single_child(:None));
     let body = root
@@ -107,29 +106,27 @@ const parse_fn_def = (
         &mut args |> ArrayList.push_back({ .name, .ty });
     );
     let result_ty = match result_ty with (
-        | :None => { .shape = :Unit, .alias_name = :None }
+        | :None => { .shape = Rc.new(:Unit), .alias_name = :None }
         | :Some ast => (@current Compiler).parse_type(ast)
     );
     let mut captures = OrdMap.new();
-    let mut scope = {
+    let mut scope = Rc.new({
         .parent = parent_scope,
         .vars = OrdMap.new(),
         .found_in_parent = (name, ty) => (
-            Log.debug(() => (
-                let output = @current Output;
-                output.write("capturing ");
-                output.write(name);
-                output.write(" :: ");
-                Ir.Print.type_name(&ty);
-                output.write(" at ");
-                Span.print(def.span);
-                output.write("\n");
+            Log.debug_fn(() => (
+                locked_output.write_str("capturing ");
+                locked_output.write(name);
+                locked_output.write_str(" :: ");
+                Ir.Print.type_name(ty);
+                locked_output.write_str(" at ");
+                Span.print(&def^.span);
             ));
-            &mut captures |> OrdMap.add(name, ty);
+            &mut captures |> OrdMap.add(name^, ty^);
         ),
-    };
+    });
     for arg in &args |> ArrayList.iter do (
-        &mut scope.vars |> OrdMap.add(arg^.name, arg^.ty);
+        &mut scope^.vars |> OrdMap.add(arg^.name, arg^.ty);
     );
     with ScopeContext = scope;
     let body = (@current Compiler).parse_expr(:Some result_ty, body);
@@ -140,13 +137,13 @@ const parse_fn_def = (
         .args,
         .result_ty = result_ty,
         .body,
-        .span = def.span,
+        .span = def^.span,
     }
 );
 
 const process_toplevel_fn = (
-    name :: String,
-    def :: Ast.t,
+    name :: &RcStr,
+    def :: &Ast.t,
 ) -> Ir.FnDef => (
     parse_fn_def(def, .parent_scope = :None)
 );

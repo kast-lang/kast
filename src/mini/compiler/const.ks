@@ -3,11 +3,11 @@ use (import "./common.ks").*;
 module:
 
 const process_const_declaration = (
-    name :: String,
-    ast :: Ast.t,
+    name :: &RcStr,
+    ast :: &Ast.t,
 ) -> ConstDeclaration => with_return (
-    if ast.shape is :Rule { .rule, .root } then (
-        if rule.name == "native const" then (
+    if ast^.shape^ is :Rule { .rule = ref rule, .root = ref root } then (
+        if &rule^^.name |> RcStr.as_str == "native const" then (
             let { name, ty } = root
                 |> AstHelpers.expect_two_children(:Some { "name", "type" });
             return {
@@ -24,16 +24,16 @@ const process_const_declaration = (
         |> AstHelpers.expect_two_children(:Some { "expr", "type" });
     {
         .ty = (@current Compiler).parse_type(ty),
-        .value = :Some value,
+        .value = :Some value^,
     }
 );
 
 const process_const = (
-    name :: String,
-    decl :: ConstDeclaration,
+    name :: &RcStr,
+    decl :: &ConstDeclaration,
 ) -> Ir.Expr => (
-    if decl.value is :Some value then (
-        (@current Compiler).parse_expr(:Some decl.ty, value)
+    if decl^.value is :Some ref value then (
+        (@current Compiler).parse_expr(:Some decl^.ty, value)
     ) else (
         panic("Const decl has no value (native const), we aren't supposed to process it")
     )

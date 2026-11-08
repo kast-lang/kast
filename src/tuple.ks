@@ -131,9 +131,21 @@ const Tuple = (
         | target.name == "interpreter" => (
             if N == 0 then `(
             ) else if N == 1 then `(
-                (&$a |> ArrayList.at(0))^
+                $a.[0]
             ) else `(
-                $(array_to_tuple(a, N - 1)), (&$a |> ArrayList.at(N - 1))^
+                $(array_to_tuple(a, N - 1)), $a.[N - 1]
+            )
+        )
+        | true => panic("comptime only")
+    );
+
+    const array_to_tuple_ref = (a :: Ast, N :: Int32) -> Ast => @cfg (
+        | target.name == "interpreter" => (
+            if N == 0 then `(
+            ) else if N == 1 then `(
+                &$a.[0]
+            ) else `(
+                $(array_to_tuple_ref(a, N - 1)), &$a.[N - 1]
             )
         )
         | true => panic("comptime only")
@@ -153,12 +165,35 @@ const Tuple = (
         | true => panic("comptime only")
     );
 
+    const unwrap_unnamed_ref_impl = (self :: Ast, N :: Int32) -> Ast => @cfg (
+        | target.name == "interpreter" => `(
+            if &$self^.name_order |> ArrayList.length != 0 then (
+                panic("Has named fields");
+            );
+            let length = &$self^.unnamed |> ArrayList.length;
+            if length != N then (
+                panic_fmt!("Expected \(N) unnamed fields, got \(length)");
+            );
+            { $(array_to_tuple_ref(`($self^.unnamed), N)) }
+        )
+        | true => panic("comptime only")
+    );
+
     const unwrap_unnamed_2 = [T] (self :: Tuple.t[T]) -> { T, T } => (
         include_ast unwrap_unnamed_impl(`(self), 2)
     );
 
+    const unwrap_unnamed_2_ref = [T] (self :: &Tuple.t[T]) -> { &T, &T } => (
+        include_ast unwrap_unnamed_ref_impl(`(self), 2)
+    );
+
     const unwrap_unnamed_1 = [T] (self :: Tuple.t[T]) -> T => (
         let { inner } = include_ast unwrap_unnamed_impl(`(self), 1);
+        inner
+    );
+
+    const unwrap_unnamed_1_ref = [T] (self :: &Tuple.t[T]) -> &T => (
+        let { inner } = include_ast unwrap_unnamed_ref_impl(`(self), 1);
         inner
     );
 

@@ -14,7 +14,7 @@ use (import "./parse.ks").*;
 # use (import "./run.ks").*;
 use (import "./structural_find_and_replace.ks").*;
 use (import "./tokenize.ks").*;
-# use (import "./mini.ks").*;
+use (import "./mini.ks").*;
 
 with IdGenCtx = IdGen.new();
 
@@ -46,7 +46,7 @@ const Args = (
         | :StructuralFindAndReplace StructuralFindAndReplace.Args.t
         # | :Repl Repl.Args.t
         # | :Run Run.Args.t
-        # | :Mini Mini.Args.t
+        | :Mini Mini.Args.t
     );
 
     const t = newtype {
@@ -94,9 +94,9 @@ const Args = (
                     if arg == "run" then (
                         unwind subcommand (:Run Run.Args.parse(i + 1));
                     );
-                    if arg == "mini" then (
-                        unwind subcommand (:Mini Mini.Args.parse(i + 1));
-                    );
+                );
+                if arg == "mini" then (
+                    unwind subcommand (:Mini Mini.Args.parse(i + 1));
                 );
                 &mut common |> Common.Args.parse_arg(&mut i);
             );
@@ -137,5 +137,5 @@ match subcommand with (
     | :StructuralFindAndReplace args => StructuralFindAndReplace.run(common_args, args)
     # | :Repl args => Repl.run(common_args, args)
     # | :Run args => Run.run(common_args, args)
-    # | :Mini args => Mini.run(common_args, args)
+    | :Mini args => Mini.run(common_args, args)
 );

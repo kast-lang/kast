@@ -5,10 +5,10 @@ module:
 const expect_ty_enum = (
     ty :: &Ir.Type,
     .span :: Span,
-) -> &OrdSet.t[String] => with_return (
-    match ty^.shape with (
-        | :Named name => (
-            let def = &(@current Compiler).program.types
+) -> &OrdSet.t[RcStr] => with_return (
+    match ty^.shape^ with (
+        | :Named ref name => (
+            let def = &(@current Compiler).program^.types
                 |> OrdMap.get(name)
                 |> Option.unwrap;
             match def^.shape with (
@@ -24,8 +24,7 @@ const expect_ty_enum = (
         .severity = :Error,
         .source = :Compiler,
         .message = () => (
-            let output = @current Output;
-            output.write("Expected an enum type, got ");
+            locked_output.write_str("Expected an enum type, got ");
             Ir.Print.type_name(ty);
         ),
         .span,
@@ -40,7 +39,7 @@ const WithSpan = [T] newtype {
 };
 
 const check_variant = (
-    .variant :: WithSpan[String],
+    .variant :: WithSpan[type (&RcStr)],
     .ty :: WithSpan[type (&Ir.Type)],
 ) -> () => (
     let variant_names = expect_ty_enum(...ty);
@@ -49,8 +48,7 @@ const check_variant = (
             .severity = :Error,
             .source = :Compiler,
             .message = () => (
-                let output = @current Output;
-                output.write("This variant doesn't exist in type ");
+                locked_output.write_str("This variant doesn't exist in type ");
                 Ir.Print.type_name(ty.0);
             ),
             .span = variant.span,
@@ -64,21 +62,21 @@ const TypeCheckContext = @context newtype {
     .fail :: (() -> ()) -> Never,
 };
 
-const short_type_name = (ty :: &Ir.Type) -> String => (
-    match ty^.shape with (
-        | :Any => "Any"
-        | :Ref _ => "a reference"
-        | :Unit => "()"
-        | :Int => "Int"
-        | :UInt => "UInt"
+const short_type_name = (ty :: &Ir.Type) -> RcStr => (
+    RcStr.from_String(match ty^.shape^ with (
+        | :Any => String.from_str("Any")
+        | :Ref _ => String.from_str("a reference")
+        | :Unit => String.from_str("()")
+        | :Int => String.from_str("Int")
+        | :UInt => String.from_str("UInt")
         | :IntSpecific _ => output_to_string(() => Ir.Print.type_name(ty))
-        | :Float32 => "Float32"
-        | :Float64 => "Float64"
-        | :Bool => "Bool"
-        | :Char => "Char"
-        | :Native s => "native " + String.escape(s)
-        | :Named name => (
-            let def = &(@current Compiler).program.types
+        | :Float32 => String.from_str("Float32")
+        | :Float64 => String.from_str("Float64")
+        | :Bool => String.from_str("Bool")
+        | :Char => String.from_str("Char")
+        | :Native ref s => format!("native \(String.escape(s |> RcStr.as_str))")
+        | :Named ref name => (
+            let def = &(@current Compiler).program^.types
                 |> OrdMap.get(name)
                 |> Option.unwrap;
             let short_def = match def^.shape with (
@@ -88,66 +86,63 @@ const short_type_name = (ty :: &Ir.Type) -> String => (
                 | :Struct _ => "struct"
                 | :Alias _ => "alias"
             );
-            name + " (" + short_def + ")"
+            format!("\(name^) (\(short_def))")
         )
-        | :Fn _ => "a function"
-        | :UnwindToken _ => "unwind token"
-        | :DelimitedContinuationToken _ => "delimited continuation token"
-        | :Array _ => "array"
-        | :ContextObject => "@Context"
-    )
+        | :Fn _ => format!("a function")
+        | :UnwindToken _ => String.from_str("unwind token")
+        | :DelimitedContinuationToken _ => String.from_str("delimited continuation token")
+        | :Array _ => String.from_str("array")
+        | :ContextObject => String.from_str("@Context")
+    ))
 );
 
 const type_check_impl = (expected :: &Ir.Type, actual :: &Ir.Type) => (
     let fail = () => (
         (@current TypeCheckContext).fail(() => (
-            let output = @current Output;
-            output.write("Expected ");
-            output.write(short_type_name(expected));
-            output.write(", got ");
-            output.write(short_type_name(actual));
+            locked_output.write_str("Expected ");
+            locked_output.write(&short_type_name(expected));
+            locked_output.write_str(", got ");
+            locked_output.write(&short_type_name(actual));
         ));
     );
-    match { expected^.shape, actual^.shape } with (
-        | { :Any, _ } => ()
-        | { _, :Any } => ()
-        | { :Ref ref a, :Ref ref b } => (
+    match ({ &expected^.shape^, &actual^.shape^ } :: { _, _ }) with (
+        | { &(:Any), _ } => ()
+        | { _, &(:Any) } => ()
+        | { &(:Ref ref a), &(:Ref ref b) } => (
             let parent_ctx = @current TypeCheckContext;
             with TypeCheckContext = {
                 .fail = msg -> Never => (
                     parent_ctx.fail(() => (
-                        let output = @current Output;
-                        output.write("referenced types are different");
+                        locked_output.write_str("referenced types are different\n");
                         msg()
                     ))
                 ),
             };
             type_check_impl(a, b);
         )
-        | { :Unit, :Unit } => ()
-        | { :Int, :Int } => ()
-        | { :UInt, :UInt } => ()
-        | { :IntSpecific _, :IntSpecific _ } => (
-            if Ir.compare_type(expected, actual) is :Equal then () else (
+        | { &(:Unit), &(:Unit) } => ()
+        | { &(:Int), &(:Int) } => ()
+        | { &(:UInt), &(:UInt) } => ()
+        | { &(:IntSpecific _), &(:IntSpecific _) } => (
+            if std.cmp.default_compare(expected, actual) is :Equal then () else (
                 fail()
             );
         )
-        | { :Float32, :Float32 } => ()
-        | { :Float64, :Float64 } => ()
-        | { :Bool, :Bool } => ()
-        | { :Char, :Char } => ()
-        | { :Named a, :Named b } => (
-            if a != b then (
+        | { &(:Float32), &(:Float32) } => ()
+        | { &(:Float64), &(:Float64) } => ()
+        | { &(:Bool), &(:Bool) } => ()
+        | { &(:Char), &(:Char) } => ()
+        | { &(:Named ref a), &(:Named ref b) } => (
+            if a^ != b^ then (
                 fail();
             );
         )
-        | { :Array ref a, :Array ref b } => (
+        | { &(:Array ref a), &(:Array ref b) } => (
             let parent_ctx = @current TypeCheckContext;
             with TypeCheckContext = {
                 .fail = msg -> Never => (
                     parent_ctx.fail(() => (
-                        let output = @current Output;
-                        output.write("list element type is different\n");
+                        locked_output.write_str("list element type is different\n");
                         msg()
                     ))
                 ),
@@ -157,13 +152,12 @@ const type_check_impl = (expected :: &Ir.Type, actual :: &Ir.Type) => (
                 &b^.element_ty,
             );
         )
-        | { :UnwindToken ref a, :UnwindToken ref b } => (
+        | { &(:UnwindToken ref a), &(:UnwindToken ref b) } => (
             let parent_ctx = @current TypeCheckContext;
             with TypeCheckContext = {
                 .fail = msg -> Never => (
                     parent_ctx.fail(() => (
-                        let output = @current Output;
-                        output.write("unwind result type is different\n");
+                        locked_output.write_str("unwind result type is different\n");
                         msg()
                     ))
                 ),
@@ -173,13 +167,12 @@ const type_check_impl = (expected :: &Ir.Type, actual :: &Ir.Type) => (
                 &b^.result_ty,
             );
         )
-        | { :DelimitedContinuationToken ref a, :DelimitedContinuationToken ref b } => (
+        | { &(:DelimitedContinuationToken ref a), &(:DelimitedContinuationToken ref b) } => (
             let parent_ctx = @current TypeCheckContext;
             with TypeCheckContext = {
                 .fail = msg -> Never => (
                     parent_ctx.fail(() => (
-                        let output = @current Output;
-                        output.write("unwind result type is different\n");
+                        locked_output.write_str("unwind result type is different\n");
                         msg()
                     ))
                 ),
@@ -189,65 +182,57 @@ const type_check_impl = (expected :: &Ir.Type, actual :: &Ir.Type) => (
                 &b^.result_ty,
             );
         )
-        | { :Fn ref a, :Fn ref b } => (
-            if not std.repr.structurally_equal(a^.call_convention, b^.call_convention) then (
-                fail();
+        | { &(:Fn ref a), &(:Fn ref b) } => (
+            match ({ &a^.call_convention, &b^.call_convention } :: { _, _ }) with (
+                | { &(:None), &(:None) } => ()
+                | { &(:Some ref a), &(:Some ref b) } => (
+                    if a^ != b^ then fail();
+                )
+                | _ => fail()
             );
-            if &a^.args |> ArrayList.length != &b^.args |> ArrayList.length then (
+            let a_args_len = &a^.args |> ArrayList.length;
+            let b_args_len = &b^.args |> ArrayList.length;
+            if a_args_len != b_args_len then (
                 (@current TypeCheckContext).fail(() => (
-                    let output = @current Output;
-                    output.write("Expected ");
-                    output.write(to_string(&a^.args |> ArrayList.length));
-                    output.write(" args, got ");
-                    output.write(to_string(&b^.args |> ArrayList.length));
+                    locked_output.write_fmt!("Expected \(a_args_len) args, got \(b_args_len)");
                 ));
             );
-            for i in 0..&a^.args |> ArrayList.length do (
+            for i in 0..a_args_len do (
                 let parent_ctx = @current TypeCheckContext;
                 with TypeCheckContext = {
                     .fail = msg -> Never => (
                         parent_ctx.fail(() => (
-                            let output = @current Output;
-                            output.write("argument #");
-                            output.write(to_string(i));
-                            output.write(" is different\n");
+                            locked_output.write_fmt!("argument #\(i) is different\n");
                             msg()
                         ))
                     ),
                 };
-                type_check_impl(
-                    &a^.args |> ArrayList.at(i),
-                    &b^.args |> ArrayList.at(i),
-                );
+                type_check_impl(&a^.args.[i], &b^.args.[i]);
             );
             let parent_ctx = @current TypeCheckContext;
             with TypeCheckContext = {
                 .fail = msg -> Never => (
                     parent_ctx.fail(() => (
-                        let output = @current Output;
-                        output.write("result type is different\n");
+                        locked_output.write_str("result type is different\n");
                         msg()
                     ))
                 ),
             };
-            type_check_impl(
-                &a^.result,
-                &b^.result,
-            );
+            type_check_impl(&a^.result, &b^.result);
         )
-        | { :Native a, :Native b } => (
-            if a != b then (
+        | { &(:Native ref a), &(:Native ref b) } => (
+            if a^ != b^ then (
                 fail();
             );
         )
-        | { :ContextObject, :ContextObject } => ()
+        | { &(:ContextObject), &(:ContextObject) } => ()
         | _ => fail()
     );
 );
 
 const type_check = (
-    .expected :: Ir.Type,
-    .actual :: Ir.Type,
+    .expected :: &Ir.Type,
+    .actual :: &Ir.Type,
     .span :: Span,
 ) => (
     with TypeCheckContext = {
@@ -256,12 +241,11 @@ const type_check = (
                 .severity = :Error,
                 .source = :Compiler,
                 .message = () => (
-                    let output = @current Output;
-                    output.write("Expected type ");
-                    Ir.Print.type_name(&expected);
-                    output.write(", got ");
-                    Ir.Print.type_name(&actual);
-                    output.write("\n");
+                    locked_output.write_str("Expected type ");
+                    Ir.Print.type_name(expected);
+                    locked_output.write_str(", got ");
+                    Ir.Print.type_name(actual);
+                    locked_output.write_str("\n");
                     inner_msg();
                 ),
                 .span,
@@ -270,8 +254,5 @@ const type_check = (
             Diagnostic.report_and_unwind(diagnostic)
         )
     };
-    type_check_impl(
-        &expected,
-        &actual,
-    );
+    type_check_impl(expected, actual);
 );

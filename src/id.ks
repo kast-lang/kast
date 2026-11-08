@@ -18,12 +18,18 @@ impl IdGen as module = (
 
 const IdGenCtx = @context IdGen;
 
+impl Id as std.cmp.Ord = {
+    .compare = (a, b) => (
+        std.cmp.default_compare(&a^.raw, &b^.raw)
+    ),
+};
+
+impl Id as std.String.ToString = {
+    .to_string = self => format!("#\(self.raw)"),
+};
+
 impl Id as module = (
     module:
-
-    const compare = (a :: &Id, b :: &Id) -> std.cmp.Ordering => (
-        std.cmp.default_compare(&a^.raw, &b^.raw)
-    );
 
     const gen = () -> Id => (
         let next_id = &mut (@current IdGenCtx).next_id;

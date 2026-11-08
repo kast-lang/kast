@@ -1,5 +1,6 @@
 use (import "../../span.ks").*;
 use (import "../../output.ks").*;
+use (import "../../rc_str.ks").*;
 use std.collections.OrdMap;
 use std.collections.OrdSet;
 
@@ -11,152 +12,146 @@ const Print = (
     module:
 
     const fn_type = (self :: &FnType) => (
-        let output = @current Output;
-        if self^.call_convention is :Some s then (
-            output.write("@call ");
-            output.write(String.escape(s));
-            output.write(" ");
+        if self^.call_convention is :Some ref s then (
+            locked_output.write_str("@call ");
+            locked_output.write_escaped(s);
+            locked_output.write_str(" ");
         );
-        output.write("(");
+        locked_output.write_str("(");
         for { i, arg_ty } in &self^.args |> ArrayList.iter |> std.iter.enumerate do (
             if i != 0 then (
-                output.write(", ");
+                locked_output.write_str(", ");
             );
             Print.type_name(arg_ty);
         );
-        output.write(") -> ");
+        locked_output.write_str(") -> ");
         Print.type_name(&self^.result);
     );
 
     const type_name = (self :: &Type) => (
-        let output = @current Output;
-        if self^.alias_name is :Some name then (
-            output.write(name);
-            output.write(" (aka ");
+        if self^.alias_name is :Some ref name then (
+            locked_output.write(name);
+            locked_output.write_str(" (aka ");
         );
-        match self^.shape with (
-            | :Any => output.write("Any")
-            | :Unit => output.write("()")
-            | :Bool => output.write("Bool")
-            | :Int => output.write("Int")
-            | :UInt => output.write("UInt")
+        match self^.shape^ with (
+            | :Any => locked_output.write_str("Any")
+            | :Unit => locked_output.write_str("()")
+            | :Bool => locked_output.write_str("Bool")
+            | :Int => locked_output.write_str("Int")
+            | :UInt => locked_output.write_str("UInt")
             | :IntSpecific { .signed, .bits } => (
                 if not signed then (
-                    output.write("U");
+                    locked_output.write_str("U");
                 );
-                output.write("Int");
-                output.write(to_string(bits));
+                locked_output.write_str("Int");
+                locked_output.write_str(&to_string(bits) |> as_str);
             )
-            | :Float32 => output.write("Float32")
-            | :Float64 => output.write("Float64")
-            | :Char => output.write("Char")
-            | :Named name => output.write(name)
+            | :Float32 => locked_output.write_str("Float32")
+            | :Float64 => locked_output.write_str("Float64")
+            | :Char => locked_output.write_str("Char")
+            | :Named ref name => locked_output.write(name)
             | :Fn ref ty => Print.fn_type(ty)
             | :Ref ref referenced => (
-                output.write("&");
+                locked_output.write_str("&");
                 Print.type_name(referenced);
             )
-            | :Native s => output.write(s)
+            | :Native ref s => locked_output.write(s)
             | :UnwindToken {
                 .repr = _,
                 .result_ty = ref result_ty,
             } => (
-                output.write("UnwindToken[");
+                locked_output.write_str("UnwindToken[");
                 Print.type_name(result_ty);
-                output.write("]");
+                locked_output.write_str("]");
             )
             | :DelimitedContinuationToken {
                 .repr = _,
                 .result_ty = ref result_ty,
             } => (
-                output.write("DelimitedContinuationToken[");
+                locked_output.write_str("DelimitedContinuationToken[");
                 Print.type_name(result_ty);
-                output.write("]");
+                locked_output.write_str("]");
             )
             | :Array {
                 .repr = _,
                 .element_ty = ref element_ty,
             } => (
-                output.write("Array[");
+                locked_output.write_str("Array[");
                 Print.type_name(element_ty);
-                output.write("]");
+                locked_output.write_str("]");
             )
-            | :ContextObject => output.write("@Context")
+            | :ContextObject => locked_output.write_str("@Context")
         );
         if self^.alias_name is :Some _ then (
-            output.write(")");
+            locked_output.write_str(")");
         );
     );
 
     const fn_type_as_ident = (self :: &FnType) => (
-        let output = @current Output;
-        output.write("Fn");
+        locked_output.write_str("Fn");
         for arg_ty in &self^.args |> ArrayList.iter do (
-            output.write("_");
+            locked_output.write_str("_");
             Print.type_name_as_ident(arg_ty);
         );
-        output.write("_");
+        locked_output.write_str("_");
         Print.type_name_as_ident(&self^.result);
-        output.write("_nF");
+        locked_output.write_str("_nF");
     );
 
-    const raw_string_as_ident = (s :: String) => (
-        let output = @current Output;
+    const raw_string_as_ident = (s :: &str) => (
         for c in String.iter(s) do (
             let c = if Char.is_ascii_alphanumeric(c) or c == '_' then (
                 c
             ) else (
                 '_'
             );
-            output.write(to_string(c));
+            locked_output.write_str(&to_string(c) |> as_str);
         );
     );
 
     const type_name_as_ident = (self :: &Type) => with_return (
-        let output = @current Output;
-        match type_repr(self)^.shape with (
-            | :Any => output.write("Any")
-            | :Unit => output.write("Unit")
-            | :Bool => output.write("Bool")
-            | :Int => output.write("Int")
-            | :UInt => output.write("UInt")
+        match type_repr(self)^.shape^ with (
+            | :Any => locked_output.write_str("Any")
+            | :Unit => locked_output.write_str("Unit")
+            | :Bool => locked_output.write_str("Bool")
+            | :Int => locked_output.write_str("Int")
+            | :UInt => locked_output.write_str("UInt")
             | :IntSpecific _ => Print.type_name(self)
-            | :Float32 => output.write("Float32")
-            | :Float64 => output.write("Float64")
-            | :Char => output.write("Char")
-            | :Named name => output.write(name)
+            | :Float32 => locked_output.write_str("Float32")
+            | :Float64 => locked_output.write_str("Float64")
+            | :Char => locked_output.write_str("Char")
+            | :Named ref name => locked_output.write(name)
             | :Fn ref ty => Print.fn_type_as_ident(ty)
             | :Ref ref referenced => (
-                output.write("Ref_");
+                locked_output.write_str("Ref_");
                 Print.type_name_as_ident(referenced);
             )
-            | :Native s => (
-                output.write("Native_");
-                Print.raw_string_as_ident(s);
+            | :Native ref s => (
+                locked_output.write_str("Native_");
+                Print.raw_string_as_ident(s |> RcStr.as_str);
             )
-            | :ContextObject => output.write("Context")
+            | :ContextObject => locked_output.write_str("Context")
         )
     );
 
     const program = (self :: &Program) => (
-        let output = @current Output;
         ansi.with_mode(
             :Bold,
-            () => output.write("Types:\n"),
+            () => locked_output.write_str("Types:\n"),
         );
-        for &{ .key = name, .value = def } in &self^.types |> OrdMap.iter do (
-            output.write("- ");
-            output.write(name);
-            output.write("\n");
+        for &{ .key = ref name, .value = ref def } in &self^.types |> OrdMap.iter do (
+            locked_output.write_str("- ");
+            locked_output.write(name);
+            locked_output.write_str("\n");
         );
         ansi.with_mode(
             :Bold,
-            () => output.write("Functions:\n"),
+            () => locked_output.write_str("Functions:\n"),
         );
-        for &{ .key = name, .value = def } in &self^.fns |> OrdMap.iter do (
-            output.write("- ");
-            output.write(name);
-            output.write("\n");
+        for &{ .key = ref name, .value = ref def } in &self^.fns |> OrdMap.iter do (
+            locked_output.write_str("- ");
+            locked_output.write(name);
+            locked_output.write_str("\n");
         );
     );
 );

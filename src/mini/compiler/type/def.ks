@@ -3,9 +3,9 @@ use (import "../common.ks").*;
 module:
 
 const type_def = (
-    name :: String,
+    name :: &RcStr,
     kind :: TypeKind,
-    root :: Ast.Group,
+    root :: &Ast.Group,
 ) -> Ir.TypeDefShape => (
     match kind with (
         | :Alias => (
@@ -16,10 +16,8 @@ const type_def = (
             :Opaque
         )
         | _ => (
-            let def = (
-                &root.children
-                    |> Tuple.get_named("def")
-            )^
+            let def = &root^.children
+                |> Tuple.get_named("def")
                 |> Ast.unwrap_child_value;
             let def = def
                 |> AstHelpers.expect_rule("record")
@@ -35,8 +33,8 @@ const type_def = (
 );
 
 const process_enum = (
-    .name :: String,
-    .def :: Ast.t,
+    .name :: &RcStr,
+    .def :: &Ast.t,
 ) -> Ir.TypeDefShape => (
     let mut variants = OrdSet.new();
     for variant in Ast.iter_list(
@@ -54,9 +52,9 @@ const process_enum = (
 );
 
 const process_struct_or_union = (
-    .name :: String,
+    .name :: &RcStr,
     .kind :: TypeKind,
-    .def :: Ast.t,
+    .def :: &Ast.t,
 ) -> Ir.TypeDefShape => (
     let mut fields = OrdMap.new();
     for field in Ast.iter_list(

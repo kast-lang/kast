@@ -1,4 +1,6 @@
 use (import "./queue.ks").*;
+use (import "./rc_str.ks").*;
+use std.StringBuilder;
 
 module:
 
@@ -6,7 +8,7 @@ const tty = (
     module:
 
     const InputShape = newtype (
-        | :Content String
+        | :Content RcStr
         | :Backspace
         | :Insert
         | :Delete
@@ -72,9 +74,9 @@ const tty = (
     );
 
     const ContextT = newtype {
-        .last_read :: String,
+        .last_read :: RcStr,
         .read_buffer :: Queue.t[Input],
-        .write_buffer :: String,
+        .write_buffer :: StringBuilder.t,
         .handle_ctrl_c :: () -> (),
         .cursor_position_report :: Option.t[type { Int32, Int32 }],
     };
@@ -84,67 +86,72 @@ const tty = (
         module:
 
         const Context = @context newtype {
-            .data :: String,
+            .data :: RcStr,
         };
 
         const peek = () -> Option.t[Char] => (
-            let ctx = @current Context;
-            if ctx.data == "" then (
+            let ref ctx = @current Context;
+            if &ctx^.data |> RcStr.length == 0 then (
                 :None
             ) else (
-                :Some (ctx.data |> String.at(0))
+                :Some (&ctx^.data |> RcStr.at(0))
             )
         );
         const advance = () => (
-            let mut ctx = @current Context;
             if peek() is :Some c then (
+                let ref mut ctx = @current Context;
                 let i = Char.string_encoding_len(c);
-                ctx.data = ctx.data |> String.substring(i, String.length(ctx.data) - i);
+                ctx^.data = &ctx^.data |> RcStr.substring(i, RcStr.length(&ctx^.data) - i);
             );
         );
 
         const Csi = newtype {
-            .parameters :: String,
-            .intermediate :: String,
+            .parameters :: RcStr,
+            .intermediate :: RcStr,
             .final :: Char,
         };
 
         const read_csi = () -> Csi => with_return (
             # reading after "\x1b["
-            let mut parameters = "";
-            let mut intermediate = "";
+            let mut parameters = StringBuilder.new();
+            let mut intermediate = StringBuilder.new();
             @loop (
                 let c = peek() |> Option.unwrap_or_else(() => panic("expected escape thingy"));
                 advance();
                 let code = Char.code(c);
                 if 0x30 <= code and code <= 0x3F then (
-                    parameters += to_string(c);
+                    &mut parameters |> StringBuilder.add_char(c);
                 ) else if 0x20 <= code and code <= 0x2F then (
-                    intermediate += to_string(c);
+                    &mut intermediate |> StringBuilder.add_char(c);
                 ) else if 0x40 <= code and code <= 0x7E then (
-                    return { .parameters, .intermediate, .final = c };
+                    return {
+                        .parameters = parameters |> StringBuilder.into_string |> RcStr.from_String,
+                        .intermediate = intermediate |> StringBuilder.into_string |> RcStr.from_String,
+                        .final = c,
+                    };
                 ) else (
-                    panic("Unexpected char in CSI: " + String.escape(to_string(c)));
+                    panic_fmt!("Unexpected char in CSI: \(String.escape(&to_string(c) |> as_str))");
                 )
             )
         );
     );
 
     const push_input = (input :: Input) => (
-        let mut ctx = @current Context;
-        &mut ctx.read_buffer |> Queue.push(input);
+        let ref mut ctx = @current Context;
+        &mut ctx^.read_buffer |> Queue.push(input);
     );
 
     const parse_csi = (csi :: raw.Csi) -> Option.t[Input] => with_return (
         let { .parameters, .intermediate, .final } = csi;
         if final == 'R' then (
-            let { row, column } = parameters |> String.split_once(';');
+            let { row, column } = &parameters |> RcStr.as_str |> String.split_once(';');
             (@current Context).cursor_position_report = :Some {
                 String.parse(row),
                 String.parse(column),
             };
             return :None;
         );
+        let parameters = &parameters |> RcStr.as_str;
         let { code, modifiers } = if parameters |> String.contains(";") then (
             let { code, modifiers } = parameters |> String.split_once(';');
             { code, { String.parse(modifiers) } }
@@ -211,20 +218,25 @@ const tty = (
     );
 
     const read_more_stdin_data = () => (
-        let mut ctx = @current Context;
-        let data = @native "(() => {const buffer = Buffer.alloc(1024);const bytesRead = fs.readSync(process.stdin.fd,buffer,0,buffer.length,null);return buffer.toString('utf8', 0, bytesRead);})()";
-        ctx.last_read += data;
-        while ctx.last_read |> String.length > 40 do (
-            let c = ctx.last_read |> String.at(0);
+        let ref mut ctx = @current Context;
+        let buf_size :: Int32 = 1024;
+        let buffer :: @opaque_type "char*" = @native "Kast_allocate_raw(\(buf_size))";
+        let read :: Int32 = @native "read(fileno(stdin), \(buffer), \(buf_size))";
+        if read == 0 then panic("failed to read stdin");
+        let data :: String = @native "String_from_raw_parts(\(buffer), \(read))";
+        let data = RcStr.from_String(data);
+        ctx^.last_read = RcStr.from_String(format!("\(ctx^.last_read)\(data)"));
+        while &ctx^.last_read |> RcStr.length > 40 do (
+            let c = &ctx^.last_read |> RcStr.at(0);
             let i = Char.string_encoding_len(c);
-            ctx.last_read = ctx.last_read
-                |> String.substring(i, String.length(ctx.last_read) - i);
+            ctx^.last_read = &ctx^.last_read
+                |> RcStr.substring(i, RcStr.length(&ctx^.last_read) - i);
         );
         with raw.Context = { .data };
         while raw.peek() is :Some c do (
             if c == '\x03' then (
                 raw.advance();
-                ctx.handle_ctrl_c();
+                ctx^.handle_ctrl_c();
             ) else if c == '\r' then (
                 raw.advance();
                 push_input(Input.new(:Enter));
@@ -236,7 +248,7 @@ const tty = (
                 push_input(Input.new(:ClearScreen));
             ) else if c == '\x1b' then (
                 raw.advance();
-                if std.repr.structurally_equal(raw.peek(), :Some '[') then (
+                if raw.peek() |> Option.unwrap_or('.') == '[' then (
                     raw.advance();
                     if parse_csi(raw.read_csi()) is :Some input then (
                         push_input(input);
@@ -247,9 +259,9 @@ const tty = (
                         let shape = if c == '\x1b' then (
                             :Escape
                         ) else (
-                            :Content to_string(c)
+                            :Content RcStr.from_String(to_string(c))
                         );
-                        let mut modifiers = { 3 };
+                        let modifiers = { 3 };
                         push_input({ .shape, .modifiers });
                     )
                     | :None => (
@@ -258,20 +270,22 @@ const tty = (
                 );
             ) else (
                 raw.advance();
-                push_input(Input.new(:Content to_string(c)));
+                push_input(Input.new(:Content RcStr.from_String(to_string(c))));
             );
         );
     );
 
-    const write = (s :: String) => (
-        let mut ctx = @current Context;
-        ctx.write_buffer += s;
+    const write = (s :: &str) => (
+        let ref mut ctx = @current Context;
+        &mut ctx^.write_buffer |> StringBuilder.add_str(s);
     );
 
     const flush = () => (
-        let mut ctx = @current Context;
-        std.io.stdout.write(ctx.write_buffer);
-        ctx.write_buffer = "";
+        let ref mut ctx = @current Context;
+        let buffer = ctx^.write_buffer |> StringBuilder.into_string;
+        ctx^.write_buffer = StringBuilder.new();
+        std.io.stdout.write(&buffer |> as_str);
+        @native "fflush(stdout)";
     );
 
     const save_cursor_position = () => (
@@ -284,9 +298,9 @@ const tty = (
 
     const move_cursor_to = (row :: Int32, column :: Int32) => (
         write("\x1b[");
-        write(to_string(row));
+        write(&to_string(row) |> as_str);
         write(";");
-        write(to_string(column));
+        write(&to_string(column) |> as_str);
         write("H");
     );
 
@@ -300,7 +314,7 @@ const tty = (
     const move_cursor = (direction :: MoveCursorDirection, amount :: Int32) => (
         write("\x1b[");
         if amount != 1 then (
-            write(to_string(amount));
+            write(&to_string(amount) |> as_str);
         );
         let c = match direction with (
             | :Up => "A"
@@ -356,7 +370,7 @@ const tty = (
         write(" q");
     );
 
-    const toggle_impl = (s :: String, visible :: Bool) => (
+    const toggle_impl = (s :: &str, visible :: Bool) => (
         write("\x1b[?");
         write(s);
         write(if visible then "h" else "l");
@@ -367,13 +381,13 @@ const tty = (
     );
 
     const read_cursor_position = () -> { Int32, Int32 } => with_return (
-        let mut ctx = @current Context;
+        let ref mut ctx = @current Context;
         write("\x1b[6n");
         flush();
         @loop (
-            match ctx.cursor_position_report with (
+            match ctx^.cursor_position_report with (
                 | :Some posision => (
-                    ctx.cursor_position_report = :None;
+                    ctx^.cursor_position_report = :None;
                     return posision;
                 )
                 | :None => (
@@ -400,9 +414,9 @@ const tty = (
     );
 
     const input = () -> Input => with_return (
-        let mut ctx = @current Context;
+        let ref mut ctx = @current Context;
         @loop (
-            match &mut ctx.read_buffer |> Queue.pop with (
+            match &mut ctx^.read_buffer |> Queue.pop with (
                 | :Some input => return input
                 | :None => read_more_stdin_data()
             )
@@ -413,33 +427,42 @@ const tty = (
         f :: () -> T,
         .handle_ctrl_c :: () -> (),
     ) -> T => (
-        const enter_raw_mode = () => (
-            @native "process.stdin.setRawMode(true)";
-            # @native "process.stdin.resume()";
-            @native "process.stdin._handle.setBlocking(true)";
-        );
-        const exit_raw_mode = () => (
-            @native "process.stdin.setRawMode(false)";
-            @native "process.stdin.pause()";
-        );
+        # setup raw mode
+        @native "#include <termios.h>";
+        let orig_termios :: @opaque_type "struct termios" = @native "#uninitialized";
+        @native ''{
+            tcgetattr(STDIN_FILENO, \(&orig_termios));
+            struct termios raw = \(orig_termios);
+            raw.c_lflag &= ~(ICANON | ECHO);
+            raw.c_cc[VMIN] = 1;
+            raw.c_cc[VTIME] = 0;
+            tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
+            setvbuf(stdin, NULL, _IONBF, 0);
+        }'';
+        @defer @native "tcsetattr(STDIN_FILENO, TCSAFLUSH, \(&orig_termios))";
 
-        const cleanup = () => (
-            mouse.disable();
-            set_cursor_type(:Default);
-            set_cursor_visibility(true);
-            exit_raw_mode();
-            flush();
-        );
-        enter_raw_mode();
         with Context = {
             .handle_ctrl_c,
-            .last_read = "",
+            .last_read = RcStr.allocate(""),
             .read_buffer = Queue.new(),
-            .write_buffer = "",
+            .write_buffer = StringBuilder.new(),
             .cursor_position_report = :None,
         };
+
+        @defer flush();
+
         mouse.enable();
-        let result :: T = @native "(()=>{try { return \(f()) } finally { \(cleanup()) }})()";
-        result
+        @defer (
+            mouse.disable();
+        );
+
+        # in case we change it
+        # TODO bring back actual old values
+        @defer (
+            set_cursor_type(:Default);
+            set_cursor_visibility(true);
+        );
+
+        f()
     );
 );

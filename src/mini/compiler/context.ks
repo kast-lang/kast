@@ -3,9 +3,9 @@ use (import "./template.ks").*;
 
 module:
 
-const find_context_type = (name :: String, .span :: Span) -> Ir.Type => with_return (
+const find_context_type = (name :: &RcStr, .span :: Span) -> Ir.Type => with_return (
     if (@current Compiler).get_toplevel_impl(name) is :Some item then (
-        if item is :Context ty then (
+        if item^ is :Context ty then (
             return ty;
         );
         let decl = (@current Compiler).get_toplevel_decl(name) |> Option.unwrap;
@@ -13,11 +13,10 @@ const find_context_type = (name :: String, .span :: Span) -> Ir.Type => with_ret
             .severity = :Error,
             .source = :Compiler,
             .message = () => (
-                let output = @current Output;
-                output.write(String.escape(name));
-                output.write("is ");
+                locked_output.write_escaped(name);
+                locked_output.write_str("is ");
                 print_toplevel_kind(decl);
-                output.write(", not a context");
+                locked_output.write_str(", not a context");
             ),
             .span,
             .related = ArrayList.new(),
@@ -28,10 +27,9 @@ const find_context_type = (name :: String, .span :: Span) -> Ir.Type => with_ret
         .severity = :Error,
         .source = :Compiler,
         .message = () => (
-            let output = @current Output;
-            output.write("Context ");
-            output.write(String.escape(name));
-            output.write(" not found");
+            locked_output.write_str("Context ");
+            locked_output.write_escaped(name);
+            locked_output.write_str(" not found");
         ),
         .span,
         .related = ArrayList.new(),
@@ -39,27 +37,30 @@ const find_context_type = (name :: String, .span :: Span) -> Ir.Type => with_ret
     Diagnostic.report_and_unwind(diagnostic)
 );
 
-const parse_context_type = (ast :: Ast.t) -> { String, Ir.Type } => (
+const parse_context_type = (ast :: &Ast.t) -> { RcStr, Ir.Type } => (
     let context_name = with_return (
-        match ast.shape with (
-            | :Rule { .rule, .root } => (
-                if rule.name == "instantiate" then (
+        match ast^.shape^ with (
+            | :Rule { .rule = ref rule, .root = ref root } => (
+                if &rule^^.name |> RcStr.as_str == "instantiate" then (
                     return parse_instantiate(root).name;
                 );
             )
-            | :Token { .shape = :Ident { .name, ... }, ... } => return name
+            | :Token ref token => (
+                if token^.shape^ is :Ident { .name, ... } then (
+                    return name;
+                );
+            )
         );
         let diagnostic = {
             .severity = :Error,
             .source = :Compiler,
             .message = () => (
-                let output = @current Output;
-                output.write("Expected context name");
+                locked_output.write_str("Expected context name");
             ),
-            .span = ast.span,
+            .span = ast^.span,
             .related = ArrayList.new(),
         };
         Diagnostic.report_and_unwind(diagnostic)
     );
-    { context_name, find_context_type(context_name, .span = ast.span) }
+    { context_name, find_context_type(&context_name, .span = ast^.span) }
 );

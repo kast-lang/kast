@@ -48,6 +48,14 @@ const locked_output = (
         (@current LockedOutput)^.write(s);
     );
 
+    const formatter = () -> std.fmt.Formatter => {
+        .write_str,
+    };
+
+    const write_fmt = (args :: std.Ast) -> std.Ast => `(
+        std.fmt.write!(&mut formatter(), $args)
+    );
+
     const write = (s :: &RcStr) => (
         write_str(RcStr.as_str(s));
     );
@@ -67,7 +75,7 @@ const locked_output = (
 );
 
 const new_std_output = (write :: &str -> (), .color :: Bool) -> OutputSync => (
-    let indentation_string = if color then "│   " else "    ";
+    let indentation_string = if color then "񢔂  " else "    ";
     new_output(.write, .indentation_string, .color)
 );
 

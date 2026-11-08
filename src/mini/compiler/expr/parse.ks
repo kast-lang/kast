@@ -12,17 +12,19 @@ module:
 
 const parse_if = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
-    root :: Ast.Group,
+    ast :: &Ast.t,
+    root :: &Ast.Group,
 ) -> ParsedExpr => (
-    let cond = (&root.children |> Tuple.get_named("cond"))^
+    let cond = &root^.children
+        |> Tuple.get_named("cond")
         |> Ast.unwrap_child_value;
-    let then_case = (&root.children |> Tuple.get_named("then_case"))^
+    let then_case = &root^.children
+        |> Tuple.get_named("then_case")
         |> Ast.unwrap_child_value;
-    let else_case = &root.children
+    let else_case = &root^.children
         |> Tuple.get_named_opt("else_case")
-        |> Option.map(child => child^ |> Ast.unwrap_child_value);
-    let cond = parse_expr(:Some { .shape = :Bool, .alias_name = :None }, cond);
+        |> Option.map(Ast.unwrap_child_value);
+    let cond = parse_expr(:Some { .shape = Rc.new(:Bool), .alias_name = :None }, cond);
     let then_case = parse_expr(expected_ty, then_case);
     let else_case = else_case
         |> Option.map(ast => parse_expr(:Some then_case.ty, ast));
@@ -34,16 +36,16 @@ const parse_if = (
 
 const parse_variant = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
-    root :: Ast.Group,
+    ast :: &Ast.t,
+    root :: &Ast.Group,
 ) -> ParsedExpr => (
     let variant = root
         |> AstHelpers.expect_single_child(:Some "label")
         |> AstHelpers.expect_ident;
-    let ty = expected_ty |> expect_known_type(.span = ast.span);
+    let ty = expected_ty |> expect_known_type(.span = ast^.span);
     check_variant(
-        .variant = { variant, .span = ast.span },
-        .ty = { &ty, .span = ast.span },
+        .variant = { &variant, .span = ast^.span },
+        .ty = { &ty, .span = ast^.span },
     );
     {
         .shape = :Expr :Variant variant,
@@ -53,17 +55,17 @@ const parse_variant = (
 
 const parse_instantiate_expr = (
     expected_ty :: Option.t[Ty],
-    ast :: Ast.t,
-    root :: Ast.Group,
+    ast :: &Ast.t,
+    root :: &Ast.Group,
 ) -> ParsedExpr => (
     parse_instantiate(root)
-        |> instantiation_to_expr(.span = root.span)
+        |> instantiation_to_expr(.span = root^.span)
 );
 
 const parse_equals = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
-    root :: Ast.Group,
+    ast :: &Ast.t,
+    root :: &Ast.Group,
 ) -> ParsedExpr => (
     let { lhs, rhs } = root
         |> AstHelpers.expect_two_children(:None);
@@ -73,19 +75,19 @@ const parse_equals = (
         |> AstHelpers.expect_single_child(:Some "label")
         |> AstHelpers.expect_ident;
     check_variant(
-        .variant = { variant, .span = rhs.span },
-        .ty = { &enum.ty, .span = lhs.span },
+        .variant = { &variant, .span = rhs^.span },
+        .ty = { &enum.ty, .span = lhs^.span },
     );
     {
         .shape = :Expr :EnumIs { .enum, .variant },
-        .ty = { .shape = :Bool, .alias_name = :None },
+        .ty = { .shape = Rc.new(:Bool), .alias_name = :None },
     }
 );
 
 const parse_type_info = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
-    root :: Ast.Group,
+    ast :: &Ast.t,
+    root :: &Ast.Group,
 ) -> ParsedExpr => (
     let ty = root
         |> AstHelpers.expect_single_child(:Some "type")
@@ -93,32 +95,32 @@ const parse_type_info = (
     let type_info_const_name = type_info_const_name(&ty);
     {
         .shape = :Place :Ident type_info_const_name,
-        .ty = { .shape = :Named "TypeInfo", .alias_name = :None },
+        .ty = { .shape = Rc.new(:Named RcStr.allocate("TypeInfo")), .alias_name = :None },
     }
 );
 
 const parse_deref = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
-    root :: Ast.Group,
+    ast :: &Ast.t,
+    root :: &Ast.Group,
 ) -> ParsedExpr => (
     let reference_ast = root |> AstHelpers.expect_single_child(:None);
     let expected_reference_ty = match expected_ty with (
         | :None => :None
-        | :Some ty => :Some { .shape = :Ref ty, .alias_name = :None }
+        | :Some ty => :Some { .shape = Rc.new(:Ref ty), .alias_name = :None }
     );
     let reference = parse_expr(expected_reference_ty, reference_ast);
-    let ty = match reference.ty.shape with (
+    let ty = match reference.ty.shape^ with (
         | :Ref referenced => referenced
         | _ => (
             let diagnostic = {
                 .severity = :Error,
                 .source = :Compiler,
                 .message = () => (
-                    (@current Output).write("Expected a reference, got");
+                    locked_output.write_str("Expected a reference, got");
                     Ir.Print.type_name(&reference.ty);
                 ),
-                .span = reference_ast.span,
+                .span = reference_ast^.span,
                 .related = ArrayList.new(),
             };
             Diagnostic.report_and_unwind(diagnostic)
@@ -132,23 +134,23 @@ const parse_deref = (
 
 const parse_ref = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
-    root :: Ast.Group,
+    ast :: &Ast.t,
+    root :: &Ast.Group,
 ) -> ParsedExpr => (
     let referenced = root |> AstHelpers.expect_single_child(:None);
     let expected_referenced_ty = match expected_ty with (
         | :None => :None
-        | :Some ty => match ty.shape with (
+        | :Some ty => match ty.shape^ with (
             | :Ref referenced => :Some referenced
             | _ => (
                 let diagnostic = {
                     .severity = :Error,
                     .source = :Compiler,
                     .message = () => (
-                        (@current Output).write("Expected not a reference but ");
+                        locked_output.write_str("Expected not a reference but ");
                         Ir.Print.type_name(&ty);
                     ),
-                    .span = ast.span,
+                    .span = ast^.span,
                     .related = ArrayList.new(),
                 };
                 Diagnostic.report_and_unwind(diagnostic)
@@ -158,38 +160,41 @@ const parse_ref = (
     let referenced = parse_place_expr(expected_referenced_ty, referenced);
     {
         .shape = :Expr :Ref referenced,
-        .ty = { .shape = :Ref referenced.ty, .alias_name = :None },
+        .ty = { .shape = Rc.new(:Ref referenced.ty), .alias_name = :None },
     }
 );
 
 const parse_list = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
-    root :: Ast.Group,
+    ast :: &Ast.t,
+    root :: &Ast.Group,
 ) -> ParsedExpr => (
     let element_ty = match expected_ty with (
-        | :Some { .shape = :Array { .element_ty, ... }, ... } => element_ty
-        | :Some other => (
-            let diagnostic = {
-                .severity = :Error,
-                .source = :Compiler,
-                .message = () => (
-                    Ir.Print.type_name(&other);
-                    (@current Output).write(" is not a list");
-                ),
-                .span = ast.span,
-                .related = ArrayList.new(),
-            };
-            Diagnostic.report_and_unwind(diagnostic)
+        | :Some ref expected_ty => (
+            if expected_ty^.shape^ is :Array { .element_ty, ... } then (
+                element_ty
+            ) else (
+                let diagnostic = {
+                    .severity = :Error,
+                    .source = :Compiler,
+                    .message = () => (
+                        Ir.Print.type_name(expected_ty);
+                        locked_output.write_str(" is not a list");
+                    ),
+                    .span = ast^.span,
+                    .related = ArrayList.new(),
+                };
+                Diagnostic.report_and_unwind(diagnostic)
+            )
         )
         | :None => (
             let diagnostic = {
                 .severity = :Error,
                 .source = :Compiler,
                 .message = () => (
-                    (@current Output).write("Couldn't figure out the type of this list");
+                    locked_output.write_str("Couldn't figure out the type of this list");
                 ),
-                .span = ast.span,
+                .span = ast^.span,
                 .related = ArrayList.new(),
             };
             Diagnostic.report_and_unwind(diagnostic)
@@ -207,17 +212,17 @@ const parse_list = (
     {
         .shape = :Expr :Array elements,
         .ty = instantiate_ty(
-            "Array",
-            single_element_list(element_ty),
-            .span = ast.span,
+            &RcStr.allocate("Array"),
+            Rc.new(single_element_list(element_ty)),
+            .span = ast^.span,
         ),
     }
 );
 
 const parse_record = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
-    root :: Ast.Group,
+    ast :: &Ast.t,
+    root :: &Ast.Group,
 ) -> ParsedExpr => with_return (
     let ty = match expected_ty with (
         | :Some ty => ty
@@ -226,9 +231,9 @@ const parse_record = (
                 .severity = :Error,
                 .source = :Compiler,
                 .message = () => (
-                    (@current Output).write("Couldn't figure out the type of this record");
+                    locked_output.write_str("Couldn't figure out the type of this record");
                 ),
-                .span = ast.span,
+                .span = ast^.span,
                 .related = ArrayList.new(),
             };
             Diagnostic.report_and_unwind(diagnostic)
@@ -240,16 +245,16 @@ const parse_record = (
     );
     let {
         kind :: Kind,
-        field_types :: OrdMap.t[String, Ir.Type],
+        field_types :: &OrdMap.t[RcStr, Ir.Type],
     } = with_return (
-        match Ir.type_repr(&ty)^.shape with (
-            | :Named name => (
-                let def = &(@current Compiler).program.types
+        match Ir.type_repr(&ty)^.shape^ with (
+            | :Named ref name => (
+                let def = &(@current Compiler).program^.types
                     |> OrdMap.get(name)
                     |> Option.unwrap;
                 match def^.shape with (
-                    | :Struct { .fields } => return { :Struct, fields }
-                    | :Union { .variants } => return { :Union, variants }
+                    | :Struct { .fields = ref fields } => return { :Struct, fields }
+                    | :Union { .variants = ref variants } => return { :Union, variants }
                     | _ => ()
                 )
             )
@@ -259,12 +264,11 @@ const parse_record = (
             .severity = :Error,
             .source = :Compiler,
             .message = () => (
-                let output = @current Output;
-                output.write("Type ");
+                locked_output.write_str("Type ");
                 Ir.Print.type_name(&ty);
-                output.write(" can't be used as record");
+                locked_output.write_str(" can't be used as record");
             ),
-            .span = ast.span,
+            .span = ast^.span,
             .related = ArrayList.new(),
         };
         Diagnostic.report_and_unwind(diagnostic)
@@ -280,43 +284,40 @@ const parse_record = (
             |> AstHelpers.expect_rule("field init")
             |> AstHelpers.expect_two_children(:Some { "label", "value" });
         let name = name_ast |> AstHelpers.expect_ident;
-        let field_ty = match &field_types |> OrdMap.get(name) with (
+        let field_ty = match field_types |> OrdMap.get(&name) with (
             | :Some &ty => ty
             | :None => (
                 let diagnostic = {
                     .severity = :Error,
                     .source = :Compiler,
                     .message = () => (
-                        let output = @current Output;
-                        output.write("Type ");
+                        locked_output.write_str("Type ");
                         Ir.Print.type_name(&ty);
-                        output.write(" doesn't have field ");
-                        output.write(String.escape(name));
+                        locked_output.write_str(" doesn't have field ");
+                        locked_output.write_escaped(&name);
                     ),
-                    .span = name_ast.span,
+                    .span = name_ast^.span,
                     .related = ArrayList.new(),
                 };
                 Diagnostic.report_and_unwind(diagnostic)
             )
         );
-        if &fields_initialized |> OrdMap.get(name) is :Some &other_span then (
+        if &fields_initialized |> OrdMap.get(&name) is :Some &other_span then (
             let diagnostic = {
                 .severity = :Error,
                 .source = :Compiler,
                 .message = () => (
-                    let output = @current Output;
-                    output.write("Field ");
-                    output.write(String.escape(name));
-                    output.write(" has already been initialized");
+                    locked_output.write_str("Field ");
+                    locked_output.write_escaped(&name);
+                    locked_output.write_str(" has already been initialized");
                 ),
-                .span = name_ast.span,
+                .span = name_ast^.span,
                 .related = (
                     let mut related = ArrayList.new();
                     let info = {
                         .span = other_span,
                         .message = () => (
-                            let output = @current Output;
-                            output.write("Previously field was initialized here");
+                            locked_output.write_str("Previously field was initialized here");
                         ),
                     };
                     &mut related |> ArrayList.push_back(info);
@@ -325,7 +326,7 @@ const parse_record = (
             };
             Diagnostic.report_and_unwind(diagnostic)
         );
-        &mut fields_initialized |> OrdMap.add(name, name_ast.span);
+        &mut fields_initialized |> OrdMap.add(name, name_ast^.span);
         let value = parse_expr(:Some field_ty, value);
         &mut fields |> ArrayList.push_back({ .name, .value });
     );
@@ -336,37 +337,35 @@ const parse_record = (
                     .severity = :Error,
                     .source = :Compiler,
                     .message = () => (
-                        let output = @current Output;
-                        output.write("Unions must initialize exactly one field");
+                        locked_output.write_str("Unions must initialize exactly one field");
                     ),
-                    .span = ast.span,
+                    .span = ast^.span,
                     .related = ArrayList.new(),
                 };
                 Diagnostic.report(diagnostic);
             );
         )
         | :Struct => (
-            if &field_types |> OrdMap.length != &fields |> ArrayList.length then (
+            if field_types |> OrdMap.length != &fields |> ArrayList.length then (
                 let diagnostic = {
                     .severity = :Error,
                     .source = :Compiler,
                     .message = () => (
-                        let output = @current Output;
-                        output.write("Not all fields have been initialized: missing ");
+                        locked_output.write_str("Not all fields have been initialized: missing ");
                         let mut first = true;
-                        for &{ .key = name, ... } in &field_types |> OrdMap.iter do (
+                        for &{ .key = ref name, ... } in field_types |> OrdMap.iter do (
                             if &fields_initialized |> OrdMap.get(name) is :None then (
                                 if first then (
                                     first = false;
                                 ) else (
-                                    output.write(", ");
+                                    locked_output.write_str(", ");
                                 );
-                                output.write(".");
-                                output.write(name);
+                                locked_output.write_str(".");
+                                locked_output.write(name);
                             );
                         );
                     ),
-                    .span = ast.span,
+                    .span = ast^.span,
                     .related = ArrayList.new(),
                 };
                 Diagnostic.report(diagnostic);
@@ -381,8 +380,8 @@ const parse_record = (
 
 const parse_fn = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
-    root :: Ast.Group,
+    ast :: &Ast.t,
+    root :: &Ast.Group,
 ) -> ParsedExpr => (
     let f = parse_fn_def(
         ast,
@@ -403,21 +402,21 @@ const parse_fn = (
     };
     {
         .shape = :Expr :Fn f,
-        .ty = { .shape = :Fn fn_ty, .alias_name = :None },
+        .ty = { .shape = Rc.new(:Fn fn_ty), .alias_name = :None },
     }
 );
 
 const parse_field = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
-    root :: Ast.Group,
+    ast :: &Ast.t,
+    root :: &Ast.Group,
 ) -> ParsedExpr => (
     let { obj, field } = root
         |> AstHelpers.expect_two_children(:Some { "obj", "field" });
-    let field_span = field.span;
+    let field_span = field^.span;
     let field = field |> AstHelpers.expect_ident;
     let obj = parse_place_expr(:None, obj);
-    let field_ty = field_ty(obj.ty, field, .field_span);
+    let field_ty = field_ty(&obj.ty, &field, .field_span);
     {
         .shape = :Place :Field {
             .obj,
@@ -429,8 +428,8 @@ const parse_field = (
 
 const parse_assign = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
-    root :: Ast.Group,
+    ast :: &Ast.t,
+    root :: &Ast.Group,
 ) -> ParsedExpr => (
     let { assignee, value } = root
         |> AstHelpers.expect_two_children(:Some { "assignee", "value" });
@@ -441,25 +440,25 @@ const parse_assign = (
             .assignee,
             .value,
         },
-        .ty = { .shape = :Unit, .alias_name = :None },
+        .ty = { .shape = Rc.new(:Unit), .alias_name = :None },
     }
 );
 
 const parse_uninitialized = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
-    root :: Ast.Group,
+    ast :: &Ast.t,
+    root :: &Ast.Group,
 ) -> ParsedExpr => (
     {
         .shape = :Expr :Uninitialized,
-        .ty = expect_known_type(expected_ty, .span = ast.span),
+        .ty = expect_known_type(expected_ty, .span = ast^.span),
     }
 );
 
 const parse_type_ascribe = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
-    root :: Ast.Group,
+    ast :: &Ast.t,
+    root :: &Ast.Group,
 ) -> ParsedExpr => (
     let { expr, ty } = root
         |> AstHelpers.expect_two_children(:Some { "expr", "type" });
@@ -470,79 +469,80 @@ const parse_type_ascribe = (
 
 const parse_defer = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
-    root :: Ast.Group,
+    ast :: &Ast.t,
+    root :: &Ast.Group,
 ) -> ParsedExpr => (
     let expr = root
         |> AstHelpers.expect_single_child(:None);
     {
         .shape = :Expr :Defer parse_expr(
-            :Some { .shape = :Unit, .alias_name = :None },
+            :Some { .shape = Rc.new(:Unit), .alias_name = :None },
             expr,
         ),
-        .ty = { .shape = :Unit, .alias_name = :None },
+        .ty = { .shape = Rc.new(:Unit), .alias_name = :None },
     }
 );
 
 const parse_unwind = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
-    root :: Ast.Group,
-) -> ParsedExpr => (
+    ast :: &Ast.t,
+    root :: &Ast.Group,
+) -> ParsedExpr => with_return (
     let { token_ast, value } = root
         |> AstHelpers.expect_two_children(:Some { "token", "value" });
     let token = parse_expr(:None, token_ast);
-    if token.ty.shape is :Ref { .shape = :UnwindToken { .result_ty, ... }, ... } then (
-        let value = parse_expr(:Some result_ty, value);
-        {
-            .shape = :Expr :Unwind {
-                .token,
-                .value,
-            },
-            .ty = expected_ty
-                |> Option.unwrap_or({ .shape = :Unit, .alias_name = :None }),
-        }
-    ) else (
-        let diagnostic = {
-            .severity = :Error,
-            .source = :Compiler,
-            .message = () => (
-                (@current Output).write("Expected an reference to unwind token, got ");
-                Ir.Print.type_name(&token.ty);
-            ),
-            .span = token_ast.span,
-            .related = ArrayList.new(),
-        };
-        Diagnostic.report_and_unwind(diagnostic)
-    )
+    if token.ty.shape^ is :Ref { .shape = ref shape, ... } then (
+        if shape^^ is :UnwindToken { .result_ty, ... } then (
+            let value = parse_expr(:Some result_ty, value);
+            return {
+                .shape = :Expr :Unwind {
+                    .token,
+                    .value,
+                },
+                .ty = expected_ty
+                    |> Option.unwrap_or({ .shape = Rc.new(:Unit), .alias_name = :None }),
+            };
+        );
+    );
+    let diagnostic = {
+        .severity = :Error,
+        .source = :Compiler,
+        .message = () => (
+            locked_output.write_str("Expected an reference to unwind token, got ");
+            Ir.Print.type_name(&token.ty);
+        ),
+        .span = token_ast^.span,
+        .related = ArrayList.new(),
+    };
+    Diagnostic.report_and_unwind(diagnostic)
 );
 
 const parse_unwindable = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
-    root :: Ast.Group,
+    ast :: &Ast.t,
+    root :: &Ast.Group,
 ) -> ParsedExpr => (
     let { token_ast, body } = root
         |> AstHelpers.expect_two_children(:Some { "token", "body" });
     let token = token_ast
         |> AstHelpers.expect_ident;
-    with ScopeContext = {
+    with ScopeContext = Rc.new({
         .parent = :Some (@current ScopeContext),
         .vars = OrdMap.new(),
         .found_in_parent = (...) => (),
-    };
+    });
     let result_ty = expected_ty
-        |> Option.unwrap_or({ .shape = :Unit, .alias_name = :None });
+        |> Option.unwrap_or({ .shape = Rc.new(:Unit), .alias_name = :None });
     let token_ty = instantiate_ty(
-        "UnwindToken",
-        single_element_list(result_ty),
-        .span = token_ast.span,
+        &RcStr.allocate("UnwindToken"),
+        Rc.new(single_element_list(result_ty)),
+        .span = token_ast^.span,
     );
     let ref_token_ty = {
-        .shape = :Ref token_ty,
+        .shape = Rc.new(:Ref token_ty),
         .alias_name = :None,
     };
-    &mut (@current ScopeContext).vars
+    &mut (@current ScopeContext)^.vars
         |> OrdMap.add(token, ref_token_ty);
     let body = parse_expr(:Some result_ty, body);
     {
@@ -557,25 +557,25 @@ const parse_unwindable = (
 
 const parse_capture_continuation = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
-    root :: Ast.Group,
+    ast :: &Ast.t,
+    root :: &Ast.Group,
 ) -> ParsedExpr => (
     let { token_ast, continuation, body } = root
         |> AstHelpers.expect_three_children("token", "continuation", "body");
     let token = parse_expr(:None, token_ast);
-    if token.ty.shape is :DelimitedContinuationToken { .result_ty, ... } then (
+    if token.ty.shape^ is :DelimitedContinuationToken { .result_ty, ... } then (
         let continuation_ty :: Ir.Type = instantiate_ty(
-            "Continuation",
-            single_element_list(result_ty),
-            .span = ast.span,
+            &RcStr.allocate("Continuation"),
+            Rc.new(single_element_list(result_ty)),
+            .span = ast^.span,
         );
         let continuation = continuation |> AstHelpers.expect_ident;
-        with ScopeContext = {
+        with ScopeContext = Rc.new({
             .parent = :Some (@current ScopeContext),
             .vars = OrdMap.new(),
             .found_in_parent = (...) => (),
-        };
-        &mut (@current ScopeContext).vars
+        });
+        &mut (@current ScopeContext)^.vars
             |> OrdMap.add(continuation, continuation_ty);
         let body = parse_expr(:Some result_ty, body);
         {
@@ -584,23 +584,23 @@ const parse_capture_continuation = (
                 .continuation_ty_repr = continuation_ty,
                 .continuation,
                 .resume_fn = instantiate(
-                    "resume_delimited_continuation_token",
-                    single_element_list(result_ty),
-                    .span = ast.span,
+                    &RcStr.allocate("resume_delimited_continuation_token"),
+                    Rc.new(single_element_list(result_ty)),
+                    .span = ast^.span,
                 ).name,
                 .body,
             },
-            .ty = { .shape = :Unit, .alias_name = :None },
+            .ty = { .shape = Rc.new(:Unit), .alias_name = :None },
         }
     ) else (
         let diagnostic = {
             .severity = :Error,
             .source = :Compiler,
             .message = () => (
-                (@current Output).write("Expected a delimited continuation token, got ");
+                locked_output.write_str("Expected a delimited continuation token, got ");
                 Ir.Print.type_name(&token.ty);
             ),
-            .span = token_ast.span,
+            .span = token_ast^.span,
             .related = ArrayList.new(),
         };
         Diagnostic.report_and_unwind(diagnostic)
@@ -609,11 +609,11 @@ const parse_capture_continuation = (
 
 const parse_delimited_continuation = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
-    root :: Ast.Group,
+    ast :: &Ast.t,
+    root :: &Ast.Group,
 ) -> ParsedExpr => (
     let capture_mode = match (
-        &root.children |> Tuple.get_named_opt("move")
+        &root^.children |> Tuple.get_named_opt("move")
     ) with (
         | :Some _ => :Move
         | :None => :ByRef
@@ -625,21 +625,21 @@ const parse_delimited_continuation = (
     let token = token_ast
         |> AstHelpers.expect_ident;
     let mut captures = OrdMap.new();
-    with ScopeContext = {
+    with ScopeContext = Rc.new({
         .parent = :Some (@current ScopeContext),
         .vars = OrdMap.new(),
         .found_in_parent = (name, ty) => (
-            &mut captures |> OrdMap.add(name, ty);
+            &mut captures |> OrdMap.add(name^, ty^);
         ),
-    };
+    });
     let result_ty = expected_ty
-        |> Option.unwrap_or({ .shape = :Unit, .alias_name = :None });
+        |> Option.unwrap_or({ .shape = Rc.new(:Unit), .alias_name = :None });
     let token_ty = instantiate_ty(
-        "DelimitedContinuationToken",
-        single_element_list(result_ty),
-        .span = token_ast.span,
+        &RcStr.allocate("DelimitedContinuationToken"),
+        Rc.new(single_element_list(result_ty)),
+        .span = token_ast^.span,
     );
-    &mut (@current ScopeContext).vars
+    &mut (@current ScopeContext)^.vars
         |> OrdMap.add(token, token_ty);
     let body = parse_expr(:Some result_ty, body);
     {
@@ -647,9 +647,9 @@ const parse_delimited_continuation = (
             .capture_mode,
             .captures,
             .resume_fn = instantiate(
-                "resume_delimited_continuation_token",
-                single_element_list(result_ty),
-                .span = ast.span,
+                &RcStr.allocate("resume_delimited_continuation_token"),
+                Rc.new(single_element_list(result_ty)),
+                .span = ast^.span,
             ).name,
             .token_ty,
             .token,
@@ -661,29 +661,29 @@ const parse_delimited_continuation = (
 
 const parse_loop = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
-    root :: Ast.Group,
+    ast :: &Ast.t,
+    root :: &Ast.Group,
 ) -> ParsedExpr => (
     let body = root |> AstHelpers.expect_single_child(:None);
     {
         .shape = :Expr :Loop parse_expr(
-            :Some { .shape = :Unit, .alias_name = :None },
+            :Some { .shape = Rc.new(:Unit), .alias_name = :None },
             body,
         ),
-        .ty = { .shape = :Unit, .alias_name = :None },
+        .ty = { .shape = Rc.new(:Unit), .alias_name = :None },
     }
 );
 
 const parse_let = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
-    root :: Ast.Group,
+    ast :: &Ast.t,
+    root :: &Ast.Group,
 ) -> ParsedExpr => (
     let { pattern, value } = root
         |> AstHelpers.expect_two_children(:Some { "pattern", "value" });
     let { name, expected_ty } = with_return (
-        if pattern.shape is :Rule { .rule, .root } then (
-            if rule.name == "type ascribe" then (
+        if pattern^.shape^ is :Rule { .rule = ref rule, .root = ref root } then (
+            if &rule^^.name |> RcStr.as_str == "type ascribe" then (
                 let { name, ty } = root
                     |> AstHelpers.expect_two_children(:Some { "expr", "type" });
                 let name = name |> AstHelpers.expect_ident;
@@ -694,79 +694,85 @@ const parse_let = (
         { name, :None }
     );
     let value = parse_expr(expected_ty, value);
-    &mut (@current ScopeContext).vars |> OrdMap.add(name, value.ty);
+    &mut (@current ScopeContext)^.vars |> OrdMap.add(name, value.ty);
     {
         .shape = :Expr :Let { .name, .value },
-        .ty = { .shape = :Unit, .alias_name = :None },
+        .ty = { .shape = Rc.new(:Unit), .alias_name = :None },
     }
 );
 
 const parse_native = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
-    root :: Ast.Group,
+    ast :: &Ast.t,
+    root :: &Ast.Group,
 ) -> ParsedExpr => (
     let inner = root |> AstHelpers.expect_single_child(:None);
     let mut native_parts = ArrayList.new();
-    match inner.shape with (
-        | :InterpolatedString { .parts, ... } => (
-            for part in parts |> ArrayList.into_iter do (
-                match part with (
+    let expected_native_string = () => (
+        let diagnostic = {
+            .severity = :Error,
+            .source = :Compiler,
+            .message = () => (
+                locked_output.write_str("Expected a native string");
+            ),
+            .span = inner^.span,
+            .related = ArrayList.new(),
+        };
+        Diagnostic.report_and_unwind(diagnostic)
+    );
+    match inner^.shape^ with (
+        | :InterpolatedString { .parts = ref parts, ... } => (
+            for part in parts |> ArrayList.iter do (
+                match part^ with (
                     | :Content s => (
                         &mut native_parts |> ArrayList.push_back(:Raw s.contents);
                     )
-                    | :Interpolated { .ast, ... } => (
+                    | :Interpolated { .ast = ref ast, ... } => (
                         let part = :Interpolated parse_expr(:None, ast);
                         &mut native_parts |> ArrayList.push_back(part);
                     )
                 )
             )
         )
-        | :Token { .shape = :String s, ... } => (
-            &mut native_parts |> ArrayList.push_back(:Raw s.contents);
+        | :Token { .shape = ref shape, ... } => (
+            match shape^^ with (
+                | :String ref s => (
+                    &mut native_parts |> ArrayList.push_back(:Raw s^.contents);
+                )
+                | _ => expected_native_string()
+            );
         )
-        | _ => (
-            let diagnostic = {
-                .severity = :Error,
-                .source = :Compiler,
-                .message = () => (
-                    (@current Output).write("Expected a native string");
-                ),
-                .span = inner.span,
-                .related = ArrayList.new(),
-            };
-            Diagnostic.report_and_unwind(diagnostic)
-        )
+        | _ => expected_native_string()
     );
     {
         .shape = :Expr :Native { .parts = native_parts },
         .ty = expected_ty
-            |> Option.unwrap_or({ .shape = :Unit, .alias_name = :None }),
+            |> Option.unwrap_or({ .shape = Rc.new(:Unit), .alias_name = :None }),
     }
 );
 
 const parse_stmt = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
-    root :: Ast.Group,
+    ast :: &Ast.t,
+    root :: &Ast.Group,
 ) -> ParsedExpr => (
     let inner = root |> AstHelpers.expect_single_child(:None);
     {
         .shape = :Expr :Stmt parse_expr(:None, inner),
-        .ty = { .shape = :Unit, .alias_name = :None },
+        .ty = { .shape = Rc.new(:Unit), .alias_name = :None },
     }
 );
 
 const parse_scope = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
-    root :: Ast.Group,
+    ast :: &Ast.t,
+    root :: &Ast.Group,
 ) -> ParsedExpr => (
-    with ScopeContext = {
+    with ScopeContext = Rc.new({
         .parent = :Some (@current ScopeContext),
         .vars = OrdMap.new(),
         .found_in_parent = (...) => (),
-    };
+    });
     let inner = root |> AstHelpers.expect_single_child(:None);
     let inner = parse_expr(expected_ty, inner);
     {
@@ -777,8 +783,8 @@ const parse_scope = (
 
 const parse_inject_context = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
-    root :: Ast.Group,
+    ast :: &Ast.t,
+    root :: &Ast.Group,
 ) -> ParsedExpr => (
     let { context_type, value } = root
         |> AstHelpers.expect_two_children(:Some { "context_type", "value" });
@@ -788,14 +794,14 @@ const parse_inject_context = (
             .name = context_name,
             .value = parse_expr(:Some context_ty, value),
         },
-        .ty = { .shape = :Unit, .alias_name = :None },
+        .ty = { .shape = Rc.new(:Unit), .alias_name = :None },
     }
 );
 
 const parse_current_context = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
-    root :: Ast.Group,
+    ast :: &Ast.t,
+    root :: &Ast.Group,
 ) -> ParsedExpr => (
     let context_type = root
         |> AstHelpers.expect_single_child(:Some "context_type");
@@ -808,10 +814,10 @@ const parse_current_context = (
 
 const parse_then = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
-    root :: Ast.Group,
+    ast :: &Ast.t,
+    root :: &Ast.Group,
 ) -> ParsedExpr => (
-    let mut last_expr_ty = { .shape = :Unit, .alias_name = :None };
+    let mut last_expr_ty = { .shape = Rc.new(:Unit), .alias_name = :None };
     let mut expr_asts = ArrayList.new();
     for expr in Ast.iter_list(
         ast,
@@ -839,26 +845,28 @@ const parse_then = (
 
 const parse_apply = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
-    root :: Ast.Group,
+    ast :: &Ast.t,
+    root :: &Ast.Group,
 ) -> ParsedExpr => (
-    let f_ast = (&root.children |> Tuple.get_named("f"))^
+    let f_ast = &root^.children
+        |> Tuple.get_named("f")
         |> Ast.unwrap_child_value;
-    let args_ast = (&root.children |> Tuple.get_unnamed(0))^
+    let args_ast = &root^.children
+        |> Tuple.get_unnamed(0)
         |> Ast.unwrap_child_group;
     let args_ast = args_ast |> AstHelpers.expect_single_child(:Some "args");
     let f = parse_expr(:None, f_ast);
-    let f_type = match f.ty.shape with (
+    let f_type = match f.ty.shape^ with (
         | :Fn ty => ty
         | _ => (
             let diagnostic = {
                 .severity = :Error,
                 .source = :Compiler,
                 .message = () => (
-                    (@current Output).write("Expected a function, got ");
+                    locked_output.write_str("Expected a function, got ");
                     Ir.Print.type_name(&f.ty);
                 ),
-                .span = f_ast.span,
+                .span = f_ast^.span,
                 .related = ArrayList.new(),
             };
             Diagnostic.report_and_unwind(diagnostic)
@@ -880,13 +888,12 @@ const parse_apply = (
             .severity = :Error,
             .source = :Compiler,
             .message = () => (
-                let output = @current Output;
-                output.write("Expected ");
-                output.write(to_string(expected_arg_count));
-                output.write(" args, got ");
-                output.write(to_string(actual_arg_count));
+                locked_output.write_str("Expected ");
+                locked_output.write_str(&to_string(expected_arg_count) |> as_str);
+                locked_output.write_str(" args, got ");
+                locked_output.write_str(&to_string(actual_arg_count) |> as_str);
             ),
-            .span = args_ast.span,
+            .span = args_ast^.span,
             .related = ArrayList.new(),
         };
         Diagnostic.report_and_unwind(diagnostic)
@@ -905,32 +912,32 @@ const parse_apply = (
 
 const parse_context_obj = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
-    root :: Ast.Group,
+    ast :: &Ast.t,
+    root :: &Ast.Group,
 ) -> ParsedExpr => (
     {
         .shape = :Place :ContextObject,
-        .ty = { .shape = :ContextObject, .alias_name = :None },
+        .ty = { .shape = Rc.new(:ContextObject), .alias_name = :None },
     }
 );
 
 const parse_let_context = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
-    root :: Ast.Group,
+    ast :: &Ast.t,
+    root :: &Ast.Group,
 ) -> ParsedExpr => (
     let value = root |> AstHelpers.expect_single_child(:None);
     let expected_ty = {
-        .shape = :Ref {
-            .shape = :ContextObject,
+        .shape = Rc.new(:Ref {
+            .shape = Rc.new(:ContextObject),
             .alias_name = :None,
-        },
+        }),
         .alias_name = :None,
     };
     let value = parse_expr(:Some expected_ty, value);
     {
         .shape = :Expr :LetContextRef value,
-        .ty = { .shape = :Unit, .alias_name = :None },
+        .ty = { .shape = Rc.new(:Unit), .alias_name = :None },
     }
 );
 
@@ -970,7 +977,7 @@ const parsers = (
             "true",
             (...) => {
                 .shape = :Expr :Literal :Bool true,
-                .ty = { .shape = :Bool, .alias_name = :None },
+                .ty = { .shape = Rc.new(:Bool), .alias_name = :None },
             }
         );
     &mut map
@@ -978,7 +985,7 @@ const parsers = (
             "false",
             (...) => {
                 .shape = :Expr :Literal :Bool false,
-                .ty = { .shape = :Bool, .alias_name = :None },
+                .ty = { .shape = Rc.new(:Bool), .alias_name = :None },
             }
         );
     &mut map |> OrdMap.add("delimited_continuation", parse_delimited_continuation);
@@ -988,31 +995,32 @@ const parsers = (
 
 const parse_expr_impl = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
+    ast :: &Ast.t,
 ) -> ParsedExpr => (
     let { .shape, .ty } = with_return (
-        match ast.shape with (
+        match ast^.shape^ with (
             | :Empty => return {
                 .shape = :Expr :Unit,
-                .ty = { .shape = :Unit, .alias_name = :None },
+                .ty = { .shape = Rc.new(:Unit), .alias_name = :None },
             }
-            | :Rule { .rule, .root } => (
-                if &parsers |> OrdMap.get(rule.name) is :Some parser then (
+            | :Rule { .rule = ref rule, .root = ref root } => (
+                let rule_name = &rule^^.name |> RcStr.as_str;
+                if &parsers |> OrdMap.get(&rule_name) is :Some parser then (
                     return parser^(expected_ty, ast, root);
                 );
             )
-            | :Token token => (
-                match token.shape with (
-                    | :Ident ident => (
+            | :Token ref token => (
+                match token^.shape^ with (
+                    | :Ident ref ident => (
                         return {
-                            .shape = :Place :Ident ident.name,
-                            .ty = find_ident_ty(ident.name, .span = token.span),
+                            .shape = :Place :Ident ident^.name,
+                            .ty = find_ident_ty(&ident^.name, .span = token^.span),
                         }
                     )
                     | :Number { .raw, ... } => (
-                        let ty = expect_known_type(expected_ty, .span = token.span);
+                        let ty = expect_known_type(expected_ty, .span = token^.span);
                         # TODO catch parse errors
-                        let literal = match ty.shape with (
+                        let literal = match ty.shape^ with (
                             | :Int => (
                                 # TODO check that its within range
                                 :Int raw
@@ -1035,10 +1043,10 @@ const parse_expr_impl = (
                                     .severity = :Error,
                                     .source = :Compiler,
                                     .message = () => (
-                                        (@current Output).write("Number literal can't be ");
+                                        locked_output.write_str("Number literal can't be ");
                                         Ir.Print.type_name(&ty);
                                     ),
-                                    .span = token.span,
+                                    .span = token^.span,
                                     .related = ArrayList.new(),
                                 };
                                 Diagnostic.report_and_unwind(diagnostic)
@@ -1049,41 +1057,41 @@ const parse_expr_impl = (
                             .ty,
                         };
                     )
-                    | :String s => (
-                        let open_raw = Token.raw(s.open);
+                    | :String ref s => (
+                        let open_raw = Token.raw(&s^.open);
                         let { ty, literal } = if open_raw == "\"" then (
                             {
-                                { .shape = :Named "StringView", .alias_name = :None },
-                                :String s.contents,
+                                { .shape = Rc.new(:Named RcStr.allocate("StringView")), .alias_name = :None },
+                                :String s^.contents,
                             }
                         ) else if open_raw == "'" then (
-                            if String.length(s.contents) == 0 then (
+                            if RcStr.length(&s^.contents) == 0 then (
                                 let diagnostic = {
                                     .severity = :Error,
                                     .source = :Compiler,
                                     .message = () => (
-                                        (@current Output).write("Char literal can't be empty");
+                                        locked_output.write_str("Char literal can't be empty");
                                     ),
-                                    .span = token.span,
+                                    .span = token^.span,
                                     .related = ArrayList.new(),
                                 };
                                 Diagnostic.report_and_unwind(diagnostic)
                             );
-                            let c = String.at(s.contents, 0);
-                            if Char.string_encoding_len(c) != String.length(s.contents) then (
+                            let c = RcStr.at(&s^.contents, 0);
+                            if Char.string_encoding_len(c) != RcStr.length(&s^.contents) then (
                                 let diagnostic = {
                                     .severity = :Error,
                                     .source = :Compiler,
                                     .message = () => (
-                                        (@current Output).write("Char literal must have exactly 1 char");
+                                        locked_output.write_str("Char literal must have exactly 1 char");
                                     ),
-                                    .span = token.span,
+                                    .span = token^.span,
                                     .related = ArrayList.new(),
                                 };
                                 Diagnostic.report_and_unwind(diagnostic)
                             );
                             {
-                                { .shape = :Char, .alias_name = :None },
+                                { .shape = Rc.new(:Char), .alias_name = :None },
                                 :Char c,
                             }
                         ) else (
@@ -1103,19 +1111,19 @@ const parse_expr_impl = (
             .severity = :Error,
             .source = :Compiler,
             .message = () => (
-                (@current Output).write("Expected an expr, got ");
-                Highlight.print_single_line(&ast);
+                locked_output.write_str("Expected an expr, got ");
+                Highlight.print_single_line(ast);
             ),
-            .span = ast.span,
+            .span = ast^.span,
             .related = ArrayList.new(),
         };
         Diagnostic.report_and_unwind(diagnostic)
     );
     let ty = if expected_ty is :Some expected_ty then (
         type_check(
-            .expected = expected_ty,
-            .actual = ty,
-            .span = ast.span
+            .expected = &expected_ty,
+            .actual = &ty,
+            .span = ast^.span
         );
         expected_ty
     ) else (
@@ -1126,24 +1134,24 @@ const parse_expr_impl = (
 
 const parse_expr = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
+    ast :: &Ast.t,
 ) -> Ir.Expr => (
     let { .shape, .ty } = parse_expr_impl(expected_ty, ast);
     let shape = match shape with (
         | :Expr shape => shape
-        | :Place shape => :Claim { .shape, .ty, .span = ast.span }
+        | :Place shape => :Claim { .shape = Rc.new(shape), .ty, .span = ast^.span }
     );
-    { .shape, .ty, .span = ast.span }
+    { .shape = Rc.new(shape), .ty, .span = ast^.span }
 );
 
 const parse_place_expr = (
     expected_ty :: Option.t[Ir.Type],
-    ast :: Ast.t,
+    ast :: &Ast.t,
 ) -> Ir.PlaceExpr => (
     let { .shape, .ty } = parse_expr_impl(expected_ty, ast);
     let shape = match shape with (
         | :Place shape => shape
-        | :Expr shape => :Temp { .shape, .ty, .span = ast.span }
+        | :Expr shape => :Temp { .shape = Rc.new(shape), .ty, .span = ast^.span }
     );
-    { .shape, .ty, .span = ast.span }
+    { .shape = Rc.new(shape), .ty, .span = ast^.span }
 );

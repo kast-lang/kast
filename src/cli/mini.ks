@@ -9,6 +9,7 @@ use (import "../syntax_parser.ks").*;
 use (import "../parser.ks").*;
 use (import "../ast.ks").*;
 use (import "../mini/_lib.ks").*;
+use (import "../rc_str.ks").*;
 
 const Cli = (
     module:
@@ -17,7 +18,7 @@ const Cli = (
     use (import "./highlight.ks").*;
     use (import "./format.ks").*;
     use (import "./structural_find_and_replace.ks").*;
-    use (import "./repl.ks").*;
+    use (import "./generic_repl.ks").*;
 );
 
 const root_scope = @current_scope;
@@ -27,7 +28,7 @@ module:
 const Mini = (
     module:
 
-    const syntax_ruleset_path = root_scope.Mini.Compiler.ruleset_path();
+    const syntax_ruleset_path = String.from_str(root_scope.Mini.Compiler.ruleset_path());
 
     const Repl = (
         module:
@@ -43,7 +44,7 @@ const Mini = (
                 let mut i = start_index;
                 while i < std.sys.argc() do (
                     let arg = std.sys.argv_at(i);
-                    Diagnostic.abort("Unexpected arg " + String.escape(arg));
+                    Diagnostic.abort(&format!("Unexpected arg \(String.escape(arg))") |> as_str);
                     i += 1;
                 );
                 {  }
@@ -53,10 +54,10 @@ const Mini = (
         const run = (common_args :: Common.Args.t, args :: Args.t) => (
             const Mini = root_scope.Mini;
             Cli.Repl.run_with(
-                .ruleset = Mini.Compiler.ruleset(),
+                .ruleset = &Mini.Compiler.ruleset(),
                 .eval = line => (
                     Ast.print(&line.parsed.ast);
-                    (@current Output).write("\n");
+                    locked_output.write_str("\n");
                 )
             )
         );
@@ -84,12 +85,12 @@ const Mini = (
                 while i < std.sys.argc() do (
                     let arg = std.sys.argv_at(i);
                     if arg == "--target" then (
-                        target = :Some std.sys.argv_at(i + 1);
+                        target = :Some String.from_str(std.sys.argv_at(i + 1));
                         i += 2;
                         continue;
                     );
                     if arg == "--prepend" then (
-                        ArrayList.push_back(&mut prepend, std.sys.argv_at(i + 1));
+                        ArrayList.push_back(&mut prepend, String.from_str(std.sys.argv_at(i + 1)));
                         i += 2;
                         continue;
                     );
@@ -105,38 +106,34 @@ const Mini = (
         );
 
         const run = (common_args :: Common.Args.t, args :: Args.t) => (
-            let target = args.target
-                |> Option.unwrap_or_else(
-                    () => Diagnostic.abort("Specify compilation --target"),
-                );
-            let target = if target == "javascript" or target == "js" then (
-                :JavaScript
-            ) else if target == "c" then (
+            const Mini = root_scope.Mini;
+            let target = &args.target
+                |> Option.as_ref
+                |> Option.unwrap_or_else(() => (
+                    Diagnostic.abort("Specify compilation --target")
+                ))
+                |> as_str;
+            let target :: Mini.Compiler.Target = if target == "c" then (
                 :C
             ) else (
-                Diagnostic.abort("Unknown target " + String.escape(target))
+                Diagnostic.abort(&format!("Unknown target \(String.escape(target))") |> as_str)
             );
-            const Mini = root_scope.Mini;
             if &args.paths |> ArrayList.length == 0 then (
                 Diagnostic.abort("Expected at least 1 path");
             );
             let mut compiler = Mini.Compiler.init();
-            for path in args.paths |> ArrayList.into_iter do (
-                let source = Source.read(SourcePath.parse(path));
+            for path in &args.paths |> ArrayList.iter do (
+                let source = Source.read(&SourcePath.parse(path |> as_str));
                 &mut compiler |> Mini.Compiler.add_source(source);
             );
             let program = compiler |> Mini.Compiler.compile;
-            for path in args.prepend |> ArrayList.into_iter do (
-                print(std.fs.read_file(path));
+            for path in &args.prepend |> ArrayList.iter do (
+                println!("\(std.fs.read_file(path |> as_str))");
             );
             match target with (
-                | :JavaScript => (
-                    let compiled = Mini.Backends.JavaScript.compile(program);
-                    Mini.Backends.JavaScript.print(compiled);
-                )
                 | :C => (
                     let compiled = Mini.Backends.C.compile(program);
-                    Mini.Backends.C.print(compiled);
+                    Mini.Backends.C.print(&compiled);
                 )
             );
         );
@@ -161,7 +158,7 @@ const Mini = (
         const parse = (start_index :: Int32) -> t => (
             let fix_syntax = :Some {
                 .ruleset = syntax_ruleset_path,
-                .ext = :Some "mks",
+                .ext = :Some String.from_str("mks"),
             };
             let mut common = Common.Args.default();
             let subcommand = unwindable subcommand (

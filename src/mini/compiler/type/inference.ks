@@ -14,8 +14,7 @@ const expect_known_type = (
                 .severity = :Error,
                 .source = :Compiler,
                 .message = () => (
-                    let output = @current Output;
-                    output.write("Unable to infer type");
+                    locked_output.write_str("Unable to infer type");
                 ),
                 .span,
                 .related = ArrayList.new(),
@@ -26,16 +25,16 @@ const expect_known_type = (
 );
 
 const field_ty = (
-    obj_ty :: Ir.Type,
-    field :: String,
+    obj_ty :: &Ir.Type,
+    field :: &RcStr,
     .field_span :: Span,
 ) -> Ir.Type => with_return (
-    let obj_ty = Ir.type_repr(&obj_ty);
-    if obj_ty^.shape is :ContextObject then (
+    let obj_ty = Ir.type_repr(obj_ty);
+    if obj_ty^.shape^ is :ContextObject then (
         return find_context_type(field, .span = field_span);
     );
-    if obj_ty^.shape is :Named name then (
-        let type_def = &(@current Compiler).program.types
+    if obj_ty^.shape^ is :Named ref name then (
+        let type_def = &(@current Compiler).program^.types
             |> OrdMap.get(name)
             |> Option.unwrap;
         let field_ty = match type_def^.shape with (
@@ -51,7 +50,7 @@ const field_ty = (
                     .source = :Compiler,
                     .message = () => (
                         Ir.Print.type_name(obj_ty);
-                        (@current Output).write(" doesn't have fields");
+                        locked_output.write_str(" doesn't have fields");
                     ),
                     .span = field_span,
                     .related = ArrayList.new(),
@@ -66,10 +65,9 @@ const field_ty = (
                     .severity = :Error,
                     .source = :Compiler,
                     .message = () => (
-                        let output = @current Output;
                         Ir.Print.type_name(obj_ty);
-                        output.write(" doesn't have field ");
-                        output.write(String.escape(field));
+                        locked_output.write_str(" doesn't have field ");
+                        locked_output.write_escaped(field);
                     ),
                     .span = field_span,
                     .related = ArrayList.new(),
@@ -83,7 +81,7 @@ const field_ty = (
         .source = :Compiler,
         .message = () => (
             Ir.Print.type_name(obj_ty);
-            (@current Output).write(" doesn't have fields");
+            locked_output.write_str(" doesn't have fields");
         ),
         .span = field_span,
         .related = ArrayList.new(),

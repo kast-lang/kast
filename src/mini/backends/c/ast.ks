@@ -1,5 +1,7 @@
 use (import "../../../output.ks").*;
+use (import "../../../rc_str.ks").*;
 use std.collections.OrdSet;
+use std.rc.Rc;
 
 module:
 
@@ -7,7 +9,7 @@ const Ast = (
     module:
 
     const Ident = newtype {
-        .name :: String,
+        .name :: RcStr,
     };
 
     const Ty = newtype (
@@ -20,12 +22,12 @@ const Ast = (
         | :Float64
         | :Bool
         | :Void
-        | :Pointer Ty
+        | :Pointer Rc.t[Ty]
         | :Named Ident
         | :Struct Ident
         | :Enum Ident
         | :Union Ident
-        | :Raw String
+        | :Raw RcStr
     );
 
     const FnArg = newtype {
@@ -46,10 +48,10 @@ const Ast = (
 
     const Literal = newtype (
         | :Bool Bool
-        | :Int String
-        | :Float String
+        | :Int RcStr
+        | :Float RcStr
         | :Char Char
-        | :String String
+        | :String RcStr
     );
 
     const FieldInitializer = newtype {
@@ -57,9 +59,13 @@ const Ast = (
         .value :: Expr,
     };
 
-    const Expr = newtype (
+    const Expr = newtype {
+        .shape :: Rc.t[ExprShape],
+    };
+
+    const ExprShape = newtype (
         | :Stmt Block
-        | :Raw String
+        | :Raw RcStr
         | :RawParts ArrayList.t[Expr]
         | :Ref Expr
         | :Deref Expr
@@ -84,7 +90,11 @@ const Ast = (
         }
     );
 
-    const Stmt = newtype (
+    const Stmt = newtype {
+        .shape :: Rc.t[StmtShape],
+    };
+
+    const StmtShape = newtype (
         | :RawParts ArrayList.t[Expr]
         | :Expr Expr
         | :Return Expr
@@ -152,7 +162,7 @@ const Ast = (
     };
 
     const Program = newtype {
-        .includes :: OrdSet.t[String],
+        .includes :: OrdSet.t[RcStr],
         .types :: ArrayList.t[TyDef],
         .fns :: ArrayList.t[Fn],
         .statics :: ArrayList.t[Static],
