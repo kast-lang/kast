@@ -2283,17 +2283,6 @@ module Impl = struct
                }
              in
              insert_stmt (S_Assign { assignee = P_Ident value_name; value = value_expr });
-             insert_stmt
-               (S_Native
-                  [ N_Raw
-                      ("#ifdef USE_GC\n"
-                       ^ "GC_add_roots(&"
-                       ^ value_name
-                       ^ ", (&"
-                       ^ value_name
-                       ^ ") + 1);\n"
-                       ^ "#endif\n")
-                  ]);
              Dynarray.add_last ctx.statics static);
          P_Ident value_name
        with

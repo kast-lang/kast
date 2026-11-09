@@ -2,17 +2,6 @@
 
 void Kast_init(int argc, const char* argv[]) {
     Kast_init_type_infos();
-#ifdef USE_GC
-    GC_INIT();
-#endif
-#ifdef __EMSCRIPTEN__
-#if defined(USE_GC) && defined(GC_ON_INTERVAL_EMSCRIPTEN)
-    // Using solution 2 from boehmgc docs
-    // https://github.com/bdwgc/bdwgc/blob/master/docs/platforms/README.emscripten
-    GC_disable();
-    emscripten_set_interval(Kast_run_gc, 0, NULL);
-#endif
-#endif
     Kast_backtrace_init();
     CLI_ARGS.argc = argc;
     CLI_ARGS.original_argv = argv;

@@ -30,12 +30,6 @@ void* Kast_reallocate_array(
     size_t new_length
 ) {
     size_t new_memory_size = T->stride * new_length;
-#ifdef USE_GC
-    void* result = Kast_allocate_array(T, new_length);
-    if (a != NULL) {
-        memcpy(result, a, new_memory_size);
-    }
-#else
     if (new_memory_size == 0) {
         free(a);
         return NULL;
@@ -53,7 +47,6 @@ void* Kast_reallocate_array(
         }
         return result;
     }
-#endif
 }
 
 void Kast_free(const void* memory) {
