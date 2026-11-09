@@ -11,6 +11,8 @@ module:
 const Print = (
     module:
 
+    const Print = @current_scope; # TODO transpiler bug without this
+
     const write_str = (s :: &str) => locked_output.write_str(s);
     const inc_indentation = () => locked_output.inc_indentation();
     const dec_indentation = () => locked_output.dec_indentation();
