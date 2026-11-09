@@ -75,7 +75,7 @@ const locked_output = (
 );
 
 const new_std_output = (write :: &str -> (), .color :: Bool) -> OutputSync => (
-    let indentation_string = if color then "񢔂  " else "    ";
+    let indentation_string = if color then "│  " else "    ";
     new_output(.write, .indentation_string, .color)
 );
 
