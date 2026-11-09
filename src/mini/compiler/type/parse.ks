@@ -4,7 +4,7 @@ use (import "../template.ks").*;
 module:
 
 const lookup_type = (name :: &RcStr, .span :: Span) -> Ir.Type => with_return (
-    if &(@current TemplateArgsContext)^.by_name |> OrdMap.get(name) is :Some ty then (
+    if &(@current TemplateArgsContext)^.by_name^ |> OrdMap.get(name) is :Some ty then (
         return ty^;
     );
     if (@current Compiler).get_toplevel_decl(name) is :Some decl then (
@@ -113,6 +113,7 @@ const parse_type = (ast :: &Ast.t) -> Ir.Type => with_return (
                     );
                     &mut args |> ArrayList.push_back(parse_type(arg_ast));
                 );
+                let args = Rc.new(args);
                 let result = parse_type(result);
                 return {
                     .shape = Rc.new(:Fn {

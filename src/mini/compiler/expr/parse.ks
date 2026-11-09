@@ -396,7 +396,7 @@ const parse_fn = (
             for arg in &f.args |> ArrayList.iter do (
                 &mut args |> ArrayList.push_back(arg^.ty);
             );
-            args
+            Rc.new(args)
         ),
         .result = f.result_ty,
     };
@@ -724,8 +724,8 @@ const parse_native = (
         | :InterpolatedString { .parts = ref parts, ... } => (
             for part in parts |> ArrayList.iter do (
                 match part^ with (
-                    | :Content s => (
-                        &mut native_parts |> ArrayList.push_back(:Raw s.contents);
+                    | :Content ref s => (
+                        &mut native_parts |> ArrayList.push_back(:Raw s^.contents);
                     )
                     | :Interpolated { .ast = ref ast, ... } => (
                         let part = :Interpolated parse_expr(:None, ast);
@@ -882,7 +882,7 @@ const parse_apply = (
     );
 
     let actual_arg_count = &arg_asts |> ArrayList.length;
-    let expected_arg_count = &f_type.args |> ArrayList.length;
+    let expected_arg_count = &f_type.args^ |> ArrayList.length;
     if actual_arg_count != expected_arg_count then (
         let diagnostic = {
             .severity = :Error,
@@ -900,7 +900,7 @@ const parse_apply = (
     );
     let mut args = ArrayList.new();
     for { i, arg_ast } in arg_asts |> ArrayList.into_iter |> std.iter.enumerate do (
-        let expected_arg_ty = :Some (&f_type.args |> ArrayList.at(i))^;
+        let expected_arg_ty = :Some f_type.args^.[i];
         let arg = parse_expr(expected_arg_ty, arg_ast);
         &mut args |> ArrayList.push_back(arg);
     );

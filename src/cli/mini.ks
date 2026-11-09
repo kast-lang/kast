@@ -133,7 +133,9 @@ const Mini = (
             match target with (
                 | :C => (
                     let compiled = Mini.Backends.C.compile(program);
-                    Mini.Backends.C.print(&compiled);
+                    lock_output(() => (
+                        Mini.Backends.C.print(&compiled);
+                    ));
                 )
             );
         );

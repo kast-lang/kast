@@ -111,7 +111,9 @@ const Repl = (
                 .indentation_string = "    ",
                 .color = true,
             );
-            Highlight.highlight(&parsed, Highlight.new_output(:Terminal));
+            lock_output(() => (
+                Highlight.highlight(&parsed, Highlight.new_output(:Terminal));
+            ));
             result |> StringBuilder.into_string
         );
         let prompt = output_to_string(() => (

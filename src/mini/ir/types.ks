@@ -28,7 +28,7 @@ const TypeDef = newtype {
 const FnType = newtype {
     .is_closure :: Bool,
     .call_convention :: Option.t[RcStr],
-    .args :: ArrayList.t[Type],
+    .args :: Rc.t[ArrayList.t[Type]],
     .result :: Type,
 };
 
@@ -166,8 +166,8 @@ impl FnType as std.cmp.Ord = {
                 );
             )
         );
-        let a_args_len = &a^.args |> ArrayList.length;
-        let b_args_len = &b^.args |> ArrayList.length;
+        let a_args_len = &a^.args^ |> ArrayList.length;
+        let b_args_len = &b^.args^ |> ArrayList.length;
         match std.cmp.default_compare(&a_args_len, &b_args_len) with (
             | :Equal => ()
             | other => return other
@@ -177,8 +177,8 @@ impl FnType as std.cmp.Ord = {
             | other => return other
         );
         for i in 0..a_args_len do (
-            let arg_a = &a^.args |> ArrayList.at(i);
-            let arg_b = &b^.args |> ArrayList.at(i);
+            let arg_a = &a^.args^ |> ArrayList.at(i);
+            let arg_b = &b^.args^ |> ArrayList.at(i);
             match std.cmp.default_compare(arg_a, arg_b) with (
                 | :Equal => ()
                 | other => return other

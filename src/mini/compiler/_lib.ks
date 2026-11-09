@@ -420,7 +420,7 @@ const Compiler = (
         # Outside of template instantiations
         let template_args_ctx = {
             .args = Rc.new(ArrayList.new()),
-            .by_name = OrdMap.new(),
+            .by_name = Rc.new(OrdMap.new()),
         };
         with TemplateArgsContext = &template_args_ctx;
         while &mut state.toplevel_items_unprocessed |> Queue.pop is :Some name do (

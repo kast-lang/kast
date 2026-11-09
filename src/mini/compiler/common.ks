@@ -43,7 +43,7 @@ const Ty = Ir.Type;
 
 const TemplateArgs = newtype {
     .args :: Rc.t[ArrayList.t[Ir.Type]],
-    .by_name :: OrdMap.t[RcStr, Ir.Type],
+    .by_name :: Rc.t[OrdMap.t[RcStr, Ir.Type]],
 };
 
 const Instantiation = newtype {

@@ -190,8 +190,8 @@ const type_check_impl = (expected :: &Ir.Type, actual :: &Ir.Type) => (
                 )
                 | _ => fail()
             );
-            let a_args_len = &a^.args |> ArrayList.length;
-            let b_args_len = &b^.args |> ArrayList.length;
+            let a_args_len = &a^.args^ |> ArrayList.length;
+            let b_args_len = &b^.args^ |> ArrayList.length;
             if a_args_len != b_args_len then (
                 (@current TypeCheckContext).fail(() => (
                     locked_output.write_fmt!("Expected \(a_args_len) args, got \(b_args_len)");
@@ -207,7 +207,7 @@ const type_check_impl = (expected :: &Ir.Type, actual :: &Ir.Type) => (
                         ))
                     ),
                 };
-                type_check_impl(&a^.args.[i], &b^.args.[i]);
+                type_check_impl(&a^.args^.[i], &b^.args^.[i]);
             );
             let parent_ctx = @current TypeCheckContext;
             with TypeCheckContext = {

@@ -158,7 +158,7 @@ const instantiate = (
             let arg_name = template^.arg_names.[i];
             &mut by_name |> OrdMap.add(arg_name, arg);
         );
-        { .args, .by_name }
+        { .args, .by_name = Rc.new(by_name) }
     );
     Log.debug!("calculated template args");
     let do_instantiate = () -> Instantiation => with_return (
@@ -176,7 +176,7 @@ const instantiate = (
             .ast = template^.def,
             .native = false,
             .setup_contexts = :Some (
-                f => (
+                @move f => (
                     with TemplateArgsContext = &args;
                     f()
                 )

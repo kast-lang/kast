@@ -57,7 +57,7 @@ const process_toplevel_fn_declaration = (
         .is_closure = true,
         # TODO
         .call_convention,
-        .args = arg_types,
+        .args = Rc.new(arg_types),
         .result = result_ty,
     };
     Log.debug_fn(() => (

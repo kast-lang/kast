@@ -137,6 +137,7 @@ const C = (
             .args = ref args,
             .result = ref result,
         } = f_ty^;
+        let args = &args^^;
         let mut c_args = ArrayList.new();
         if is_closure then (
             &mut c_args |> ArrayList.push_back(:Pointer Rc.new(:Void));
@@ -256,11 +257,11 @@ const C = (
             }),
         };
         {
-            .get = () => {
+            .get = @move () => {
                 .expr = :Some place_expr,
                 .span,
             },
-            .set = value => (
+            .set = @move value => (
                 insert_stmt(:Assign { .assignee = place_expr, .value });
             ),
         }
@@ -280,11 +281,11 @@ const C = (
                     }),
                 };
                 {
-                    .get = () => {
+                    .get = @move () => {
                         .expr = :Some field_expr,
                         .span,
                     },
-                    .set = value => (
+                    .set = @move value => (
                         insert_stmt(:Assign { .assignee = field_expr, .value });
                     ),
                 }
@@ -298,11 +299,11 @@ const C = (
                     .shape = Rc.new(:Deref reference),
                 };
                 {
-                    .get = () => {
+                    .get = @move () => {
                         .expr = :Some deref_expr,
                         .span,
                     },
-                    .set = value => (
+                    .set = @move value => (
                         insert_stmt(:Assign { .assignee = deref_expr, .value });
                     ),
                 }
@@ -310,8 +311,8 @@ const C = (
             | :Temp ref expr => (
                 let value = calculate(expr);
                 {
-                    .get = () => value,
-                    .set = _ => (
+                    .get = @move () => value,
+                    .set = @move _ => (
                         let diagnostic = {
                             .severity = :Error,
                             .source = :Compiler,
@@ -332,11 +333,11 @@ const C = (
                     }),
                 };
                 {
-                    .get = () => {
+                    .get = @move () => {
                         .expr = :Some ctx_expr,
                         .span,
                     },
-                    .set = value => (
+                    .set = @move value => (
                         insert_stmt(:Assign { .assignee = ctx_expr, .value });
                     ),
                 }
@@ -560,7 +561,7 @@ const C = (
             | :None => { .shape = Rc.new(:Ident ident(name)) }
         );
         {
-            .get = () => {
+            .get = @move () => {
                 .expr = if ty^.shape^ is :Unit then (
                     :None
                 ) else (
@@ -568,7 +569,7 @@ const C = (
                 ),
                 .span,
             },
-            .set = value => (
+            .set = @move value => (
                 if ty^.shape^ is :Unit then (
                     insert_stmt(:Expr value);
                 ) else (
@@ -1871,7 +1872,7 @@ const C = (
                     for arg in &def^.args |> ArrayList.iter do (
                         &mut args |> ArrayList.push_back(arg^.ty);
                     );
-                    args
+                    Rc.new(args)
                 ),
                 .result = def^.result_ty,
             };

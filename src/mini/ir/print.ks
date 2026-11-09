@@ -18,7 +18,7 @@ const Print = (
             locked_output.write_str(" ");
         );
         locked_output.write_str("(");
-        for { i, arg_ty } in &self^.args |> ArrayList.iter |> std.iter.enumerate do (
+        for { i, arg_ty } in &self^.args^ |> ArrayList.iter |> std.iter.enumerate do (
             if i != 0 then (
                 locked_output.write_str(", ");
             );
@@ -89,7 +89,7 @@ const Print = (
 
     const fn_type_as_ident = (self :: &FnType) => (
         locked_output.write_str("Fn");
-        for arg_ty in &self^.args |> ArrayList.iter do (
+        for arg_ty in &self^.args^ |> ArrayList.iter do (
             locked_output.write_str("_");
             Print.type_name_as_ident(arg_ty);
         );
