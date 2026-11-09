@@ -483,8 +483,7 @@ let enter_scope
     ; no_std
     } ->
   { scopes = scopes |> Scopes.enter ~span ~recursive ~found_in_parent
-  ; interpreter =
-      Interpreter.enter_scope ~new_result_scope:true ~span ~recursive interpreter
+  ; interpreter = Interpreter.enter_scope ~new_result_scope ~span ~recursive interpreter
   ; currently_compiled_file
   ; cache
   ; custom_syntax_impls
