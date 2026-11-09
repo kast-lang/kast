@@ -56,8 +56,10 @@ const Mini = (
             Cli.Repl.run_with(
                 .ruleset = &Mini.Compiler.ruleset(),
                 .eval = line => (
-                    Ast.print(&line.parsed.ast);
-                    locked_output.write_str("\n");
+                    lock_output(() => (
+                        Ast.print(&line.parsed.ast);
+                        locked_output.write_str("\n");
+                    ));
                 )
             )
         );

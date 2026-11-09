@@ -237,7 +237,7 @@ const tty = (
             if c == '\x03' then (
                 raw.advance();
                 ctx^.handle_ctrl_c();
-            ) else if c == '\r' then (
+            ) else if c == '\r' or c == '\n' then (
                 raw.advance();
                 push_input(Input.new(:Enter));
             ) else if c == '\x7f' then (
