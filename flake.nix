@@ -85,7 +85,18 @@
             (pkgs.writeShellScriptBin "kast" ''
               record-logs kast ./target/kast.exe "$@"
             '')
-            faketty
+            (faketty.overrideAttrs (final: prev: {
+              src = pkgs.fetchFromGitHub {
+                owner = "kuviman";
+                repo = "faketty";
+                rev = "71cd83e1fc01b76385afe1d4e738a4f359a55647";
+                hash = "sha256-G1NY3uHRwZcsW6I1CKBeLfinXhSLAV1a7WjbgR/EVVY=";
+              };
+              cargoDeps = pkgs.rustPlatform.fetchCargoVendor {
+                src = final.src;
+                hash = "sha256-vCjYmccYeOBkh2yBYPnjzkCIWhHpU/AvQgae9tjspQI=";
+              };
+            }))
             rlwrap
             nixfmt
             nodejs
