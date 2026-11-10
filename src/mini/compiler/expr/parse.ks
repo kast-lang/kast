@@ -16,13 +16,13 @@ const parse_if = (
     root :: &Ast.Group,
 ) -> ParsedExpr => (
     let cond = &root^.children
-        |> Tuple.get_named("cond")
+        |> Tuple.get_named(&RcStr.allocate("cond"))
         |> Ast.unwrap_child_value;
     let then_case = &root^.children
-        |> Tuple.get_named("then_case")
+        |> Tuple.get_named(&RcStr.allocate("then_case"))
         |> Ast.unwrap_child_value;
     let else_case = &root^.children
-        |> Tuple.get_named_opt("else_case")
+        |> Tuple.get_named_opt(&RcStr.allocate("else_case"))
         |> Option.map(Ast.unwrap_child_value);
     let cond = parse_expr(:Some { .shape = Rc.new(:Bool), .alias_name = :None }, cond);
     let then_case = parse_expr(expected_ty, then_case);
@@ -613,7 +613,7 @@ const parse_delimited_continuation = (
     root :: &Ast.Group,
 ) -> ParsedExpr => (
     let capture_mode = match (
-        &root^.children |> Tuple.get_named_opt("move")
+        &root^.children |> Tuple.get_named_opt(&RcStr.allocate("move"))
     ) with (
         | :Some _ => :Move
         | :None => :ByRef
@@ -849,7 +849,7 @@ const parse_apply = (
     root :: &Ast.Group,
 ) -> ParsedExpr => (
     let f_ast = &root^.children
-        |> Tuple.get_named("f")
+        |> Tuple.get_named(&RcStr.allocate("f"))
         |> Ast.unwrap_child_value;
     let args_ast = &root^.children
         |> Tuple.get_unnamed(0)

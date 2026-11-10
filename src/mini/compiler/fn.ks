@@ -8,7 +8,7 @@ const parse_call_convention = (
 ) -> Option.t[RcStr] => (
     match (
         &root^.children
-            |> Tuple.get_named_opt("call_convention")
+            |> Tuple.get_named_opt(&RcStr.allocate("call_convention"))
     ) with (
         | :None => :None
         | :Some child => :Some (
@@ -28,7 +28,7 @@ const process_toplevel_fn_declaration = (
     let args_ast = root
         |> AstHelpers.get_child_ast("args");
     let result_ty = &root^.children
-        |> Tuple.get_named_opt("result_ty")
+        |> Tuple.get_named_opt(&RcStr.allocate("result_ty"))
         |> Option.map(child => child
             |> Ast.unwrap_child_group
             |> AstHelpers.expect_single_child(:None));
@@ -75,7 +75,7 @@ const parse_fn_def = (
 ) -> Ir.FnDef => (
     let root = def |> AstHelpers.expect_rule("fn");
     let capture_mode = match (
-        &root^.children |> Tuple.get_named_opt("move")
+        &root^.children |> Tuple.get_named_opt(&RcStr.allocate("move"))
     ) with (
         | :Some _ => :Move
         | :None => :ByRef
@@ -83,7 +83,7 @@ const parse_fn_def = (
     let args_ast = root
         |> AstHelpers.get_child_ast("args");
     let result_ty = &root^.children
-        |> Tuple.get_named_opt("result_ty")
+        |> Tuple.get_named_opt(&RcStr.allocate("result_ty"))
         |> Option.map(child => child
             |> Ast.unwrap_child_group
             |> AstHelpers.expect_single_child(:None));

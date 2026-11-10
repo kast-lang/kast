@@ -76,7 +76,7 @@ const parse_type = (ast :: &Ast.t) -> Ir.Type => with_return (
             if rule_name == "fn_type" then (
                 let call_convention = match (
                     &root^.children
-                        |> Tuple.get_named_opt("call_convention")
+                        |> Tuple.get_named_opt(&RcStr.allocate("call_convention"))
                 ) with (
                     | :None => :None
                     | :Some child => :Some (
@@ -86,12 +86,12 @@ const parse_type = (ast :: &Ast.t) -> Ir.Type => with_return (
                             |> AstHelpers.expect_string
                     )
                 );
-                let is_closure = not (&root^.children |> Tuple.has_named("raw_fn"));
+                let is_closure = not (&root^.children |> Tuple.has_named(&RcStr.allocate("raw_fn")));
                 let arg_asts = &root^.children
-                    |> Tuple.get_named("args")
+                    |> Tuple.get_named(&RcStr.allocate("args"))
                     |> Ast.unwrap_child_value;
                 let result = &root^.children
-                    |> Tuple.get_named("result")
+                    |> Tuple.get_named(&RcStr.allocate("result"))
                     |> Ast.unwrap_child_value;
                 let arg_asts = arg_asts
                     |> AstHelpers.unwrap_optional("scope");

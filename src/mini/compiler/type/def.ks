@@ -17,7 +17,7 @@ const type_def = (
         )
         | _ => (
             let def = &root^.children
-                |> Tuple.get_named("def")
+                |> Tuple.get_named(&RcStr.allocate("def"))
                 |> Ast.unwrap_child_value;
             let def = def
                 |> AstHelpers.expect_rule("record")

@@ -119,10 +119,10 @@ const Compiler = (
         );
         let root = ast |> AstHelpers.expect_rule("const");
         let name_ast = &root^.children
-            |> Tuple.get_named("name")
+            |> Tuple.get_named(&RcStr.allocate("name"))
             |> Ast.unwrap_child_value;
         let value = &root^.children
-            |> Tuple.get_named("value")
+            |> Tuple.get_named(&RcStr.allocate("value"))
             |> Ast.unwrap_child_value;
         if name_ast^.shape^ is :Rule { .rule = ref rule, .root = ref root } then (
             if &rule^^.name |> RcStr.as_str == "type ascribe" then (
