@@ -102,7 +102,7 @@
 @syntax "core:ref" 61 @wrap never = "&" _ ->;
 @syntax "core:ref_mut" 61 @wrap never = "&" "mut" " " _ ->;
 @syntax "&str" 61 @wrap never = "&" "str";
-@syntax "core:instantiate_generic" 70 @wrap never = <- generic _=("[" ""/"\n\t" "" arg:any ""/"\\\n" "]");
+@syntax "core:instantiate_generic" 70 @wrap never = <- generic _=("[" ""/"\n\t" arg:any ""/"\\\n" "]");
 @syntax "core:." 70 @wrap never = <- obj ""/"\n\t" "." field ""/"\\";
 @syntax "index" 70 @wrap never = <- obj "." "[" index:any "]";
 @syntax "core:deref" 70 @wrap never = <- _ "^";
@@ -115,7 +115,7 @@
 # @syntax "core:type" 500 @wrap never = "type";
 @syntax "core:true" 500 @wrap never = "true";
 @syntax "core:false" 500 @wrap never = "false";
-@syntax "loop" 500 @wrap if_any = "loop" " " "(" " "/"\n\t" "" _:any " "/"\\\n" ")";
+@syntax "loop" 500 @wrap if_any = "loop" " " "(" " "/"\n\t" _:any " "/"\\\n" ")";
 @syntax "core:by_ref" 500 @wrap never = "ref" " " _;
 @syntax "core:by_ref_mut" 500 @wrap never = "ref" " " "mut" " " _;
 @syntax "opaque_type" 500 @wrap never = "@opaque_type";
@@ -123,14 +123,16 @@
 @syntax "core:unsafe_copy" 500 @wrap never = "@unsafe_copy" " " _;
 @syntax "claim" 500 @wrap never = "@claim" " " _;
 @syntax "core:auto_instantiate" 500 @wrap never = "@auto_instantiate" " " _;
-@syntax "core:loop" 500 @wrap if_any = "@loop" " " "(" " "/"\n\t" "" _:any " "/"\\\n" ")";
-@syntax "core:scope" 1000 @wrap if_any = "(" ""/"\n\t" "" _:any ""/"\\\n" ")";
-@syntax "core:record" 1000 @wrap if_any = "{" " "/"\n\t" "" _:any " "/"\\\n" "}";
+@syntax "core:loop" 500 @wrap if_any = "@loop" " " "(" " "/"\n\t" _:any " "/"\\\n" ")";
+@syntax "core:scope" 1000 @wrap if_any = "(" ""/"\n\t" _:any ""/"\\\n" ")";
+@syntax "core:record" 1000 @wrap if_any = "{" " "/"\n\t" _:any " "/"\\\n" "}";
 @syntax "core:placeholder" 1000 @wrap never = "_";
-@syntax "core:quote" 1000 @wrap if_any = "`" "(" ""/"\n\t" "" _:any ""/"\\\n" ")";
+@syntax "core:quote" 1000 @wrap if_any = "`" "(" ""/"\n\t" _:any ""/"\\\n" ")";
 @syntax "core:unquote" 1000 @wrap never = "$" _ ->;
-@syntax "core:target_dependent" 1000 @wrap always = "@cfg" " " "(" ""/"\n\t" "" branches:any ""/"\\\n" ")";
+@syntax "core:target_dependent" 1000 @wrap always = "@cfg" " " "(" ""/"\n\t" branches:any ""/"\\\n" ")";
 @syntax "core:__FILE__" 1000 @wrap never = "__FILE__";
 @syntax "core:current_compiler_scope" 1000 @wrap never = "@current_scope";
-@syntax "comment_out" 1000 @wrap if_any = "@comment_out" " " "(" ""/"\n\t" "" _:any ""/"\\\n" ")";
+@syntax "comment_out" 1000 @wrap if_any = "@comment_out" " " "(" ""/"\n\t" _:any ""/"\\\n" ")";
+@syntax "core:array_type" 1000 @wrap never = "@array" "[" _:any "]";
+@syntax "core:array" 1000 @wrap never = "@array" " " "{" _:any "}";
 
