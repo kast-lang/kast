@@ -18,6 +18,10 @@ const C_String = @opaque_type "const char*";
 impl C_String as module = (
     module:
 
+    const as_c_str = (self :: &C_String) -> C_str => (
+        @native "\(self^)"
+    );
+
     const from_str = (s :: &str) -> C_String => (
         @native "StringView_to_C_String(\(s))"
     );
