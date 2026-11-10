@@ -1,6 +1,6 @@
 const Binding = newtype {
     .id :: Id,
-    .name :: String,
+    .name :: RcStr,
     .ty :: Ty,
     .mutable :: Bool,
 };

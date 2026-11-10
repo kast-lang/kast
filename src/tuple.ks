@@ -22,8 +22,7 @@ const Tuple = (
 
     const Member = newtype (
         | :Index Int32
-        # TODO owned? Rc?
-        | :Name &str
+        | :Name RcStr
     );
 
     const get = [T] (
@@ -32,7 +31,7 @@ const Tuple = (
     ) -> &T => (
         match member with (
             | :Index i => get_unnamed(self, i)
-            | :Name name => get_named(self, name)
+            | :Name name => get_named(self, &name)
         )
     );
 
@@ -49,22 +48,19 @@ const Tuple = (
 
     const get_named = [T] (
         self :: &Tuple.t[T],
-        name :: &str,
+        name :: &RcStr,
     ) -> &T => (
-        # TODO no allocating String
-        match &self^.named |> OrdMap.get(&RcStr.from_String(String.from_str(name))) with (
+        match &self^.named |> OrdMap.get(name) with (
             | :Some value => value
-            | :None => panic_fmt!("tuple doesnt have field \(String.escape(name))")
+            | :None => panic_fmt!("tuple doesnt have field \(String.escape(name |> RcStr.as_str))")
         )
     );
 
     const has_named = [T] (
         self :: &Tuple.t[T],
-        name :: &str,
+        name :: &RcStr,
     ) -> Bool => (
-        # TODO no allocating String
-        let name = RcStr.from_String(String.from_str(name));
-        match &self^.named |> OrdMap.get(&name) with (
+        match &self^.named |> OrdMap.get(name) with (
             | :Some _ => true
             | :None => false
         )
@@ -76,7 +72,7 @@ const Tuple = (
     ) -> Option.t[type (&T)] => (
         match member with (
             | :Index i => get_unnamed_opt(self, i)
-            | :Name name => get_named_opt(self, name)
+            | :Name name => get_named_opt(self, &name)
         )
     );
 
@@ -93,11 +89,9 @@ const Tuple = (
 
     const get_named_opt = [T] (
         self :: &Tuple.t[T],
-        name :: &str,
+        name :: &RcStr,
     ) -> Option.t[type (&T)] => (
-        # TODO
-        let name = RcStr.from_String(String.from_str(name));
-        &self^.named |> OrdMap.get(&name)
+        &self^.named |> OrdMap.get(name)
     );
 
     const add = [T] (
@@ -234,7 +228,6 @@ const Tuple = (
             );
             for name in self.name_order |> ArrayList.into_iter do (
                 let element = &mut self.named |> OrdMap.remove(&name) |> Option.unwrap;
-                let name = &name |> RcStr.as_str;
                 consumer({ :Name name, element });
             );
         ),
@@ -247,8 +240,7 @@ const Tuple = (
             );
             for name in &self^.name_order |> ArrayList.iter do (
                 let element = &self^.named |> OrdMap.get(name) |> Option.unwrap;
-                let name = name |> RcStr.as_str;
-                consumer({ :Name name, element });
+                consumer({ :Name name^, element });
             );
         ),
     };

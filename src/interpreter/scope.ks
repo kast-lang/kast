@@ -5,15 +5,15 @@ module:
 const Scope = (
     module:
 
-    const t = newtype {
-        .parent :: Option.t[type (&Scope.t)],
+    const t = Rc.t[newtype {
+        .parent :: Option.t[Scope.t],
         .locals :: OrdMap.t[Id, Place],
-    };
+    }];
 
-    const new = (.parent :: Option.t[type (&Scope.t)]) -> Scope.t => {
+    const new = (.parent :: Option.t[Scope.t]) -> Scope.t => Rc.new({
         .parent,
-        .locals = OrdMap.new_with_compare(Id.compare),
-    };
+        .locals = OrdMap.new(),
+    });
 
     const Context = @context t;
 
@@ -22,9 +22,9 @@ const Scope = (
         binding :: &Binding,
         .span :: Span,
     ) -> Place => (
-        if &scope^.locals |> OrdMap.get(binding^.id) is :Some &place then (
+        if &scope^^.locals |> OrdMap.get(&binding^.id) is :Some &place then (
             place
-        ) else if scope^.parent is :Some parent then (
+        ) else if scope^^.parent is :Some ref parent then (
             get_in(parent, binding, .span)
         ) else (
             let diagnostic = {
@@ -32,8 +32,7 @@ const Scope = (
                 .source = :Interpreter,
                 .span,
                 .message = () => (
-                    let output = @current Output;
-                    output.write("Could not find variable in the current scope");
+                    locked_output.write_str("Could not find variable in the current scope");
                 ),
                 .related = ArrayList.new(),
             };
@@ -46,7 +45,7 @@ const Scope = (
     );
 
     const inject_binding = (binding :: &Binding, place :: Place) => (
-        &mut (@current Context).locals
+        &mut (@current Context)^.locals
             |> OrdMap.add(binding^.id, place);
     )
 );

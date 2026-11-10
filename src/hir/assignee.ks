@@ -3,8 +3,8 @@ const AssigneeShape = newtype (
     | :Let Pattern
 );
 
-const Assignee = newtype {
+const Assignee = Rc.t[newtype {
     .shape :: AssigneeShape,
     .span :: Span,
     .ty :: Ty,
-};
+}];

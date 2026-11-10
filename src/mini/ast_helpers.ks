@@ -96,8 +96,11 @@ const AstHelpers = (
                     |> Tuple.unwrap_unnamed_2_ref
             )
             | :Some { a, b } => (
-                let a = &group^.children |> Tuple.get_named(a);
-                let b = &group^.children |> Tuple.get_named(b);
+                # TODO no allocate
+                let a = RcStr.allocate(a);
+                let b = RcStr.allocate(b);
+                let a = &group^.children |> Tuple.get_named(&a);
+                let b = &group^.children |> Tuple.get_named(&b);
                 { a, b }
             )
         );
@@ -111,10 +114,13 @@ const AstHelpers = (
         c :: &str,
     ) -> { &Ast.t, &Ast.t, &Ast.t } => (
         with std.PanicHandler = handle_panics(group);
+        let a = RcStr.allocate(a);
+        let b = RcStr.allocate(b);
+        let c = RcStr.allocate(c);
         {
-            &group^.children |> Tuple.get_named(a) |> Ast.unwrap_child_value,
-            &group^.children |> Tuple.get_named(b) |> Ast.unwrap_child_value,
-            &group^.children |> Tuple.get_named(c) |> Ast.unwrap_child_value,
+            &group^.children |> Tuple.get_named(&a) |> Ast.unwrap_child_value,
+            &group^.children |> Tuple.get_named(&b) |> Ast.unwrap_child_value,
+            &group^.children |> Tuple.get_named(&c) |> Ast.unwrap_child_value,
         }
     );
 
@@ -122,7 +128,8 @@ const AstHelpers = (
         group :: &Ast.Group,
         name :: &str,
     ) -> &Ast.t => (
-        match &group^.children |> Tuple.get_named_opt(name) with (
+        let name = RcStr.allocate(name);
+        match &group^.children |> Tuple.get_named_opt(&name) with (
             | :Some child => child |> Ast.unwrap_child_value
             | :None => (
                 let diagnostic = {
@@ -130,7 +137,7 @@ const AstHelpers = (
                     .source = :Internal,
                     .message = () => (
                         locked_output.write_str("Failed to find child named ");
-                        locked_output.write_str(&String.escape(name) |> as_str);
+                        locked_output.write_escaped(&name);
                     ),
                     .span = group^.span,
                     .related = ArrayList.new(),
@@ -151,8 +158,8 @@ const AstHelpers = (
                     |> Tuple.unwrap_unnamed_1_ref
             )
             | :Some name => (
-                &group^.children
-                    |> Tuple.get_named(name)
+                let name = RcStr.allocate(name);
+                &group^.children |> Tuple.get_named(&name)
             )
         );
         child |> Ast.unwrap_child_value

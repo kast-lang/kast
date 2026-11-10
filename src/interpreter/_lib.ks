@@ -35,22 +35,21 @@ const Interpreter = (
     };
 
     const read_place = (place :: &Place, .span :: Span) -> Value => (
-        let error = (s :: String) => (
+        let error = (s :: &str) => (
             let diagnostic = {
                 .severity = :Error,
                 .source = :Interpreter,
                 .span,
                 .message = () => (
-                    let output = @current Output;
-                    output.write(s);
+                    locked_output.write_str(s);
                 ),
                 .related = ArrayList.new(),
             };
             Diagnostic.report_and_unwind(diagnostic)
         );
-        match place^.state with (
+        match place^^.state with (
             | :Uninitialized => error("Place is uninitialized")
-            | :Occupied value => value
+            | :Occupied value => value # TODO ownership
             | :MovedOut => error("Place was moved out of")
         )
     );
@@ -66,12 +65,12 @@ const Interpreter = (
 
     const assign_place = (place :: &mut Place, value :: Value) => (
         # TODO drop existing value
-        place^.state = :Occupied value;
+        place^^.state = :Occupied value;
     );
 
     const eval_place = (expr :: &PlaceExpr) -> Place => (
-        let span = expr^.span;
-        let result = match expr^.shape with (
+        let span = expr^^.span;
+        let result = match expr^^.shape with (
             | :Temp ref expr => (
                 Place.init(eval(expr))
             )
@@ -87,7 +86,7 @@ const Interpreter = (
     };
 
     const pattern_match = (pattern :: &Pattern, value :: Place) => (
-        match pattern^.shape with (
+        match pattern^^.shape with (
             | :Binding ref binding => (
                 (@current PatternMatchContext).matched_binding(binding, value);
             )
@@ -95,10 +94,10 @@ const Interpreter = (
     );
 
     const pattern_match_and_inject_bindings = (pattern :: &Pattern, value :: Place) => (
-        let span = pattern^.span;
+        let span = pattern^^.span;
         with PatternMatchContext = {
-            .matched_binding = (binding, mut value) => (
-                let mut new_value = Place.uninitialized(.ty = value.ty);
+            .matched_binding = (binding, value) => (
+                let mut new_value = Place.uninitialized(.ty = value^.ty);
                 claim_move(.from = value, .into = &mut new_value, .span);
                 Scope.inject_binding(binding, new_value);
             )
@@ -107,8 +106,8 @@ const Interpreter = (
     );
 
     const assign = (assignee :: &Assignee, mut value :: Place) => (
-        let span = assignee^.span;
-        match assignee^.shape with (
+        let span = assignee^^.span;
+        match assignee^^.shape with (
             | :Binding ref binding => (
                 let mut existing_place = Scope.get(binding, .span);
                 claim_move(.from = value, .into = &mut existing_place, .span);
@@ -122,9 +121,9 @@ const Interpreter = (
         args :: ArrayList.t[ValueWithSpan],
         .caller :: Span,
     ) -> Value => (
-        match f.shape with (
+        match f^.shape with (
             | :Fn ref f => (
-                with Scope.Context = Scope.new(.parent = :Some &(@current Scope.Context));
+                with Scope.Context = Scope.new(.parent = :Some (@current Scope.Context));
                 let args_len = &args |> ArrayList.length;
                 let expected_args_len = &f^.args |> ArrayList.length;
                 if args_len != expected_args_len then (
@@ -133,11 +132,10 @@ const Interpreter = (
                         .source = :Interpreter,
                         .span = caller,
                         .message = () => (
-                            let output = @current Output;
-                            output.write("Expected ");
-                            output.write(to_string(expected_args_len));
-                            output.write(" args, got ");
-                            output.write(to_string(args_len));
+                            locked_output.write_str("Expected ");
+                            locked_output.write_str(&to_string(expected_args_len) |> as_str);
+                            locked_output.write_str(" args, got ");
+                            locked_output.write_str(&to_string(args_len) |> as_str);
                         ),
                         .related = ArrayList.new(),
                     };
@@ -159,8 +157,7 @@ const Interpreter = (
                     .source = :Interpreter,
                     .span = caller,
                     .message = () => (
-                        let output = @current Output;
-                        output.write("Expected a function, got ");
+                        locked_output.write_str("Expected a function, got ");
                         Value.print(&f);
                     ),
                     .related = ArrayList.new(),
@@ -171,8 +168,8 @@ const Interpreter = (
     );
 
     const eval = (expr :: &Expr) -> Value => (
-        let span = expr^.span;
-        let result = match expr^.shape with (
+        let span = expr^^.span;
+        let result = match expr^^.shape with (
             | :Unit => Value.UNIT
             | :Read ref place_expr => (
                 let place = eval_place(place_expr);
@@ -186,12 +183,12 @@ const Interpreter = (
                 assign(assignee, value);
                 Value.UNIT
             )
-            | :Type ref type_expr => {
+            | :Type ref type_expr => Rc.new({
                 .shape = :Type eval_type(type_expr),
                 .ty = Ty.TYPE,
-            }
-            | :Native s => (
-                Native.get(&(@current StateContext).natives, s, expr^.ty, .span)
+            })
+            | :Native ref s => (
+                Native.get(&(@current StateContext).natives, s, expr^^.ty, .span)
             )
             | :Stmt ref expr => (
                 let ignored = eval(expr);
@@ -204,42 +201,40 @@ const Interpreter = (
                 );
                 result
             )
-            | :Fn { .args = ref args, .body = ref body } => (
-                {
-                    .shape = :Fn {
-                        # .captured = ...,
-                        .args = args^,
-                        .body = body^,
-                    },
-                    .ty = expr^.ty,
-                }
-            )
+            | :Fn { .args = ref args, .body = ref body } => Rc.new({
+                .shape = :Fn {
+                    # .captured = ...,
+                    .args = args^,
+                    .body = body^,
+                },
+                .ty = expr^^.ty,
+            })
             | :Apply { .f = ref f_expr, .args = ref args_exprs } => (
                 let f = eval(f_expr);
                 let mut args = ArrayList.new();
                 for arg in args_exprs |> ArrayList.iter do (
-                    &mut args |> ArrayList.push_back({ eval(arg), .span = arg^.span });
+                    &mut args |> ArrayList.push_back({ eval(arg), .span = arg^^.span });
                 );
                 apply(f, args, .caller = span)
             )
             | :Scope ref body => (
-                with Scope.Context = Scope.new(.parent = :Some &(@current Scope.Context));
+                with Scope.Context = Scope.new(.parent = :Some (@current Scope.Context));
                 eval(body)
             )
-            | :Quote ref quote_expr => {
+            | :Quote ref quote_expr => Rc.new({
                 .shape = :Ast quote(quote_expr),
                 .ty = Ty.AST,
-            }
+            })
         );
         result
     );
 
     const eval_type = (expr :: &TyExpr) -> Ty => (
-        let span = expr^.span;
-        let result = match expr^.shape with (
+        let span = expr^^.span;
+        let result = match expr^^.shape with (
             | :Const ty => ty
             | :Expr ref expr => (
-                eval(expr) |> expect_value.expect_type(.span)
+                eval(expr) |> expect_value.into_type(.span)
             )
             | :Fn { .args = ref args_exprs, .result = ref result_expr } => (
                 let mut args = ArrayList.new();
@@ -247,7 +242,7 @@ const Interpreter = (
                     &mut args |> ArrayList.push_back(eval_type(arg_expr));
                 );
                 let result = eval_type(result_expr);
-                { .shape = :Fn { .args, .result } }
+                Rc.new({ .shape = :Fn { .args, .result } })
             )
         );
         result

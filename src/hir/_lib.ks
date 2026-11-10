@@ -3,6 +3,8 @@ use (import "../ast.ks").*;
 use (import "../output.ks").*;
 use (import "../id.ks").*;
 use (import "../token.ks").*;
+use (import "../rc_str.ks").*;
+use std.rc.Rc;
 
 module:
 

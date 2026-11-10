@@ -49,8 +49,8 @@ const quote_impl = (
         match part^ with (
             | :Ignored token => :Ignored token
             | :Keyword token => :Keyword token
-            | :Value ref ast => :Value go(ast)
-            | :Group ref group => :Group go_group(group)
+            | :Value ref ast => :Value Rc.new(go(&ast^^))
+            | :Group ref group => :Group Rc.new(go_group(&group^^))
         )
     );
 
@@ -73,15 +73,15 @@ const quote_impl = (
         child :: &QuoteExpr.Child,
     ) -> Ast.Child => (
         match child^ with (
-            | :Value ref ast => :Value go(ast)
-            | :Group ref group => :Group go_group(group)
+            | :Value ref ast => :Value Rc.new(go(&ast^^))
+            | :Group ref group => :Group Rc.new(go_group(&group^^))
         )
     );
 
     const go = (expr :: &QuoteExpr.t) -> Ast.t => with_return (
-        let shape = match expr^.shape with (
+        let shape = match expr^^.shape with (
             | :Unquote ref expr => (
-                return eval(expr) |> expect_value.expect_ast(.span = expr^.span)
+                return eval(expr) |> expect_value.into_ast(.span = expr^^.span)
             )
             | :Construct ref shape => match shape^ with (
                 | :Empty => :Empty
@@ -129,9 +129,9 @@ const quote_impl = (
             )
         );
         {
-            .shape,
-            .ignored_tokens_before = expr^.ignored_tokens_before,
-            .span = expr^.span,
+            .shape = Rc.new(shape),
+            .ignored_tokens_before = expr^^.ignored_tokens_before,
+            .span = expr^^.span,
         }
     );
 );

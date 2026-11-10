@@ -4,7 +4,7 @@ const ValueShape = newtype (
     | :Unit
     | :Bool Bool
     | :Int Int
-    | :String String
+    | :String RcStr
     | :Type Ty
     | :Fn Fn
     | :NativeFn NativeFn
@@ -17,7 +17,7 @@ const Fn = newtype {
 };
 
 const NativeFn = newtype {
-    .name :: String,
+    .name :: RcStr,
     .@"impl" :: (ArrayList.t[ValueWithSpan], .caller :: Span) -> Value,
 };
 
@@ -25,23 +25,22 @@ impl ValueShape as module = (
     module:
 
     const print = (self :: &ValueShape) => (
-        let output = @current Output;
         match self^ with (
-            | :Unit => output.write("()")
-            | :Bool b => output.write(to_string(b))
-            | :Int x => output.write(to_string(x))
-            | :String s => output.write(String.escape(s))
+            | :Unit => locked_output.write_str("()")
+            | :Bool b => locked_output.write_str(&to_string(b) |> as_str)
+            | :Int x => locked_output.write_str(&to_string(x) |> as_str)
+            | :String ref s => locked_output.write_escaped(s)
             | :Type ref ty => (
-                output.write("type ");
+                locked_output.write_str("type ");
                 Ty.print(ty)
             )
             | :Fn _ => (
-                output.write("<fn>");
+                locked_output.write_str("<fn>");
             )
             | :NativeFn ref f => (
-                output.write("<native ");
-                output.write(f^.name);
-                output.write(">")
+                locked_output.write_str("<native ");
+                locked_output.write(&f^.name);
+                locked_output.write_str(">")
             )
             | :Ast ref ast => (
                 Ast.print(ast);
@@ -50,21 +49,22 @@ impl ValueShape as module = (
     );
 );
 
-const Value = newtype {
+const Value = Rc.t[newtype {
     .shape :: ValueShape,
     .ty :: Ty,
-};
+}];
 
 impl Value as module = (
     module:
 
-    const UNIT :: Value = { .shape = :Unit, .ty = Ty.UNIT };
+    const UNIT :: Value = Rc.new({ .shape = :Unit, .ty = Ty.UNIT });
+    const TRUE :: Value = Rc.new({ .shape = :Bool true, .ty = Ty.BOOL });
+    const FALSE :: Value = Rc.new({ .shape = :Bool false, .ty = Ty.BOOL });
 
     const print = (value :: &Value) => (
-        let output = @current Output;
-        ValueShape.print(&value^.shape);
-        output.write(" :: ");
-        Ty.print(&value^.ty);
+        ValueShape.print(&value^^.shape);
+        locked_output.write_str(" :: ");
+        Ty.print(&value^^.ty);
     );
 );
 

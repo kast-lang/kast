@@ -4,24 +4,24 @@ const PlaceState = newtype (
     | :MovedOut
 );
 
-const Place = newtype {
+const Place = Rc.t[newtype {
     .id :: Id,
     .state :: PlaceState,
     .ty :: Ty,
-};
+}];
 
 impl Place as module = (
     module:
 
-    const uninitialized = (.ty :: Ty) -> Place => {
+    const uninitialized = (.ty :: Ty) -> Place => Rc.new({
         .id = Id.gen(),
         .state = :Uninitialized,
         .ty,
-    };
+    });
 
-    const init = (value :: Value) -> Place => {
+    const init = (value :: Value) -> Place => Rc.new({
         .id = Id.gen(),
-        .ty = value.ty,
+        .ty = value^.ty,
         .state = :Occupied value,
-    };
+    });
 )

@@ -17,49 +17,48 @@ impl TyShape as module = (
     module:
 
     const print = (self :: &TyShape) => (
-        let output = @current Output;
         match self^ with (
-            | :Unit => output.write("()")
-            | :Bool => output.write("Bool")
-            | :Int => output.write("Int")
-            | :String => output.write("String")
-            | :Type => output.write("Type")
+            | :Unit => locked_output.write_str("()")
+            | :Bool => locked_output.write_str("Bool")
+            | :Int => locked_output.write_str("Int")
+            | :String => locked_output.write_str("String")
+            | :Type => locked_output.write_str("Type")
             | :Fn { .args = ref args, .result = ref result } => (
                 if args |> ArrayList.length != 1 then (
-                    output.write("(");
+                    locked_output.write_str("(");
                 );
                 for { i, arg } in args |> ArrayList.iter |> std.iter.enumerate do (
                     if i != 0 then (
-                        output.write(", ");
+                        locked_output.write_str(", ");
                     );
                     Ty.print(arg);
                 );
                 if args |> ArrayList.length != 1 then (
-                    output.write(")");
+                    locked_output.write_str(")");
                 );
-                output.write(" -> ");
+                locked_output.write_str(" -> ");
                 Ty.print(result);
             )
-            | :Ast => output.write("Ast")
+            | :Ast => locked_output.write_str("Ast")
         );
     );
 );
 
-const Ty = newtype {
+const Ty = Rc.t[newtype {
     .shape :: TyShape,
-};
+}];
 
 impl Ty as module = (
     module:
 
-    const UNIT :: Ty = { .shape = :Unit };
-    const BOOL :: Ty = { .shape = :Bool };
-    const INT :: Ty = { .shape = :Int };
-    const STRING :: Ty = { .shape = :String };
-    const TYPE :: Ty = { .shape = :Type };
-    const AST :: Ty = { .shape = :Ast };
+    const UNIT :: Ty = Rc.new({ .shape = :Unit });
+    const BOOL :: Ty = Rc.new({ .shape = :Bool });
+    const INT :: Ty = Rc.new({ .shape = :Int });
+    const STRING :: Ty = Rc.new({ .shape = :String });
+    const TYPE :: Ty = Rc.new({ .shape = :Type });
+    const AST :: Ty = Rc.new({ .shape = :Ast });
 
     const print = (self :: &Ty) => (
-        TyShape.print(&self^.shape);
+        TyShape.print(&self^^.shape);
     );
 );

@@ -9,29 +9,30 @@ const Native = (
         .get :: Ty -> Value,
     };
 
-    const Map = OrdMap.t[String, t];
+    const Map = OrdMap.t[RcStr, t];
 
     const InitContext = @context type (&mut Map);
 
-    const init_value = (name :: String, value :: Value) => (
-        (@current InitContext) |> OrdMap.add(name, { .get = _ => value });
+    const init_value = (name :: &str, value :: Value) => (
+        # TODO value is moved? rc?
+        (@current InitContext) |> OrdMap.add(RcStr.allocate(name), { .get = _ => value });
     );
 
-    const init_ty = (name :: String, ty :: Ty) => (
-        init_value("type " + name, { .shape = :Type ty, .ty = Ty.TYPE });
+    const init_ty = (name :: &str, ty :: Ty) => (
+        init_value(&format!("type \(name)") |> as_str, Rc.new({ .shape = :Type ty, .ty = Ty.TYPE }));
     );
 
-    const init_op = (name :: String, f :: (Int, Int) -> Int) => (
+    const init_op = (name :: &str, f :: (Int, Int) -> Int) => (
         let @"impl" = (args :: ArrayList.t[ValueWithSpan], .caller :: Span) -> Value => (
             if &args |> ArrayList.length != 2 then (
                 panic("Expected 2 args");
             );
-            let a = (&args |> ArrayList.at(0))^ |> expect_value.with_span.expect_int;
-            let b = (&args |> ArrayList.at(1))^ |> expect_value.with_span.expect_int;
+            let a = args.[0] |> expect_value.with_span.into_int;
+            let b = args.[1] |> expect_value.with_span.into_int;
             let result = f(a, b);
-            { .shape = :Int result, .ty = Ty.INT }
+            Rc.new({ .shape = :Int result, .ty = Ty.INT })
         );
-        let ty = {
+        let ty = Rc.new({
             .shape = :Fn {
                 .args = (
                     let mut args = ArrayList.new();
@@ -41,8 +42,14 @@ const Native = (
                 ),
                 .result = Ty.INT,
             }
-        };
-        init_value(name, { .shape = :NativeFn { .name, .@"impl" }, .ty })
+        });
+        init_value(name, Rc.new({
+            .shape = :NativeFn {
+                .name = RcStr.allocate(name),
+                .@"impl",
+            },
+            .ty,
+        }))
     );
 
     const init_print = () => (
@@ -51,11 +58,13 @@ const Native = (
             if &args |> ArrayList.length != 1 then (
                 panic("Expected 1 arg");
             );
-            let s = (&args |> ArrayList.at(0))^ |> expect_value.with_span.expect_string;
-            (@current Output).write(s);
+            let s = args.[0] |> expect_value.with_span.into_string;
+            lock_output(() => (
+                locked_output.write(&s);
+            ));
             Value.UNIT
         );
-        let ty = {
+        let ty = Rc.new({
             .shape = :Fn {
                 .args = (
                     let mut args = ArrayList.new();
@@ -64,8 +73,14 @@ const Native = (
                 ),
                 .result = Ty.UNIT,
             }
-        };
-        init_value(name, { .shape = :NativeFn { .name, .@"impl" }, .ty })
+        });
+        init_value(name, Rc.new({
+            .shape = :NativeFn {
+                .name = RcStr.allocate(name),
+                .@"impl",
+            },
+            .ty,
+        }))
     );
 
     const init = () -> Map => (
@@ -73,8 +88,8 @@ const Native = (
         with InitContext = &mut map;
         init_ty("Int", Ty.INT);
         init_ty("Bool", Ty.BOOL);
-        init_value("true", { .shape = :Bool true, .ty = Ty.BOOL });
-        init_value("false", { .shape = :Bool false, .ty = Ty.BOOL });
+        init_value("true", Value.TRUE);
+        init_value("false", Value.FALSE);
         init_ty("String", Ty.STRING);
         init_ty("Type", Ty.TYPE);
         init_ty("Ast", Ty.AST);
@@ -86,7 +101,7 @@ const Native = (
         map
     );
 
-    const get = (map :: &Map, name :: String, ty :: Ty, .span :: Span) -> Value => (
+    const get = (map :: &Map, name :: &RcStr, ty :: Ty, .span :: Span) -> Value => (
         match map |> OrdMap.get(name) with (
             | :None => (
                 let diagnostic = {
@@ -94,9 +109,8 @@ const Native = (
                     .source = :Interpreter,
                     .span,
                     .message = () => (
-                        let output = @current Output;
-                        output.write("There is no native called ");
-                        output.write(String.escape(name));
+                        locked_output.write_str("There is no native called ");
+                        locked_output.write_escaped(name);
                     ),
                     .related = ArrayList.new(),
                 };

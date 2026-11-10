@@ -482,7 +482,7 @@ const Format = (
                     );
                 )
                 | :Value { .name = ref name, ... } => (
-                    let member = next_member(name |> Option.as_ref |> Option.map(RcStr.as_str));
+                    let member = next_member(name^);
                     # we use this to advance unnamed idx
                     skip_ignored_parts();
                     let child = match next_part() with (
@@ -506,7 +506,7 @@ const Format = (
                     .wrap_mode = override_wrap_mode,
                     .span = _,
                 } => (
-                    let member = next_member(name |> Option.as_ref |> Option.map(RcStr.as_str));
+                    let member = next_member(name^);
                     let child :: Option.t[_] = match &group^.children |> Tuple.get_opt(member) with (
                         | :Some &(:Group ref group) => :Some &group^^
                         | :None => :None

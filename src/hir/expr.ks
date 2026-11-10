@@ -7,7 +7,7 @@ const ExprShape = newtype (
         .assignee :: Assignee,
         .value :: PlaceExpr,
     }
-    | :Native String
+    | :Native RcStr
     | :Stmt Expr
     | :Then ArrayList.t[Expr]
     | :Fn { .args :: ArrayList.t[Pattern], .body :: Expr }
@@ -16,11 +16,11 @@ const ExprShape = newtype (
     | :Quote QuoteExpr.t
 );
 
-const Expr = newtype {
+const Expr = Rc.t[newtype {
     .shape :: ExprShape,
     .ty :: Ty,
     .span :: Span,
-};
+}];
 
 const QuoteExpr = (
     module:
@@ -32,16 +32,16 @@ const QuoteExpr = (
                     | :Unquote Expr
                     | :Construct $Shape.t
                 );
-                newtype {
+                Rc.t[newtype {
                     .shape :: Shape,
-                    .ignored_tokens_before :: ArrayList.t[Token.t],
+                    .ignored_tokens_before :: Rc.t[ArrayList.t[Token.t]],
                     .span :: Span,
-                }
+                }]
             ),
-            .t_span_def = `((expr :: &$t) -> Span => expr^.span),
+            .t_span_def = `((expr :: &$t) -> Span => expr^^.span),
             .print_def = `(
                 (expr :: &$t) => (
-                    match expr^.shape with (
+                    match expr^^.shape with (
                         | :Unquote ref expr => panic("TODO print expr")
                         | :Construct ref shape => (
                             $Shape.print(shape);
@@ -58,11 +58,11 @@ const PlaceExprShape = newtype (
     | :Binding Binding
 );
 
-const PlaceExpr = newtype {
+const PlaceExpr = Rc.t[newtype {
     .shape :: PlaceExprShape,
     .ty :: Ty,
     .span :: Span,
-};
+}];
 
 const TyExprShape = newtype (
     | :Const Ty
@@ -73,7 +73,7 @@ const TyExprShape = newtype (
     }
 );
 
-const TyExpr = newtype {
+const TyExpr = Rc.t[newtype {
     .shape :: TyExprShape,
     .span :: Span,
-};
+}];
