@@ -19,6 +19,13 @@ const with_capacity = [T] (capacity :: UInt32) -> ArrayList.t[T] => @cfg (
     | target.name == "javascript" => @native "[]"
 );
 
+const reserve = [T] (self :: &mut ArrayList.t[T], capacity :: UInt32) => @cfg (
+    | target.name == "c" => (
+        @native "ArrayList_\(type T)_reserve(\(self), \(capacity))";
+    )
+    | true => ()
+);
+
 const push_back = [T] (a :: &mut ArrayList.t[T], value :: T) -> () => @cfg (
     | target.name == "interpreter" => (@native "List.push_back")(a, value)
     | target.name == "c" => (
@@ -26,6 +33,7 @@ const push_back = [T] (a :: &mut ArrayList.t[T], value :: T) -> () => @cfg (
     )
     | target.name == "javascript" => @native "\(a^).push(\(value))"
 );
+
 # panics if `a` is empty
 const pop_back = [T] (a :: &mut ArrayList.t[T]) -> T => @cfg (
     | target.name == "interpreter" => (@native "List.pop_back")(a)
