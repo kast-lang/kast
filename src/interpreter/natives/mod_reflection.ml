@@ -158,7 +158,24 @@ let init () =
                                             ]
                                             [])) )
                        ]))
-         | T_Array _ -> failwith __LOC__
+         | T_Array { element_ty; length } ->
+           construct_variant
+             ~span
+             type_info_ty
+             "Array"
+             (Some
+                (fun data_ty ->
+                  construct_tuple
+                    ~span
+                    (data_ty
+                     |> Ty.await_inferred
+                     |> Ty.Shape.expect_tuple
+                     |> Option.unwrap)
+                  <| Tuple.make
+                       []
+                       [ ("element_ty", fun _ -> V_Ty element_ty |> Value.inferred ~span)
+                       ; ("length", fun _ -> length)
+                       ]))
          | T_List { element_ty } ->
            construct_variant
              ~span

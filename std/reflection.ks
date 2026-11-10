@@ -24,6 +24,11 @@ const TypeInfo_Variant = newtype {
     .variants :: std.collections.SList.t[TypeInfo_Variant_Variant],
 };
 
+const TypeInfo_Array = newtype {
+    .length :: Int32,
+    .element_ty :: Type,
+};
+
 const TypeInfo = newtype (
     | :Unit
     | :Bool
@@ -42,6 +47,7 @@ const TypeInfo = newtype (
     | :Ref TypeInfo_Ref
     | :Variant TypeInfo_Variant
     | :Tuple TypeInfo_Tuple
+    | :Array TypeInfo_Array
     | :ArrayList Type
     | :Ty
     | :Fn
