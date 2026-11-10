@@ -159,7 +159,12 @@ let init () =
                                             [])) )
                        ]))
          | T_Array _ -> failwith __LOC__
-         | T_List _ -> failwith __LOC__
+         | T_List { element_ty } ->
+           construct_variant
+             ~span
+             type_info_ty
+             "ArrayList"
+             (Some (fun _ -> V_Ty element_ty |> Value.inferred ~span))
          | T_Ty -> failwith __LOC__
          | T_Fn _ -> failwith __LOC__
          | T_Generic _ -> failwith __LOC__

@@ -1,1 +1,1 @@
-std.rc.Rc.new[type (&Int32)](&123)
+dbg.print(std.reflection.type_info(ArrayList.t[Int32]));

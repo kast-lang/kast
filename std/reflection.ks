@@ -42,6 +42,7 @@ const TypeInfo = newtype (
     | :Ref TypeInfo_Ref
     | :Variant TypeInfo_Variant
     | :Tuple TypeInfo_Tuple
+    | :ArrayList Type
     | :Ty
     | :Fn
     | :Generic
