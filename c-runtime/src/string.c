@@ -141,7 +141,7 @@ Char utf8_char_decode_step(const char** s) {
     Char result = 0;
     for (size_t i = 0; i < bytes; i++) {
         char c = *((*s)++);
-        int bits = i == 0 ? 7 : 6;
+        int bits = i == 0 ? (bytes == 1 ? 7 : (7 - bytes)) : 6;
         c &= (1 << bits) - 1;
         result = (result << bits) | c;
     }
