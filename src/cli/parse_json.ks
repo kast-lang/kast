@@ -4,7 +4,7 @@ use (import "../json/_lib.ks").*;
 use (import "../source.ks").*;
 use (import "../source_path.ks").*;
 use (import "../rc_str.ks").*;
-const dep_json = import "../../deps/json/lib.ks";
+const dep_json = import "../../deps/json/src/_lib.ks";
 
 module:
 
@@ -50,8 +50,8 @@ const ParseJson = (
                     );
                 json
             ) else (
-                let mut reader = dep_json.Reader.create(&source.contents |> RcStr.as_str);
-                let json = dep_json.parse(&mut reader)
+                let mut reader = dep_json.Reader.new(&source.contents |> RcStr.as_str);
+                let json = dep_json.parse_one(&mut reader)
                     |> std.Result.unwrap_or_else(
                         error => panic("TODO Error happened"),
                     );

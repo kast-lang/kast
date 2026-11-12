@@ -1,7 +1,7 @@
 use (import "./json/_lib.ks").*;
 use (import "./rc_str.ks").*;
 use (import "./output.ks").*;
-const dep_json = import "../deps/json/lib.ks";
+const dep_json = import "../deps/json/src/_lib.ks";
 use std.collections.OrdMap;
 
 module:
@@ -108,7 +108,7 @@ const JsonRpc = (
             let { .content_length } = read_header(io);
             let content = io.input.read_exactly(content_length);
             let content = &content |> as_str;
-            let json = dep_json.parse(&mut dep_json.Reader.create(content))
+            let json = dep_json.parse_one(&mut dep_json.Reader.new(content))
                 |> std.Result.unwrap_or_else({ .err, .pos } => (
                     panic_fmt!(''
                         Failed to parse JSON:
