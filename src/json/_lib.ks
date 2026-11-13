@@ -14,7 +14,7 @@ use (import "../syntax_parser.ks").*;
 use (import "../ast.ks").*;
 use (import "../parser.ks").*;
 use (import "../rc_str.ks").*;
-const dep = import "../../deps/json/lib.ks";
+const dep = import "../../deps/json/src/_lib.ks";
 use std.collections.OrdMap;
 
 const error = [T] (span :: Span, message :: () -> ()) -> T => (
@@ -94,7 +94,7 @@ const Json = (
         match value with (
             | :Number x => (
                 with dep.error = (_ => panic("huh"));
-                let x = dep.Number.parse(&mut dep.Reader.create(&to_string(x) |> as_str)) |> Option.unwrap;
+                let x = dep.Reader.parse_number(&mut dep.Reader.new(&to_string(x) |> as_str)) |> Option.unwrap;
                 :Number x
             )
             | :String s => :String String.from_str(&s |> RcStr.as_str)
