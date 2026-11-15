@@ -7,7 +7,7 @@ const compile_then = (
 ) -> AnyExpr => (
     let mut asts = ArrayList.new();
     for expr in Ast.iter_list(
-        ast^,
+        ast,
         .binary_rule_name = "core:then",
         .trailing_or_leading_rule_name = :None,
     ) do (
@@ -21,7 +21,7 @@ const compile_then = (
         ) else (
             expected_ty
         );
-        &mut list |> ArrayList.push_back(compile[Expr](&ast, .expected_ty));
+        &mut list |> ArrayList.push_back(compile[Expr](ast, .expected_ty));
     );
     {
         .shape = :Expr :Then list,

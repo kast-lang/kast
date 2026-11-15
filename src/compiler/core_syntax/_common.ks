@@ -4,12 +4,12 @@ use (import "../_common.ks").*;
 use (import "../scope.ks").*;
 
 const CoreSyntax = newtype {
-    .name :: String,
+    .name :: &str,
     .compile :: [K] (&Ast.t, .root :: &Ast.Group, .expected_ty :: Option.t[Ty]) -> K,
 };
 
 const impl_any_expr_syntax = (
-    name :: String,
+    name :: &str,
     compile_fn :: (
         &Ast.t,
         .root :: &Ast.Group,
@@ -52,9 +52,8 @@ const impl_any_expr_syntax = (
                 .source = :Compiler,
                 .span = ast^.span,
                 .message = () => (
-                    let output = @current Output;
-                    output.write(name);
-                    output.write(" can't be a pattern");
+                    locked_output.write_str(name);
+                    locked_output.write_str(" can't be a pattern");
                 ),
                 .related = ArrayList.new(),
             };
@@ -68,9 +67,8 @@ const impl_any_expr_syntax = (
                 .source = :Compiler,
                 .span = ast^.span,
                 .message = () => (
-                    let output = @current Output;
-                    output.write(name);
-                    output.write(" can't be an assignee");
+                    locked_output.write_str(name);
+                    locked_output.write_str(" can't be an assignee");
                 ),
                 .related = ArrayList.new(),
             };
@@ -91,7 +89,7 @@ const impl_any_expr_syntax = (
 );
 
 const impl_pattern_syntax = (
-    name :: String,
+    name :: &str,
     compile_fn :: (
         &Ast.t,
         .root :: &Ast.Group,
@@ -113,9 +111,8 @@ const impl_pattern_syntax = (
                 .source = :Compiler,
                 .span = ast^.span,
                 .message = () => (
-                    let output = @current Output;
-                    output.write(name);
-                    output.write(" can't be an expr");
+                    locked_output.write_str(name);
+                    locked_output.write_str(" can't be an expr");
                 ),
                 .related = ArrayList.new(),
             };
@@ -129,9 +126,8 @@ const impl_pattern_syntax = (
                 .source = :Compiler,
                 .span = ast^.span,
                 .message = () => (
-                    let output = @current Output;
-                    output.write(name);
-                    output.write(" can't be an expr");
+                    locked_output.write_str(name);
+                    locked_output.write_str(" can't be an expr");
                 ),
                 .related = ArrayList.new(),
             };
@@ -145,9 +141,8 @@ const impl_pattern_syntax = (
                 .source = :Compiler,
                 .span = ast^.span,
                 .message = () => (
-                    let output = @current Output;
-                    output.write(name);
-                    output.write(" can't be a place expr");
+                    locked_output.write_str(name);
+                    locked_output.write_str(" can't be a place expr");
                 ),
                 .related = ArrayList.new(),
             };
@@ -161,9 +156,8 @@ const impl_pattern_syntax = (
                 .source = :Compiler,
                 .span = ast^.span,
                 .message = () => (
-                    let output = @current Output;
-                    output.write(name);
-                    output.write(" can't be a type expr");
+                    locked_output.write_str(name);
+                    locked_output.write_str(" can't be a type expr");
                 ),
                 .related = ArrayList.new(),
             };
@@ -180,9 +174,8 @@ const impl_pattern_syntax = (
                 .source = :Compiler,
                 .span = ast^.span,
                 .message = () => (
-                    let output = @current Output;
-                    output.write(name);
-                    output.write(" can't be an assignee");
+                    locked_output.write_str(name);
+                    locked_output.write_str(" can't be an assignee");
                 ),
                 .related = ArrayList.new(),
             };
@@ -203,7 +196,7 @@ const impl_pattern_syntax = (
 );
 
 const impl_assignee_syntax = (
-    name :: String,
+    name :: &str,
     compile_fn :: (
         &Ast.t,
         .root :: &Ast.Group,
@@ -225,9 +218,8 @@ const impl_assignee_syntax = (
                 .source = :Compiler,
                 .span = ast^.span,
                 .message = () => (
-                    let output = @current Output;
-                    output.write(name);
-                    output.write(" can't be an expr");
+                    locked_output.write_str(name);
+                    locked_output.write_str(" can't be an expr");
                 ),
                 .related = ArrayList.new(),
             };
@@ -241,9 +233,8 @@ const impl_assignee_syntax = (
                 .source = :Compiler,
                 .span = ast^.span,
                 .message = () => (
-                    let output = @current Output;
-                    output.write(name);
-                    output.write(" can't be an expr");
+                    locked_output.write_str(name);
+                    locked_output.write_str(" can't be an expr");
                 ),
                 .related = ArrayList.new(),
             };
@@ -257,9 +248,8 @@ const impl_assignee_syntax = (
                 .source = :Compiler,
                 .span = ast^.span,
                 .message = () => (
-                    let output = @current Output;
-                    output.write(name);
-                    output.write(" can't be a type expr");
+                    locked_output.write_str(name);
+                    locked_output.write_str(" can't be a type expr");
                 ),
                 .related = ArrayList.new(),
             };
@@ -273,9 +263,8 @@ const impl_assignee_syntax = (
                 .source = :Compiler,
                 .span = ast^.span,
                 .message = () => (
-                    let output = @current Output;
-                    output.write(name);
-                    output.write(" can't be a pattern");
+                    locked_output.write_str(name);
+                    locked_output.write_str(" can't be a pattern");
                 ),
                 .related = ArrayList.new(),
             };
@@ -299,7 +288,7 @@ const impl_assignee_syntax = (
 );
 
 const impl_type_expr_syntax = (
-    name :: String,
+    name :: &str,
     compile_fn :: (
         &Ast.t,
         .root :: &Ast.Group,
@@ -340,9 +329,8 @@ const impl_type_expr_syntax = (
                 .source = :Compiler,
                 .span = ast^.span,
                 .message = () => (
-                    let output = @current Output;
-                    output.write(name);
-                    output.write(" can't be a pattern");
+                    locked_output.write_str(name);
+                    locked_output.write_str(" can't be a pattern");
                 ),
                 .related = ArrayList.new(),
             };
@@ -356,9 +344,8 @@ const impl_type_expr_syntax = (
                 .source = :Compiler,
                 .span = ast^.span,
                 .message = () => (
-                    let output = @current Output;
-                    output.write(name);
-                    output.write(" can't be an assignee");
+                    locked_output.write_str(name);
+                    locked_output.write_str(" can't be an assignee");
                 ),
                 .related = ArrayList.new(),
             };

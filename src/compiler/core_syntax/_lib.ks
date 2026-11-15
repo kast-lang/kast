@@ -9,7 +9,7 @@ const CoreSyntax = (
 
     const t = super.CoreSyntax;
 
-    const Map = type (OrdMap.t[String, CoreSyntax.t]);
+    const Map = type (OrdMap.t[&str, CoreSyntax.t]);
 
     const add = (map :: &mut Map, item :: t) => (
         map |> OrdMap.add(item.name, item);

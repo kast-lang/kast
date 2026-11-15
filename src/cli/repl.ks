@@ -1,5 +1,8 @@
+use (import "./common.ks").*;
 use (import "./generic_repl.ks").*;
 
+use (import "../output.ks").*;
+use (import "../diagnostic.ks").*;
 use (import "../hir/_lib.ks").*;
 use (import "../compiler/_lib.ks").*;
 use (import "../interpreter/_lib.ks").*;
@@ -24,18 +27,20 @@ const Repl = (
             with Diagnostic.HandlerContext = {
                 .stop_on_error = false,
                 .handle = diagnostic => (
-                    Diagnostic.print(diagnostic);
+                    Diagnostic.print_to_stderr(&diagnostic);
                 ),
             };
             let expr = Compiler.compile[Expr](&line.parsed.ast, .expected_ty = :None);
             let value = Interpreter.eval(&expr);
-            if value.shape is :Unit then () else (
-                Value.print(&value);
-                (@current Output).write("\n");
+            if value^.shape is :Unit then () else (
+                lock_output(() => (
+                    Value.print(&value);
+                    locked_output.write_str("\n");
+                ));
             );
         );
         Common.with_compiler_interpreter(
-            () => run_with(.ruleset, .eval),
+            () => run_with(.ruleset = &ruleset, .eval),
         );
     );
 );

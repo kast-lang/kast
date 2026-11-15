@@ -5,16 +5,16 @@ const compile_const = (
     .root :: &Ast.Group,
     .expected_ty :: Option.t[Ty],
 ) -> AnyExpr => (
-    let { pattern, value } = root^
+    let { pattern, value } = root
         |> AstHelpers.expect_two_children(:Some { "pattern", "value" });
-    let pattern = compile[Pattern](&pattern, .expected_ty = :None);
-    let value = compile[Expr](&value, .expected_ty = :Some pattern.ty);
+    let pattern = compile[Pattern](pattern, .expected_ty = :None);
+    let value = compile[Expr](value, .expected_ty = :Some pattern^.ty);
     let value = Interpreter.eval(&value);
     with Interpreter.PatternMatchContext = {
         .matched_binding = (binding, value) => (
             Scope.inject_const(
-                binding^.name,
-                Interpreter.claim(value, .span = pattern.span),
+                &binding^^.name,
+                Interpreter.claim(value, .span = pattern^.span),
             );
         ),
     };

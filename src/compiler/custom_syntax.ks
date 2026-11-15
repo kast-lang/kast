@@ -4,7 +4,7 @@ module:
 
 const CustomSyntax = newtype {
     .pattern_root :: Ast.Group,
-    .bindings :: OrdMap.t[String, Binding],
+    .bindings :: OrdMap.t[RcStr, Binding],
     .@"impl" :: Expr,
 };
 
@@ -14,20 +14,20 @@ impl CustomSyntax as module = (
     const Context = @context type (&CustomSyntax);
 
     const inject_ast_bindings = (pattern :: &Ast.t, ast :: &Ast.t) => with_return (
-        if pattern^.shape is :Rule { .rule, .root } then (
-            if rule.name == "core:unquote" then (
+        if pattern^.shape^ is :Rule { .rule = ref rule, .root = ref root } then (
+            if &rule^^.name |> RcStr.as_str == "core:unquote" then (
                 let name = root
                     |> AstHelpers.expect_single_child(:None)
                     |> AstHelpers.expect_ident;
                 let binding = &(@current Context)^.bindings
-                    |> OrdMap.get(name)
+                    |> OrdMap.get(&name)
                     |> Option.unwrap;
                 Interpreter.Scope.inject_binding(
                     binding,
-                    Place.init({
+                    Place.init(Rc.new({
                         .shape = :Ast ast^,
                         .ty = Ty.AST,
-                    }),
+                    })),
                 );
                 return;
             );
@@ -37,8 +37,7 @@ impl CustomSyntax as module = (
             .source = :Internal,
             .span = pattern^.span,
             .message = () => (
-                let output = @current Output;
-                output.write("incorrect pattern, should not have compiled");
+                locked_output.write_str("incorrect pattern, should not have compiled");
             ),
             .related = ArrayList.new(),
         };
@@ -49,9 +48,9 @@ impl CustomSyntax as module = (
         for { member, child } in &group^.children |> Tuple.iter do (
             let child_pattern = &pattern_group^.children
                 |> Tuple.get(member);
-            match { child_pattern^, child^ } with (
-                | { :Value ref pattern, :Value ref ast } => inject_ast_bindings(pattern, ast)
-                | { :Group ref pattern, :Group ref group } => inject_group_bindings(pattern, group)
+            match { &child_pattern^, &child^ } with (
+                | { &(:Value ref pattern), &(:Value ref ast) } => inject_ast_bindings(&pattern^^, &ast^^)
+                | { &(:Group ref pattern), &(:Group ref group) } => inject_group_bindings(&pattern^^, &group^^)
             );
         );
     );
@@ -59,10 +58,10 @@ impl CustomSyntax as module = (
     const expand = (self :: &CustomSyntax, root :: &Ast.Group) -> Ast.t => (
         with Context = self;
         with Interpreter.Scope.Context = Interpreter.Scope.new(
-            .parent = :Some &(@current Interpreter.Scope.Context),
+            .parent = :Some (@current Interpreter.Scope.Context),
         );
         inject_group_bindings(&self^.pattern_root, root);
         Interpreter.eval(&self^.@"impl")
-            |> Interpreter.expect_value.expect_ast(.span = self^.@"impl".span)
+            |> Interpreter.expect_value.into_ast(.span = self^.@"impl"^.span)
     );
 );

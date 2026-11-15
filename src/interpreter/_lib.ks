@@ -242,7 +242,7 @@ const Interpreter = (
                     &mut args |> ArrayList.push_back(eval_type(arg_expr));
                 );
                 let result = eval_type(result_expr);
-                Rc.new({ .shape = :Fn { .args, .result } })
+                Rc.new({ .shape = :Fn Rc.new({ .args, .result }) })
             )
         );
         result

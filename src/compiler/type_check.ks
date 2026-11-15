@@ -32,22 +32,21 @@ const type_check_impl = (
 ) => (
     let fail = () => (@current TypeCheckContext).fail(
         () => (
-            let output = @current Output;
-            output.write("Expected ");
+            locked_output.write_str("Expected ");
             Ty.print(&expected);
-            output.write(", got ");
+            locked_output.write_str(", got ");
             Ty.print(&actual);
         ),
     );
-    match { actual.shape, expected.shape } with (
-        | { :Unit, :Unit } => ()
-        | { :Unit, _ } => fail()
-        | { _, :Unit } => fail()
-        | { :Int, :Int } => ()
-        | { :Int, _ } => fail()
-        | { _, :Int } => fail()
-        | { :Type, :Type } => ()
-        | { :Type, _ } => fail()
-        | { _, :Type } => fail()
+    match { &actual^.shape, &expected^.shape } with (
+        | { &(:Unit), &(:Unit) } => ()
+        | { &(:Unit), _ } => fail()
+        | { _, &(:Unit) } => fail()
+        | { &(:Int), &(:Int) } => ()
+        | { &(:Int), _ } => fail()
+        | { _, &(:Int) } => fail()
+        | { &(:Type), &(:Type) } => ()
+        | { &(:Type), _ } => fail()
+        | { _, &(:Type) } => fail()
     )
 );

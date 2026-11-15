@@ -15,11 +15,11 @@ impl AnyExpr as CompileTrait = {
         .body :: &Ast.t,
         .expected_ty :: Option.t[Ty],
     ) => (
-        with Scope.Context = Scope.new(.parent = :Some &(@current Scope.Context));
+        with Scope.Context = Scope.new(.parent = :Some (@current Scope.Context));
         let body = compile[Expr](body, .expected_ty);
         {
+            .ty = body^.ty,
             .shape = :Expr :Scope body,
-            .ty = body.ty,
         }
     ),
 };
@@ -73,8 +73,8 @@ impl Pattern as CompileTrait = {
         .root :: &Ast.Group,
         .expected_ty :: Option.t[Ty],
     ) -> K => (
-        let body = root^
+        let body = root
             |> AstHelpers.expect_single_child(:None);
-        (K as CompileTrait).compile(ast, .body = &body, .expected_ty)
+        (K as CompileTrait).compile(ast, .body, .expected_ty)
     ),
 }

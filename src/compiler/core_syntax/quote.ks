@@ -53,8 +53,8 @@ const quote = (
         match part^ with (
             | :Ignored token => :Ignored token
             | :Keyword token => :Keyword token
-            | :Value ref ast => :Value go(ast)
-            | :Group ref group => :Group go_group(group)
+            | :Value ref ast => :Value Rc.new(go(&ast^^))
+            | :Group ref group => :Group Rc.new(go_group(&group^^))
         )
     );
 
@@ -77,13 +77,13 @@ const quote = (
         child :: &Ast.Child,
     ) -> QuoteExpr.Child => (
         match child^ with (
-            | :Value ref ast => :Value go(ast)
-            | :Group ref group => :Group go_group(group)
+            | :Value ref ast => :Value Rc.new(go(&ast^^))
+            | :Group ref group => :Group Rc.new(go_group(&group^^))
         )
     );
 
     const go = (ast :: &Ast.t) -> QuoteExpr.t => (
-        let shape = match ast^.shape with (
+        let shape = match ast^.shape^ with (
             | :Empty => :Construct :Empty
             | :Token token => :Construct :Token token
             | :InterpolatedString {
@@ -100,20 +100,21 @@ const quote = (
                 .stripped_indentation,
             }
             | :Rule {
-                .rule,
+                .rule = ref rule,
                 .root = ref root,
             } => with_return (
-                if rule.name == "core:quote" then (
+                let rule_name = &rule^^.name |> RcStr.as_str;
+                if rule_name == "core:quote" then (
                     with Context = {
                         .depth = (@current Context).depth + 1,
                         .do_unquote = (@current Context).do_unquote,
                     };
                     return :Construct :Rule {
-                        .rule,
+                        .rule = rule^,
                         .root = go_group(root),
                     };
                 );
-                if rule.name == "core:unquote" then (
+                if rule_name == "core:unquote" then (
                     with Context = {
                         .depth = (@current Context).depth - 1,
                         .do_unquote = :Some (
@@ -124,30 +125,30 @@ const quote = (
                         ),
                     };
                     if (@current Context).depth == 0 then (
-                        let unquoted = root^ |> AstHelpers.expect_single_child(:None);
-                        let expr = compile(&unquoted, .expected_ty = :Some Ty.AST);
+                        let unquoted = root |> AstHelpers.expect_single_child(:None);
+                        let expr = compile(unquoted, .expected_ty = :Some Ty.AST);
                         ((@current Context).do_unquote |> Option.unwrap)(expr);
                     );
                     return :Construct :Rule {
-                        .rule,
+                        .rule = rule^,
                         .root = go_group(root),
                     };
                 );
                 :Construct :Rule {
-                    .rule,
+                    .rule = rule^,
                     .root = go_group(root),
                 }
             )
             | :Syntax {
-                .command,
+                .command = ref command,
                 .value_after = ref value_after,
             } => :Construct :Syntax {
                 .command = {
-                    .shape = match command.shape with (
+                    .shape = match command^.shape with (
                         | :FromScratch => :FromScratch
                         | :Rule rule => :Rule rule
                     ),
-                    .raw_tokens = command.raw_tokens,
+                    .raw_tokens = command^.raw_tokens,
                 },
                 .value_after = value_after
                     |> Option.as_ref
@@ -159,11 +160,11 @@ const quote = (
                 .parts = go_list(parts, go_part),
             }
         );
-        {
+        Rc.new({
             .shape,
             .ignored_tokens_before = ast^.ignored_tokens_before,
             .span = ast^.span,
-        }
+        })
     );
 );
 
@@ -172,14 +173,14 @@ const compile_quote = (
     .root :: &Ast.Group,
     .expected_ty :: Option.t[Ty],
 ) -> AnyExpr => (
-    let quoted = root^
+    let quoted = root
         |> AstHelpers.expect_single_child(:None);
     with quote.Context = {
         .depth = 1,
         .do_unquote = :None,
     };
     {
-        .shape = :Expr :Quote quote.go(&quoted),
+        .shape = :Expr :Quote quote.go(quoted),
         .ty = Ty.AST,
     }
 );

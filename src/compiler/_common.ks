@@ -5,6 +5,7 @@ use (import "../tuple.ks").*;
 use (import "../token.ks").*;
 use (import "../ast.ks").*;
 use (import "../span.ks").*;
+use (import "../rc_str.ks").*;
 use (import "../syntax_rule.ks").*;
 use (import "../diagnostic.ks").*;
 use (import "../output.ks").*;
@@ -12,6 +13,7 @@ use (import "../hir/_lib.ks").*;
 use (import "../interpreter/_lib.ks").*;
 use (import "../mini/ast_helpers.ks").*;
 use std.collections.OrdMap;
+use std.rc.Rc;
 
 const AnyExprShape = newtype (
     | :Expr ExprShape
@@ -26,37 +28,41 @@ const AnyExpr = newtype {
 const any_expr_to_place_expr = (expr :: AnyExpr, .span :: Span) -> PlaceExpr => (
     let ty = expr.ty;
     match expr.shape with (
-        | :Place shape => { .shape, .ty, .span }
-        | :Expr shape => { .shape = :Temp { .shape, .ty, .span }, .ty, .span }
+        | :Place shape => Rc.new({ .shape, .ty, .span })
+        | :Expr shape => Rc.new({ .shape = :Temp Rc.new({ .shape, .ty, .span }), .ty, .span })
     )
 );
 
 const any_expr_to_expr = (expr :: AnyExpr, .span :: Span) -> Expr => (
     let ty = expr.ty;
     match expr.shape with (
-        | :Expr shape => { .shape, .ty, .span }
-        | :Place shape => { .shape = :Read { .shape, .ty, .span }, .ty, .span }
+        | :Expr shape => Rc.new({ .shape, .ty, .span })
+        | :Place shape => Rc.new({ .shape = :Read Rc.new({ .shape, .ty, .span }), .ty, .span })
     )
 );
 
-const any_expr_to_type_expr = (expr :: AnyExpr, .span :: Span) -> TyExpr => {
-    .shape = :Expr any_expr_to_expr(expr, .span),
-    .span,
-};
+const any_expr_to_type_expr = (expr :: AnyExpr, .span :: Span) -> TyExpr => (
+    Rc.new({
+        .shape = :Expr any_expr_to_expr(expr, .span),
+        .span,
+    })
+);
 
-const type_expr_to_expr = (expr :: TyExpr) -> Expr => {
-    .shape = :Type expr,
-    .ty = Ty.TYPE,
-    .span = expr.span,
-};
+const type_expr_to_expr = (expr :: TyExpr) -> Expr => (
+    Rc.new({
+        .shape = :Type expr,
+        .ty = Ty.TYPE,
+        .span = expr^.span,
+    })
+);
 
 const CompilerContextT = newtype {
     .inject_assignee_bindings :: &Assignee -> (),
     .compile :: [K] (&Ast.t, .expected_ty :: Option.t[Ty]) -> K,
     .impl_syntax :: (
-        .rule :: SyntaxRule.t,
-        .pattern_root :: Ast.Group,
-        .bindings :: OrdMap.t[String, Binding],
+        .rule :: &Rc.t[SyntaxRule.t],
+        .pattern_root :: &Ast.Group,
+        .bindings :: OrdMap.t[RcStr, Binding],
         .@"impl" :: Expr,
     ) -> (),
 };

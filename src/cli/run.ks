@@ -51,14 +51,14 @@ const Run = (
     const run = (common_args :: Common.Args.t, args :: Args.t) => (
         let ruleset = Common.default_syntax_ruleset();
         let path = match args.path with (
-            | :Some path => SourcePath.parse(path)
+            | :Some ref path => SourcePath.parse(path |> as_str)
             | :None => :Stdin
         );
-        let source = Source.read(path);
+        let source = Source.read(&path);
         let mut lexer = Lexer.new(source);
         let mut token_stream = TokenStream.from_fn(() => Lexer.next(&mut lexer));
         let parsed = Parser.parse(
-            .ruleset,
+            .ruleset = &ruleset,
             .entire_source_span = Source.entire_span(&source),
             .path = source.path,
             .token_stream = &mut token_stream,

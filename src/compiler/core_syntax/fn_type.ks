@@ -4,9 +4,11 @@ const compile_fn_type = (
     ast :: &Ast.t,
     .root :: &Ast.Group,
 ) -> TyExpr => (
-    let args_ast = (&root^.children |> Tuple.get_named("args"))^
+    let args_ast = &root^.children
+        |> Tuple.get_named(&RcStr.allocate("args"))
         |> Ast.unwrap_child_value;
-    let result = (&root^.children |> Tuple.get_named("result"))^
+    let result = &root^.children
+        |> Tuple.get_named(&RcStr.allocate("result"))
         |> Ast.unwrap_child_group
         |> AstHelpers.expect_single_child(:None);
     let args_ast = args_ast |> AstHelpers.unwrap_optional("core:scope");
@@ -16,13 +18,13 @@ const compile_fn_type = (
         .binary_rule_name = "core:comma",
         .trailing_or_leading_rule_name = :Some "core:trailing comma",
     ) do (
-        &mut args |> ArrayList.push_back(compile_type_expr(&arg));
+        &mut args |> ArrayList.push_back(compile_type_expr(arg));
     );
-    let result = compile_type_expr(&result);
-    {
+    let result = compile_type_expr(result);
+    Rc.new({
         .shape = :Fn { .args, .result },
         .span = ast^.span,
-    }
+    })
 );
 
 include_ast impl_type_expr_syntax(

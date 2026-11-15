@@ -5,10 +5,10 @@ const compile_mut = (
     .root :: &Ast.Group,
     .expected_ty :: Option.t[Ty],
 ) -> Pattern => (
-    let inner = root^
+    let inner = root
         |> AstHelpers.expect_single_child(:None);
     with InMut = true;
-    compile[Pattern](&inner, .expected_ty)
+    compile[Pattern](inner, .expected_ty)
 );
 
 include_ast impl_pattern_syntax(

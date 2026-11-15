@@ -13,15 +13,14 @@ const compile_native = (
                 .source = :Compiler,
                 .span = ast^.span,
                 .message = () => (
-                    let output = @current Output;
-                    output.write("Could not infer native expr type");
+                    locked_output.write_str("Could not infer native expr type");
                 ),
                 .related = ArrayList.new(),
             };
             Diagnostic.report_and_unwind(diagnostic)
         )
     );
-    let s = root^
+    let s = root
         |> AstHelpers.expect_single_child(:None)
         |> AstHelpers.expect_string_literal;
     {

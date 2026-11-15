@@ -8,10 +8,31 @@ const TyShape = newtype (
     | :Ast
 );
 
-const FnTy = newtype {
+const FnTy = Rc.t[newtype {
     .args :: ArrayList.t[Ty],
     .result :: Ty,
-};
+}];
+
+impl FnTy as module = (
+    module:
+
+    const print = (self :: &FnTy) => (
+        if &self^^.args |> ArrayList.length != 1 then (
+            locked_output.write_str("(");
+        );
+        for { i, arg } in &self^^.args |> ArrayList.iter |> std.iter.enumerate do (
+            if i != 0 then (
+                locked_output.write_str(", ");
+            );
+            Ty.print(arg);
+        );
+        if &self^^.args |> ArrayList.length != 1 then (
+            locked_output.write_str(")");
+        );
+        locked_output.write_str(" -> ");
+        Ty.print(&self^^.result);
+    );
+);
 
 impl TyShape as module = (
     module:
@@ -23,22 +44,7 @@ impl TyShape as module = (
             | :Int => locked_output.write_str("Int")
             | :String => locked_output.write_str("String")
             | :Type => locked_output.write_str("Type")
-            | :Fn { .args = ref args, .result = ref result } => (
-                if args |> ArrayList.length != 1 then (
-                    locked_output.write_str("(");
-                );
-                for { i, arg } in args |> ArrayList.iter |> std.iter.enumerate do (
-                    if i != 0 then (
-                        locked_output.write_str(", ");
-                    );
-                    Ty.print(arg);
-                );
-                if args |> ArrayList.length != 1 then (
-                    locked_output.write_str(")");
-                );
-                locked_output.write_str(" -> ");
-                Ty.print(result);
-            )
+            | :Fn ref f => FnTy.print(f)
             | :Ast => locked_output.write_str("Ast")
         );
     );

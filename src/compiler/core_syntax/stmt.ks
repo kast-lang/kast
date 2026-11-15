@@ -5,10 +5,10 @@ const compile_stmt = (
     .root :: &Ast.Group,
     .expected_ty :: Option.t[Ty],
 ) -> AnyExpr => (
-    let expr = root^
+    let expr = root
         |> AstHelpers.expect_single_child(:None);
     {
-        .shape = :Expr :Stmt compile[Expr](&expr, .expected_ty = :None),
+        .shape = :Expr :Stmt compile[Expr](expr, .expected_ty = :None),
         .ty = Ty.UNIT,
     }
 );

@@ -14,10 +14,10 @@ const Compiler = (
 
     const State = newtype {
         .core_syntax :: CoreSyntax.Map,
-        .custom_syntax :: OrdMap.t[String, CustomSyntax],
+        .custom_syntax :: OrdMap.t[RcStr, CustomSyntax],
     };
 
-    const StateContext = @context State;
+    const StateContext = @context type (&mut State);
     const Context = CompilerContext;
     const InMut = super.InMut;
 
@@ -41,26 +41,25 @@ const Compiler = (
     const Compilable = [Self] newtype {
         .set_span :: (&mut Self, Span) -> (),
         .unit :: (.span :: Span) -> Self,
-        .number :: (Token.NumberToken, .span :: Span, .expected_ty :: Option.t[Ty]) -> Self,
-        .ident :: (String, .span :: Span, .expected_ty :: Option.t[Ty]) -> Self,
-        .string :: (Token.StringToken, .span :: Span, .expected_ty :: Option.t[Ty]) -> Self,
+        .number :: (&Token.NumberToken, .span :: Span, .expected_ty :: Option.t[Ty]) -> Self,
+        .ident :: (&RcStr, .span :: Span, .expected_ty :: Option.t[Ty]) -> Self,
+        .string :: (&Token.StringToken, .span :: Span, .expected_ty :: Option.t[Ty]) -> Self,
     };
 
     impl AnyExpr as Compilable = {
         .set_span = (...) => (),
         .unit = (.span) => { .shape = :Expr :Unit, .ty = Ty.UNIT },
-        .number = ({ .raw }, .span, .expected_ty) => (
+        .number = (&{ .raw = ref raw }, .span, .expected_ty) => (
             let ty = expected_ty |> Option.unwrap_or(Ty.INT);
-            let value_shape :: ValueShape = match ty.shape with (
-                | :Int => :Int parse(raw)
+            let value_shape :: ValueShape = match ty^.shape with (
+                | :Int => :Int parse(raw |> RcStr.as_str)
                 | _ => (
                     let diagnostic = {
                         .severity = :Error,
                         .source = :Compiler,
                         .span,
                         .message = () => (
-                            let output = @current Output;
-                            output.write("Number literal can not be ");
+                            locked_output.write_str("Number literal can not be ");
                             Ty.print(&ty);
                         ),
                         .related = ArrayList.new(),
@@ -68,15 +67,15 @@ const Compiler = (
                     Diagnostic.report_and_unwind(diagnostic)
                 )
             );
-            let place = Place.init({ .shape = value_shape, .ty });
+            let place = Place.init(Rc.new({ .shape = value_shape, .ty }));
             {
                 .shape = :Expr :Const place,
                 .ty,
             }
         ),
-        .string = ({ .contents, ... }, .span, .expected_ty) => (
+        .string = (&{ .contents, ... }, .span, .expected_ty) => (
             let ty = expected_ty |> Option.unwrap_or(Ty.STRING);
-            let value_shape :: ValueShape = match ty.shape with (
+            let value_shape :: ValueShape = match ty^.shape with (
                 | :String => :String contents
                 | _ => (
                     let diagnostic = {
@@ -84,8 +83,7 @@ const Compiler = (
                         .source = :Compiler,
                         .span,
                         .message = () => (
-                            let output = @current Output;
-                            output.write("String literal can not be ");
+                            locked_output.write_str("String literal can not be ");
                             Ty.print(&ty);
                         ),
                         .related = ArrayList.new(),
@@ -93,7 +91,7 @@ const Compiler = (
                     Diagnostic.report_and_unwind(diagnostic)
                 )
             );
-            let place = Place.init({ .shape = value_shape, .ty });
+            let place = Place.init(Rc.new({ .shape = value_shape, .ty }));
             {
                 .shape = :Expr :Const place,
                 .ty,
@@ -104,11 +102,11 @@ const Compiler = (
             match local^ with (
                 | :Binding binding => {
                     .shape = :Place :Binding binding,
-                    .ty = binding.ty,
+                    .ty = binding^.ty,
                 }
                 | :Const place => {
                     .shape = :Expr :Const place,
-                    .ty = place.ty,
+                    .ty = place^.ty,
                 }
             )
         ),
@@ -116,7 +114,7 @@ const Compiler = (
 
     impl Expr as Compilable = {
         .set_span = (self, span) => (
-            self^.span = span;
+            self^^.span = span;
         ),
         .unit = (.span) => any_expr_to_expr(
             (AnyExpr as Compilable).unit(.span),
@@ -138,7 +136,7 @@ const Compiler = (
 
     impl PlaceExpr as Compilable = {
         .set_span = (self, span) => (
-            self^.span = span;
+            self^^.span = span;
         ),
         .unit = (.span) => any_expr_to_place_expr(
             (AnyExpr as Compilable).unit(.span),
@@ -160,20 +158,19 @@ const Compiler = (
 
     impl TyExpr as Compilable = {
         .set_span = (self, span) => (
-            self^.span = span;
+            self^^.span = span;
         ),
-        .unit = (.span) => {
+        .unit = (.span) => Rc.new({
             .shape = :Const Ty.UNIT,
             .span,
-        },
+        }),
         .number = (.span, ...) => (
             let diagnostic = {
                 .severity = :Error,
                 .source = :Compiler,
                 .span,
                 .message = () => (
-                    let output = @current Output;
-                    output.write("Expected a type, got number literal");
+                    locked_output.write_str("Expected a type, got number literal");
                 ),
                 .related = ArrayList.new(),
             };
@@ -185,8 +182,7 @@ const Compiler = (
                 .source = :Compiler,
                 .span = args.span,
                 .message = () => (
-                    let output = @current Output;
-                    output.write("Expected a type, got string literal");
+                    locked_output.write_str("Expected a type, got string literal");
                 ),
                 .related = ArrayList.new(),
             };
@@ -195,14 +191,14 @@ const Compiler = (
         .ident = (...args) => (
             let expr = (Expr as Compilable).ident(...args);
             let span = args.span;
-            type_check(.actual = expr.ty, .expected = Ty.TYPE, .span);
-            { .shape = :Expr expr, .span }
+            type_check(.actual = expr^.ty, .expected = Ty.TYPE, .span);
+            Rc.new({ .shape = :Expr expr, .span })
         )
     };
 
     impl Assignee as Compilable = {
         .set_span = (self, span) => (
-            self^.span = span;
+            self^^.span = span;
         ),
         .unit = (.span) => panic("TODO unit assignee"),
         .number = (..., .span) => (
@@ -211,8 +207,7 @@ const Compiler = (
                 .source = :Compiler,
                 .span,
                 .message = () => (
-                    let output = @current Output;
-                    output.write("Can't assign to a number literal");
+                    locked_output.write_str("Can't assign to a number literal");
                 ),
                 .related = ArrayList.new(),
             };
@@ -224,8 +219,7 @@ const Compiler = (
                 .source = :Compiler,
                 .span,
                 .message = () => (
-                    let output = @current Output;
-                    output.write("Can't assign to a string literal");
+                    locked_output.write_str("Can't assign to a string literal");
                 ),
                 .related = ArrayList.new(),
             };
@@ -235,25 +229,24 @@ const Compiler = (
             let local = Scope.lookup(name, .span);
             match local^ with (
                 | :Binding binding => (
-                    if not binding.mutable then (
+                    if not binding^.mutable then (
                         let diagnostic = {
                             .severity = :Error,
                             .source = :Compiler,
                             .span,
                             .message = () => (
-                                let output = @current Output;
-                                output.write(binding.name);
-                                output.write(" is not mutable");
+                                locked_output.write(&binding^.name);
+                                locked_output.write_str(" is not mutable");
                             ),
                             .related = ArrayList.new(),
                         };
                         Diagnostic.report_and_unwind(diagnostic)
                     );
-                    {
+                    Rc.new({
                         .shape = :Binding binding,
-                        .ty = binding.ty,
+                        .ty = binding^.ty,
                         .span,
-                    }
+                    })
                 )
                 | :Const _ => (
                     let diagnostic = {
@@ -261,8 +254,7 @@ const Compiler = (
                         .source = :Compiler,
                         .span,
                         .message = () => (
-                            let output = @current Output;
-                            output.write("Can't assign to a constant");
+                            locked_output.write_str("Can't assign to a constant");
                         ),
                         .related = ArrayList.new(),
                     };
@@ -274,7 +266,7 @@ const Compiler = (
 
     impl Pattern as Compilable = {
         .set_span = (self, span) => (
-            self^.span = span;
+            self^^.span = span;
         ),
         .unit = (.span) => panic("TODO unit pattern"),
         .number = (...) => panic("TODO number pattern"),
@@ -288,52 +280,50 @@ const Compiler = (
                         .source = :Compiler,
                         .span,
                         .message = () => (
-                            let output = @current Output;
-                            output.write("Failed to infer binding type");
+                            locked_output.write_str("Failed to infer binding type");
                         ),
                         .related = ArrayList.new(),
                     };
                     Diagnostic.report_and_unwind(diagnostic)
                 )
             );
-            let binding :: Binding = {
+            let binding :: Binding = Rc.new({
                 .id = Id.gen(),
-                .name,
+                .name = name^,
                 .ty,
                 .mutable = @current InMut,
-            };
-            {
+            });
+            Rc.new({
                 .shape = :Binding binding,
                 .ty,
                 .span,
-            }
+            })
         )
     };
 
     const compile = [K] (ast :: &Ast.t, .expected_ty :: Option.t[Ty]) -> K => (
         let state = @current StateContext;
         let span = ast^.span;
-        match ast^.shape with (
+        match ast^.shape^ with (
             | :Empty => (K as Compilable).unit(.span)
-            | :Token { .shape = token_shape, .span = _ } => match token_shape with (
-                | :Ident { .name, ... } => (K as Compilable).ident(name, .span, .expected_ty)
-                | :Number number => (K as Compilable).number(number, .span, .expected_ty)
-                | :String s => (K as Compilable).string(s, .span, .expected_ty)
+            | :Token ref token => match token^.shape^ with (
+                | :Ident { .name = ref name, ... } => (K as Compilable).ident(name, .span, .expected_ty)
+                | :Number ref number => (K as Compilable).number(number, .span, .expected_ty)
+                | :String ref s => (K as Compilable).string(s, .span, .expected_ty)
             )
             | :Rule {
-                .rule,
+                .rule = ref rule,
                 .root = ref root,
-            } => match rule.name |> String.strip_prefix(.prefix = "core:") with (
-                | :Some core_syntax_name => match &state.core_syntax |> OrdMap.get(core_syntax_name) with (
+            } => match &rule^^.name |> RcStr.as_str |> String.strip_prefix(.prefix = "core:") with (
+                | :Some core_syntax_name => match &state^.core_syntax |> OrdMap.get(&core_syntax_name) with (
                     | :None => (
                         let diagnostic = {
                             .severity = :Error,
                             .source = :Compiler,
                             .span,
                             .message = () => (
-                                let output = @current Output;
-                                output.write("Core syntax not found: ");
-                                output.write(String.escape(core_syntax_name));
+                                locked_output.write_str("Core syntax not found: ");
+                                locked_output.write_str(&String.escape(core_syntax_name) |> as_str);
                             ),
                             .related = ArrayList.new(),
                         };
@@ -343,7 +333,7 @@ const Compiler = (
                         core_syntax^.compile[K](ast, .root, .expected_ty)
                     )
                 )
-                | :None => match &state.custom_syntax |> OrdMap.get(rule.name) with (
+                | :None => match &state^.custom_syntax |> OrdMap.get(&rule^^.name) with (
                     | :Some custom_syntax => (
                         let mut compiled = compile[K](&CustomSyntax.expand(custom_syntax, root), .expected_ty);
                         (K as Compilable).set_span(&mut compiled, span);
@@ -355,9 +345,8 @@ const Compiler = (
                             .source = :Compiler,
                             .span,
                             .message = () => (
-                                let output = @current Output;
-                                output.write("no impl for syntax ");
-                                output.write(String.escape(rule.name));
+                                locked_output.write_str("no impl for syntax ");
+                                locked_output.write_escaped(&rule^^.name);
                             ),
                             .related = ArrayList.new(),
                         };
@@ -369,17 +358,17 @@ const Compiler = (
     );
 
     const impl_syntax = (
-        .rule :: SyntaxRule.t,
-        .pattern_root :: Ast.Group,
-        .bindings :: OrdMap.t[String, Binding],
+        .rule :: &Rc.t[SyntaxRule.t],
+        .pattern_root :: &Ast.Group,
+        .bindings :: OrdMap.t[RcStr, Binding],
         .@"impl" :: Expr,
     ) => (
         let custom_syntax :: CustomSyntax = {
-            .pattern_root,
+            .pattern_root = pattern_root^,
             .bindings,
             .@"impl",
         };
-        &mut (@current StateContext).custom_syntax
-            |> OrdMap.add(rule.name, custom_syntax);
+        &mut (@current StateContext)^.custom_syntax
+            |> OrdMap.add(rule^^.name, custom_syntax);
     );
 );

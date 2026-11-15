@@ -5,23 +5,24 @@ const compile_apply = (
     .root :: &Ast.Group,
     .expected_ty :: Option.t[Ty],
 ) -> AnyExpr => (
-    let f_ast = (&root^.children |> Tuple.get_named("f"))^
+    let f_ast = &root^.children
+        |> Tuple.get_named(&RcStr.allocate("f"))
         |> Ast.unwrap_child_value;
-    let args_ast = (&root^.children |> Tuple.get_unnamed(0))^
+    let args_ast = &root^.children
+        |> Tuple.get_unnamed(0)
         |> Ast.unwrap_child_group
         |> AstHelpers.expect_single_child(:Some "args");
-    let f = compile[Expr](&f_ast, .expected_ty = :None);
-    let f_ty = match f.ty.shape with (
-        | :Fn ty => ty
+    let f = compile[Expr](f_ast, .expected_ty = :None);
+    let f_ty = match f^.ty^.shape with (
+        | :Fn ref ty => ty
         | _ => (
             let diagnostic = {
                 .severity = :Error,
                 .source = :Compiler,
-                .span = f_ast.span,
+                .span = f_ast^.span,
                 .message = () => (
-                    let output = @current Output;
-                    output.write("Expected a fn, got ");
-                    Ty.print(&f.ty);
+                    locked_output.write_str("Expected a fn, got ");
+                    Ty.print(&f^.ty);
                 ),
                 .related = ArrayList.new(),
             };
@@ -37,35 +38,33 @@ const compile_apply = (
         )
             |> std.iter.enumerate
     ) do (
-        if i >= &f_ty.args |> ArrayList.length then (
+        if i >= &f_ty^^.args |> ArrayList.length then (
             let diagnostic = {
                 .severity = :Error,
                 .source = :Compiler,
-                .span = arg_ast.span,
+                .span = arg_ast^.span,
                 .message = () => (
-                    let output = @current Output;
-                    output.write("Too many arguments provided");
+                    locked_output.write_str("Too many arguments provided");
                 ),
                 .related = ArrayList.new(),
             };
             Diagnostic.report_and_unwind(diagnostic)
         );
-        let arg_ty = (&f_ty.args |> ArrayList.at(i))^;
-        let arg = compile[Expr](&arg_ast, .expected_ty = :Some arg_ty);
+        let arg_ty = (&f_ty^^.args |> ArrayList.at(i))^;
+        let arg = compile[Expr](arg_ast, .expected_ty = :Some arg_ty);
         &mut args |> ArrayList.push_back(arg);
     );
-    if &args |> ArrayList.length != &f_ty.args |> ArrayList.length then (
+    if &args |> ArrayList.length != &f_ty^^.args |> ArrayList.length then (
         let diagnostic = {
             .severity = :Error,
             .source = :Compiler,
-            .span = args_ast.span,
+            .span = args_ast^.span,
             .message = () => (
-                let output = @current Output;
-                output.write("Not enough arguments provided");
-                output.write(": expected ");
-                output.write(to_string(&f_ty.args |> ArrayList.length));
-                output.write(", got ");
-                output.write(to_string(&args |> ArrayList.length));
+                locked_output.write_str("Not enough arguments provided");
+                locked_output.write_str(": expected ");
+                locked_output.write_str(&to_string(&f_ty^^.args |> ArrayList.length) |> as_str);
+                locked_output.write_str(", got ");
+                locked_output.write_str(&to_string(&args |> ArrayList.length) |> as_str);
             ),
             .related = ArrayList.new(),
         };
@@ -73,7 +72,7 @@ const compile_apply = (
     );
     {
         .shape = :Expr :Apply { .f, .args },
-        .ty = f_ty.result,
+        .ty = f_ty^^.result,
     }
 );
 

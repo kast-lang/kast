@@ -10,8 +10,8 @@ use (import "./parse_json.ks").*;
 use (import "./parse_syntax_rules.ks").*;
 use (import "./parse_syntax_ruleset.ks").*;
 use (import "./parse.ks").*;
-# use (import "./repl.ks").*;
-# use (import "./run.ks").*;
+use (import "./repl.ks").*;
+use (import "./run.ks").*;
 use (import "./structural_find_and_replace.ks").*;
 use (import "./tokenize.ks").*;
 use (import "./mini.ks").*;
@@ -44,8 +44,8 @@ const Args = (
         | :Format Format.Args.t
         | :Lsp Lsp.CliArgs.t
         | :StructuralFindAndReplace StructuralFindAndReplace.Args.t
-        # | :Repl Repl.Args.t
-        # | :Run Run.Args.t
+        | :Repl Repl.Args.t
+        | :Run Run.Args.t
         | :Mini Mini.Args.t
     );
 
@@ -100,8 +100,7 @@ const Args = (
                 );
                 &mut common |> Common.Args.parse_arg(&mut i);
             );
-            panic("default is repl commented out")
-            # :Repl Repl.Args.default()
+            :Repl Repl.Args.default()
         );
         {
             .subcommand,
@@ -135,7 +134,7 @@ match subcommand with (
     | :Format args => Format.run(common_args, args)
     | :Lsp args => Lsp.run(args)
     | :StructuralFindAndReplace args => StructuralFindAndReplace.run(common_args, args)
-    # | :Repl args => Repl.run(common_args, args)
-    # | :Run args => Run.run(common_args, args)
+    | :Repl args => Repl.run(common_args, args)
+    | :Run args => Run.run(common_args, args)
     | :Mini args => Mini.run(common_args, args)
 );

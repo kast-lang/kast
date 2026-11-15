@@ -7,9 +7,9 @@ use (import "./_common.ks").*;
         .root :: &Ast.Group,
         .expected_ty :: Option.t[Ty],
     ) -> K => (
-        let { expr, ty } = root^
+        let { expr, ty } = root
             |> AstHelpers.expect_two_children(:Some { "expr", "type" });
-        let ty = eval_ast_as_type(&ty);
-        compile[K](&expr, .expected_ty = :Some ty)
+        let ty = eval_ast_as_type(ty);
+        compile[K](expr, .expected_ty = :Some ty)
     ),
 }

@@ -33,7 +33,7 @@ const Native = (
             Rc.new({ .shape = :Int result, .ty = Ty.INT })
         );
         let ty = Rc.new({
-            .shape = :Fn {
+            .shape = :Fn Rc.new({
                 .args = (
                     let mut args = ArrayList.new();
                     &mut args |> ArrayList.push_back(Ty.INT);
@@ -41,7 +41,7 @@ const Native = (
                     args
                 ),
                 .result = Ty.INT,
-            }
+            }),
         });
         init_value(name, Rc.new({
             .shape = :NativeFn {
@@ -65,14 +65,14 @@ const Native = (
             Value.UNIT
         );
         let ty = Rc.new({
-            .shape = :Fn {
+            .shape = :Fn Rc.new({
                 .args = (
                     let mut args = ArrayList.new();
                     &mut args |> ArrayList.push_back(Ty.STRING);
                     args
                 ),
                 .result = Ty.UNIT,
-            }
+            }),
         });
         init_value(name, Rc.new({
             .shape = :NativeFn {

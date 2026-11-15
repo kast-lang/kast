@@ -5,10 +5,10 @@ const compile_assign = (
     .root :: &Ast.Group,
     .expected_ty :: Option.t[Ty],
 ) -> AnyExpr => (
-    let { assignee, value } = root^
+    let { assignee, value } = root
         |> AstHelpers.expect_two_children(:Some { "assignee", "value" });
-    let assignee = compile[Assignee](&assignee, .expected_ty = :None);
-    let value = compile[PlaceExpr](&value, .expected_ty = :Some assignee.ty);
+    let assignee = compile[Assignee](assignee, .expected_ty = :None);
+    let value = compile[PlaceExpr](value, .expected_ty = :Some assignee^.ty);
     (@current CompilerContext).inject_assignee_bindings(&assignee);
     {
         .shape = :Expr :Assign {

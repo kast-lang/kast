@@ -22,7 +22,7 @@ const Scope = (
         binding :: &Binding,
         .span :: Span,
     ) -> Place => (
-        if &scope^^.locals |> OrdMap.get(&binding^.id) is :Some &place then (
+        if &scope^^.locals |> OrdMap.get(&binding^^.id) is :Some &place then (
             place
         ) else if scope^^.parent is :Some ref parent then (
             get_in(parent, binding, .span)
@@ -46,6 +46,6 @@ const Scope = (
 
     const inject_binding = (binding :: &Binding, place :: Place) => (
         &mut (@current Context)^.locals
-            |> OrdMap.add(binding^.id, place);
+            |> OrdMap.add(binding^^.id, place);
     )
 );

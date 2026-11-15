@@ -10,26 +10,28 @@ const Scope = (
         | :Const Place
     );
 
-    const t = newtype {
-        .parent :: Option.t[type (&Scope.t)],
-        .locals :: OrdMap.t[String, Local],
-    };
+    const t = Rc.t[newtype {
+        .parent :: Option.t[Scope.t],
+        .locals :: OrdMap.t[RcStr, Local],
+    }];
 
-    const new = (.parent :: Option.t[type (&Scope.t)]) -> Scope.t => {
-        .parent,
-        .locals = OrdMap.new(),
-    };
+    const new = (.parent :: Option.t[Scope.t]) -> Scope.t => (
+        Rc.new({
+            .parent,
+            .locals = OrdMap.new(),
+        })
+    );
 
     const Context = @context t;
 
     const lookup_in = (
         scope :: &Scope.t,
-        name :: String,
+        name :: &RcStr,
         .span :: Span,
     ) -> &Local => (
-        if &scope^.locals |> OrdMap.get(name) is :Some local then (
+        if &scope^^.locals |> OrdMap.get(name) is :Some local then (
             local
-        ) else if scope^.parent is :Some parent then (
+        ) else if scope^^.parent is :Some ref parent then (
             lookup_in(parent, name, .span)
         ) else (
             let diagnostic = {
@@ -37,10 +39,9 @@ const Scope = (
                 .source = :Compiler,
                 .span,
                 .message = () => (
-                    let output = @current Output;
-                    output.write("Could not find ");
-                    output.write(String.escape(name));
-                    output.write(" in scope");
+                    locked_output.write_str("Could not find ");
+                    locked_output.write_escaped(name);
+                    locked_output.write_str(" in scope");
                 ),
                 .related = ArrayList.new(),
             };
@@ -48,30 +49,30 @@ const Scope = (
         )
     );
 
-    const lookup = (name :: String, .span :: Span) -> &Local => (
+    const lookup = (name :: &RcStr, .span :: Span) -> &Local => (
         lookup_in(&(@current Context), name, .span)
     );
 
     const inject_assignee_bindings = (assignee :: &Assignee) => (
-        match assignee^.shape with (
+        match assignee^^.shape with (
             | :Binding _ => ()
             | :Let ref pattern => inject_pattern_bindings(pattern)
         );
     );
 
     const inject_pattern_bindings = (pattern :: &Pattern) => (
-        match pattern^.shape with (
+        match pattern^^.shape with (
             | :Binding ref binding => inject_binding(binding)
         );
     );
 
     const inject_binding = (binding :: &Binding) => (
-        &mut (@current Context).locals
-            |> OrdMap.add(binding^.name, :Binding binding^);
+        &mut (@current Context)^.locals
+            |> OrdMap.add(binding^^.name, :Binding binding^);
     );
 
-    const inject_const = (name :: String, value :: Value) => (
-        &mut (@current Context).locals
-            |> OrdMap.add(name, :Const Place.init(value));
+    const inject_const = (name :: &RcStr, value :: Value) => (
+        &mut (@current Context)^.locals
+            |> OrdMap.add(name^, :Const Place.init(value));
     );
 );

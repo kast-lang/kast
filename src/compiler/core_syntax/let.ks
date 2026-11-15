@@ -5,14 +5,14 @@ const compile_let = (
     .root :: &Ast.Group,
     .expected_ty :: Option.t[Ty],
 ) -> Assignee => (
-    let pattern = root^
+    let pattern = root
         |> AstHelpers.expect_single_child(:Some "pattern");
-    let pattern = compile[Pattern](&pattern, .expected_ty);
-    {
+    let pattern = compile[Pattern](pattern, .expected_ty);
+    Rc.new({
         .shape = :Let pattern,
-        .ty = pattern.ty,
+        .ty = pattern^.ty,
         .span = ast^.span,
-    }
+    })
 );
 
 include_ast impl_assignee_syntax(
