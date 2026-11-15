@@ -25,7 +25,7 @@ void Unit_dbg_write_type_erased(void* value, Kast_Formatter* fmt) {
 }
 
 void Byte_dbg_write(Byte* value, Kast_Formatter* fmt) {
-    Kast_Formatter_printf(fmt, "0x%02X", (int)*value);
+    Kast_Formatter_printf(fmt, "0x%02hhX", *value);
 }
 
 void Byte_dbg_write_type_erased(void* value, Kast_Formatter* fmt) {
