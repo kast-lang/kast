@@ -67,7 +67,7 @@ typedef struct {
 static const Unit UNIT;
 
 typedef bool Bool;
-typedef char Byte;
+typedef unsigned char Byte;
 typedef int32_t Int32;
 typedef uint32_t UInt32;
 typedef int64_t Int64;
