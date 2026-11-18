@@ -56,9 +56,18 @@ const type_expr_to_expr = (expr :: TyExpr) -> Expr => (
     })
 );
 
+const CompileSpecific = [K] type ((&Ast.t, .expected_ty :: Option.t[Ty]) -> K);
+
 const CompilerContextT = newtype {
     .inject_assignee_bindings :: &Assignee -> (),
-    .compile :: [K] (&Ast.t, .expected_ty :: Option.t[Ty]) -> K,
+    .compile :: {
+        .any_expr :: CompileSpecific[AnyExpr],
+        .expr :: CompileSpecific[Expr],
+        .place_expr :: CompileSpecific[PlaceExpr],
+        .ty_expr :: CompileSpecific[TyExpr],
+        .assignee :: CompileSpecific[Assignee],
+        .pattern :: CompileSpecific[Pattern],
+    },
     .impl_syntax :: (
         .rule :: &Rc.t[SyntaxRule.t],
         .pattern_root :: &Ast.Group,
@@ -71,8 +80,33 @@ const CompilerContext = @context CompilerContextT;
 
 const InMut = @context Bool;
 
+const CompileImpl = (
+    module:
+
+    const Compilable = [Self] CompileSpecific[Self];
+
+    impl AnyExpr as Compilable = ((...args) => (
+        (@current CompilerContext).compile.any_expr(...args)
+    ));
+    impl Expr as Compilable = ((...args) => (
+        (@current CompilerContext).compile.expr(...args)
+    ));
+    impl PlaceExpr as Compilable = ((...args) => (
+        (@current CompilerContext).compile.place_expr(...args)
+    ));
+    impl TyExpr as Compilable = ((...args) => (
+        (@current CompilerContext).compile.ty_expr(...args)
+    ));
+    impl Assignee as Compilable = ((...args) => (
+        (@current CompilerContext).compile.assignee(...args)
+    ));
+    impl Pattern as Compilable = ((...args) => (
+        (@current CompilerContext).compile.pattern(...args)
+    ));
+);
+
 const compile = [K] (ast :: &Ast.t, .expected_ty :: Option.t[Ty]) -> K => (
-    (@current CompilerContext).compile[K](ast, .expected_ty)
+    (K as CompileImpl.Compilable)(ast, .expected_ty)
 );
 
 const compile_type_expr = (ast :: &Ast.t) -> TyExpr => (

@@ -14,8 +14,7 @@ const Native = (
     const InitContext = @context type (&mut Map);
 
     const init_value = (name :: &str, value :: Value) => (
-        # TODO value is moved? rc?
-        (@current InitContext) |> OrdMap.add(RcStr.allocate(name), { .get = _ => value });
+        (@current InitContext) |> OrdMap.add(RcStr.allocate(name), { .get = @move _ => value });
     );
 
     const init_ty = (name :: &str, ty :: Ty) => (
@@ -23,7 +22,7 @@ const Native = (
     );
 
     const init_op = (name :: &str, f :: (Int, Int) -> Int) => (
-        let @"impl" = (args :: ArrayList.t[ValueWithSpan], .caller :: Span) -> Value => (
+        let @"impl" = @move (args :: ArrayList.t[ValueWithSpan], .caller :: Span) -> Value => (
             if &args |> ArrayList.length != 2 then (
                 panic("Expected 2 args");
             );
@@ -54,7 +53,7 @@ const Native = (
 
     const init_print = () => (
         let name = "print";
-        let @"impl" = (args :: ArrayList.t[ValueWithSpan], .caller :: Span) -> Value => (
+        let @"impl" = @move (args :: ArrayList.t[ValueWithSpan], .caller :: Span) -> Value => (
             if &args |> ArrayList.length != 1 then (
                 panic("Expected 1 arg");
             );

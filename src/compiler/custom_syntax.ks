@@ -48,7 +48,7 @@ impl CustomSyntax as module = (
         for { member, child } in &group^.children |> Tuple.iter do (
             let child_pattern = &pattern_group^.children
                 |> Tuple.get(member);
-            match { &child_pattern^, &child^ } with (
+            match ({ &child_pattern^, &child^ } :: { _, _ }) with (
                 | { &(:Value ref pattern), &(:Value ref ast) } => inject_ast_bindings(&pattern^^, &ast^^)
                 | { &(:Group ref pattern), &(:Group ref group) } => inject_group_bindings(&pattern^^, &group^^)
             );

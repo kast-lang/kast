@@ -4,7 +4,7 @@ use (import "../json/_lib.ks").*;
 use (import "../source.ks").*;
 use (import "../source_path.ks").*;
 use (import "../rc_str.ks").*;
-const dep_json = import "../../deps/json/src/_lib.ks";
+const dep_json = import "../../deps/json/lib.ks";
 
 module:
 

@@ -28,7 +28,14 @@ const Compiler = (
     } => {
         .compiler = {
             .inject_assignee_bindings = Scope.inject_assignee_bindings,
-            .compile,
+            .compile = {
+                .any_expr = compile[AnyExpr],
+                .expr = compile[Expr],
+                .place_expr = compile[PlaceExpr],
+                .ty_expr = compile[TyExpr],
+                .assignee = compile[Assignee],
+                .pattern = compile[Pattern],
+            },
             .impl_syntax,
         },
         .state = {
@@ -44,6 +51,7 @@ const Compiler = (
         .number :: (&Token.NumberToken, .span :: Span, .expected_ty :: Option.t[Ty]) -> Self,
         .ident :: (&RcStr, .span :: Span, .expected_ty :: Option.t[Ty]) -> Self,
         .string :: (&Token.StringToken, .span :: Span, .expected_ty :: Option.t[Ty]) -> Self,
+        .core_syntax :: (&CoreSyntax.t, &Ast.t, .root :: &Ast.Group, .expected_ty :: Option.t[Ty]) -> Self,
     };
 
     impl AnyExpr as Compilable = {
@@ -110,6 +118,9 @@ const Compiler = (
                 }
             )
         ),
+        .core_syntax = (core_syntax, ...args) => (
+            core_syntax^.compile.any_expr(...args)
+        ),
     };
 
     impl Expr as Compilable = {
@@ -132,6 +143,9 @@ const Compiler = (
             (AnyExpr as Compilable).ident(...args),
             .span = args.span,
         ),
+        .core_syntax = (core_syntax, ...args) => (
+            core_syntax^.compile.expr(...args)
+        ),
     };
 
     impl PlaceExpr as Compilable = {
@@ -153,6 +167,9 @@ const Compiler = (
         .ident = (...args) => any_expr_to_place_expr(
             (AnyExpr as Compilable).ident(...args),
             .span = args.span,
+        ),
+        .core_syntax = (core_syntax, ...args) => (
+            core_syntax^.compile.place_expr(...args)
         ),
     };
 
@@ -193,7 +210,10 @@ const Compiler = (
             let span = args.span;
             type_check(.actual = expr^.ty, .expected = Ty.TYPE, .span);
             Rc.new({ .shape = :Expr expr, .span })
-        )
+        ),
+        .core_syntax = (core_syntax, ...args) => (
+            core_syntax^.compile.ty_expr(...args)
+        ),
     };
 
     impl Assignee as Compilable = {
@@ -262,6 +282,9 @@ const Compiler = (
                 )
             )
         ),
+        .core_syntax = (core_syntax, ...args) => (
+            core_syntax^.compile.assignee(...args)
+        ),
     };
 
     impl Pattern as Compilable = {
@@ -298,7 +321,10 @@ const Compiler = (
                 .ty,
                 .span,
             })
-        )
+        ),
+        .core_syntax = (core_syntax, ...args) => (
+            core_syntax^.compile.pattern(...args)
+        ),
     };
 
     const compile = [K] (ast :: &Ast.t, .expected_ty :: Option.t[Ty]) -> K => (
@@ -330,7 +356,7 @@ const Compiler = (
                         Diagnostic.report_and_unwind(diagnostic)
                     )
                     | :Some core_syntax => (
-                        core_syntax^.compile[K](ast, .root, .expected_ty)
+                        (K as Compilable).core_syntax(core_syntax, ast, .root, .expected_ty)
                     )
                 )
                 | :None => match &state^.custom_syntax |> OrdMap.get(&rule^^.name) with (

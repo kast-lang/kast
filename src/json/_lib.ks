@@ -14,7 +14,7 @@ use (import "../syntax_parser.ks").*;
 use (import "../ast.ks").*;
 use (import "../parser.ks").*;
 use (import "../rc_str.ks").*;
-const dep = import "../../deps/json/src/_lib.ks";
+const dep = import "../../deps/json/lib.ks";
 use std.collections.OrdMap;
 
 const error = [T] (span :: Span, message :: () -> ()) -> T => (

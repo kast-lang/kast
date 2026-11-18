@@ -1,7 +1,7 @@
 use (import "./json/_lib.ks").*;
 use (import "./rc_str.ks").*;
 use (import "./output.ks").*;
-const dep_json = import "../deps/json/src/_lib.ks";
+const dep_json = import "../deps/json/lib.ks";
 use std.collections.OrdMap;
 
 module:

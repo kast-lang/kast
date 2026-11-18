@@ -56,6 +56,7 @@ const QuoteExpr = (
 const PlaceExprShape = newtype (
     | :Temp Expr
     | :Binding Binding
+    | :Scope PlaceExpr
 );
 
 const PlaceExpr = Rc.t[newtype {

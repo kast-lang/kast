@@ -16,10 +16,22 @@ impl AnyExpr as CompileTrait = {
         .expected_ty :: Option.t[Ty],
     ) => (
         with Scope.Context = Scope.new(.parent = :Some (@current Scope.Context));
-        let body = compile[Expr](body, .expected_ty);
+        let body_span = body^.span;
+        let body = compile[AnyExpr](body, .expected_ty);
         {
-            .ty = body^.ty,
-            .shape = :Expr :Scope body,
+            .ty = body.ty,
+            .shape = match body.shape with (
+                | :Expr shape => :Expr :Scope Rc.new({
+                    .shape,
+                    .ty = body.ty,
+                    .span = body_span,
+                })
+                | :Place shape => :Place :Scope Rc.new({
+                    .shape,
+                    .ty = body.ty,
+                    .span = body_span,
+                })
+            ),
         }
     ),
 };
@@ -66,9 +78,8 @@ impl Pattern as CompileTrait = {
     ),
 };
 
-(:: CoreSyntax) {
-    .name = "scope",
-    .compile = [K] (
+const impl_for = (K :: Type) -> std.Ast => `(
+    (
         ast :: &Ast.t,
         .root :: &Ast.Group,
         .expected_ty :: Option.t[Ty],
@@ -76,5 +87,17 @@ impl Pattern as CompileTrait = {
         let body = root
             |> AstHelpers.expect_single_child(:None);
         (K as CompileTrait).compile(ast, .body, .expected_ty)
-    ),
+    )
+);
+
+(:: CoreSyntax) {
+    .name = "scope",
+    .compile = {
+        .any_expr = include_ast impl_for(AnyExpr),
+        .expr = include_ast impl_for(Expr),
+        .place_expr = include_ast impl_for(PlaceExpr),
+        .ty_expr = include_ast impl_for(TyExpr),
+        .pattern = include_ast impl_for(Pattern),
+        .assignee = include_ast impl_for(Assignee),
+    },
 }

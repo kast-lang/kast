@@ -5,7 +5,7 @@
 @syntax "core:stmt" 0 @wrap always = _ ";";
 @syntax "core:use .*" 1 @wrap never = "use" " " _ ".*";
 @syntax "core:use" 1 @wrap never = "use" " " _;
-@syntax "core:impl syntax" 1 @wrap never = "impl" " " "syntax" " " name " " "=" " " impl;
+@syntax "core:impl syntax" 1 @wrap never = "impl" " " "syntax" " " "(" pattern:any ")" " " "=" " " impl;
 @syntax "core:impl_cast" 1 @wrap never = "impl" " " value " " "as" " " target " " "=" " " impl;
 @syntax "core:impl_as_module" 1 @wrap never = "impl" " " value " " "as" " " "module" " " "=" " " impl;
 @syntax "core:assign" 2 @wrap never = assignee " " "=" " " value;
@@ -36,11 +36,11 @@
 @syntax "core:type ascribe" 6.2 @wrap never = expr " " "::" " " type;
 @syntax "prefix type ascribe" 6.2 @wrap never = _=(@wrap if_any "(" "::" " "/"\n\t" type:any ""/"\\\n" ")") " " expr;
 
-@syntax "core:generic" 6.5 @wrap never = "[" ""/"\n\t" arg:any ""/"\\\n" "]" " " body ->;
-@syntax "generic_non_dependent" 6.5 @wrap never = "[" ""/"\n\t" arg:any ""/"\\\n" "]" " " "->" " " body ->;
-@syntax "core:fn_type" 6.5 @wrap never = raw_fn=("fn" " ")? call_convention=("@call" " " _: >= 5000 " ")? async=("async" _=("=" value)? " ")? arg " " context=("with" " " _ " ")? result=("->" " " _ _=(" " "with" " " context " ")?);
+@syntax "core:generic" 6.5 @wrap never = "[" ""/"\n\t" args:any ""/"\\\n" "]" " " body ->;
+@syntax "generic_non_dependent" 6.5 @wrap never = "[" ""/"\n\t" args:any ""/"\\\n" "]" " " "->" " " body ->;
+@syntax "core:fn_type" 6.5 @wrap never = raw_fn=("fn" " ")? call_convention=("@call" " " _: >= 5000 " ")? async=("async" _=("=" value)? " ")? args " " context=("with" " " _ " ")? result=("->" " " _ _=(" " "with" " " context " ")?);
 
-@syntax "core:fn" 7 @wrap never = move=("@move" " ")? raw_fn=("fn" " ")? call_convention=("@call" " " _: >= 5000 " ")? async=("async" _=("=" value)? " ")? arg " " context=("with" " " _ " ")? result=("->" " " _ " " _=("with" " " context " ")?)? "=>" " " body;
+@syntax "core:fn" 7 @wrap never = move=("@move" " ")? raw_fn=("fn" " ")? call_convention=("@call" " " _: >= 5000 " ")? async=("async" _=("=" value)? " ")? args " " context=("with" " " _ " ")? result=("->" " " _ " " _=("with" " " context " ")?)? "=>" " " body;
 @syntax "comptime_only" 7.1 @wrap never = "@comptime_only" " " _;
 
 @syntax "if_without_else" 7.5 @wrap never = "if" " " cond " " "then" " " then_case;
@@ -102,17 +102,17 @@
 @syntax "core:ref" 61 @wrap never = "&" _ ->;
 @syntax "core:ref_mut" 61 @wrap never = "&" "mut" " " _ ->;
 @syntax "&str" 61 @wrap never = "&" "str";
-@syntax "core:instantiate_generic" 70 @wrap never = <- generic _=("[" ""/"\n\t" arg:any ""/"\\\n" "]");
+@syntax "core:instantiate_generic" 70 @wrap never = <- generic _=("[" ""/"\n\t" args:any ""/"\\\n" "]");
 @syntax "core:." 70 @wrap never = <- obj ""/"\n\t" "." field ""/"\\";
 @syntax "index" 70 @wrap never = <- obj "." "[" index:any "]";
 @syntax "core:deref" 70 @wrap never = <- _ "^";
-@syntax "core:apply" 70 @wrap never = <- f _=(@wrap if_any "(" ""/"\n\t" arg:any ""/"\\\n" ")");
+@syntax "core:apply" 70 @wrap never = <- f _=(@wrap if_any "(" ""/"\n\t" args:any ""/"\\\n" ")");
 @syntax "invoke_macro" 70 @wrap never = <- macro "!" _=(@wrap if_any "(" ""/"\n\t" ast:any ""/"\\\n" ")");
 @syntax "core:mut" 500 @wrap never = "mut" " " _;
 @syntax "core:type expr" 500 @wrap never = "type" " " _;
 @syntax "core:newtype" 500 @wrap never = "newtype" " " _;
 @syntax "core:typeof" 500 @wrap never = "typeof" " " _;
-# @syntax "core:type" 500 @wrap never = "type";
+@syntax "core:type" 500 @wrap never = "type";
 @syntax "core:true" 500 @wrap never = "true";
 @syntax "core:false" 500 @wrap never = "false";
 @syntax "loop" 500 @wrap if_any = "loop" " " "(" " "/"\n\t" _:any " "/"\\\n" ")";

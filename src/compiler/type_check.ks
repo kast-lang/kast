@@ -38,7 +38,7 @@ const type_check_impl = (
             Ty.print(&actual);
         ),
     );
-    match { &actual^.shape, &expected^.shape } with (
+    match ({ &actual^.shape, &expected^.shape } :: { _, _ }) with (
         | { &(:Unit), &(:Unit) } => ()
         | { &(:Unit), _ } => fail()
         | { _, &(:Unit) } => fail()
