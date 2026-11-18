@@ -6,6 +6,18 @@ module Interpreter = Kast_interpreter
 module C_ast = C_ast
 module ValueMap = Types.ValueMap.CompareMap
 
+let interpret_eval state expr =
+  let result = Interpreter.eval state expr in
+  Kast_inference_completion.complete_value result;
+  result
+;;
+
+let interpret_eval_ty state expr =
+  let result = Interpreter.eval_ty state expr in
+  Kast_inference_completion.complete_ty result;
+  result
+;;
+
 module CTyMap = Map.Make (struct
     type t = C_ast.ty
 
@@ -49,7 +61,7 @@ module LazyNamed = struct
           (try f () with
            | e ->
              eprintln "while forcing lazy %S" name;
-             raise e)
+             Printexc.raise_with_backtrace e (Printexc.get_raw_backtrace ()))
     }
   ;;
 
@@ -1222,122 +1234,121 @@ module Impl = struct
     }
 
   and transpile_ty (ty : ty) : transpiled_ty =
-    let ctx = Effect.perform GetCtx in
-    let ty = mono_ty ty in
-    match ty.var |> Inference.Var.inferred_opt with
-    | None -> fail "transpiling not inferred type %a" Ty.print ty
-    | Some (T_Blocked _) -> failwith __LOC__
-    | Some ty_shape ->
-      let ty_as_value = V_Ty ty |> Value.inferred ~span in
-      (match ctx.captured_types |> ValueMap.find_opt ty_as_value with
-       | Some Inprogress -> fail "recursive type %a" Ty.print ty
-       | Some (Completed ty) -> ty
-       | None ->
-         (try
-            ctx.captured_types
-            <- ctx.captured_types |> ValueMap.add ty_as_value Inprogress;
-            let c_ty =
-              match transpile_ty_shape ty_shape with
-              | Alias t -> t
-              | T_Named { name; def } ->
-                queue_work (fun () ->
-                  let def =
-                    try def () with
-                    | e ->
-                      eprintln "while calculating def of %S (%a)" name Ty.print ty;
-                      raise e
-                  in
-                  ctx.types <- ctx.types |> StringMap.add name def);
-                T_Named name
-            in
-            let c_ty_as_str = ty_to_ident c_ty in
-            let gen_lazy_named (type a) suffix f : a LazyNamed.t =
-              let name = gen_name (make_string "%s_%s" c_ty_as_str suffix) in
-              LazyNamed.make name (fun () -> f name)
-            in
-            let is_copy = lazy (is_copy_impl ty) in
-            let result : transpiled_ty =
-              if runtime_defined_types_with_type_info |> StringSet.contains c_ty_as_str
-              then
-                { kast_ty = ty
-                ; c_ty
-                ; is_copy
-                ; generate_type_info = false
-                ; type_info_name = make_string "%s_TypeInfo" c_ty_as_str
-                ; claim =
-                    (let claim_name = make_string "%s_claim" c_ty_as_str in
-                     LazyNamed.make claim_name (fun () ->
-                       fun (place : C_ast.place_expr) : C_ast.expr ->
+    try
+      let ctx = Effect.perform GetCtx in
+      let ty = mono_ty ty in
+      match ty.var |> Inference.Var.inferred_opt with
+      | None -> fail "transpiling not inferred type %a" Ty.print ty
+      | Some (T_Blocked _) -> failwith __LOC__
+      | Some ty_shape ->
+        let ty_as_value = V_Ty ty |> Value.inferred ~span in
+        (match ctx.captured_types |> ValueMap.find_opt ty_as_value with
+         | Some Inprogress -> fail "recursive type %a" Ty.print ty
+         | Some (Completed ty) -> ty
+         | None ->
+           ctx.captured_types <- ctx.captured_types |> ValueMap.add ty_as_value Inprogress;
+           let c_ty =
+             match transpile_ty_shape ty_shape with
+             | Alias t -> t
+             | T_Named { name; def } ->
+               queue_work (fun () ->
+                 let def =
+                   try def () with
+                   | e ->
+                     eprintln "while calculating def of %S (%a)" name Ty.print ty;
+                     Printexc.raise_with_backtrace e (Printexc.get_raw_backtrace ())
+                 in
+                 ctx.types <- ctx.types |> StringMap.add name def);
+               T_Named name
+           in
+           let c_ty_as_str = ty_to_ident c_ty in
+           let gen_lazy_named (type a) suffix f : a LazyNamed.t =
+             let name = gen_name (make_string "%s_%s" c_ty_as_str suffix) in
+             LazyNamed.make name (fun () -> f name)
+           in
+           let is_copy = lazy (is_copy_impl ty) in
+           let result : transpiled_ty =
+             if runtime_defined_types_with_type_info |> StringSet.contains c_ty_as_str
+             then
+               { kast_ty = ty
+               ; c_ty
+               ; is_copy
+               ; generate_type_info = false
+               ; type_info_name = make_string "%s_TypeInfo" c_ty_as_str
+               ; claim =
+                   (let claim_name = make_string "%s_claim" c_ty_as_str in
+                    LazyNamed.make claim_name (fun () ->
+                      fun (place : C_ast.place_expr) : C_ast.expr ->
+                      if Lazy.force is_copy
+                      then E_Pure (Pure_Copy place)
+                      else
+                        E_Apply
+                          { f = Pure_Copy (P_Ident claim_name)
+                          ; args = [ Pure_AddrOf place ]
+                          }))
+               ; drop =
+                   (let drop_name = make_string "%s_drop" c_ty_as_str in
+                    LazyNamed.make drop_name (fun () ->
+                      fun (value : C_ast.pure_expr) ->
+                      if Lazy.force is_copy
+                      then ()
+                      else
+                        insert_stmt
+                          (S_Expr
+                             (E_Apply
+                                { f = Pure_Copy (P_Ident drop_name); args = [ value ] }))))
+               ; dbg_write =
+                   (let name = make_string "%s_dbg_write" c_ty_as_str in
+                    LazyNamed.make name (fun () -> name))
+               }
+             else
+               { kast_ty = ty
+               ; c_ty
+               ; is_copy
+               ; generate_type_info = true
+               ; type_info_name = make_string "%s_TypeInfo" c_ty_as_str
+               ; claim =
+                   gen_lazy_named "claim" (fun claim_name ->
+                     let claim_impl = generate_claim_impl ty c_ty in
+                     add_claim_impl_with_type_erased claim_name c_ty claim_impl;
+                     fun (place : C_ast.place_expr) : C_ast.expr ->
                        if Lazy.force is_copy
                        then E_Pure (Pure_Copy place)
                        else
                          E_Apply
                            { f = Pure_Copy (P_Ident claim_name)
                            ; args = [ Pure_AddrOf place ]
-                           }))
-                ; drop =
-                    (let drop_name = make_string "%s_drop" c_ty_as_str in
-                     LazyNamed.make drop_name (fun () ->
-                       fun (value : C_ast.pure_expr) ->
+                           })
+               ; drop =
+                   gen_lazy_named "drop" (fun drop_name ->
+                     let drop_impl = generate_drop_impl ty c_ty in
+                     add_drop_impl_with_type_erased drop_name c_ty drop_impl;
+                     fun (value : C_ast.pure_expr) ->
                        if Lazy.force is_copy
                        then ()
                        else
                          insert_stmt
                            (S_Expr
                               (E_Apply
-                                 { f = Pure_Copy (P_Ident drop_name); args = [ value ] }))))
-                ; dbg_write =
-                    (let name = make_string "%s_dbg_write" c_ty_as_str in
-                     LazyNamed.make name (fun () -> name))
-                }
-              else
-                { kast_ty = ty
-                ; c_ty
-                ; is_copy
-                ; generate_type_info = true
-                ; type_info_name = make_string "%s_TypeInfo" c_ty_as_str
-                ; claim =
-                    gen_lazy_named "claim" (fun claim_name ->
-                      let claim_impl = generate_claim_impl ty c_ty in
-                      add_claim_impl_with_type_erased claim_name c_ty claim_impl;
-                      fun (place : C_ast.place_expr) : C_ast.expr ->
-                        if Lazy.force is_copy
-                        then E_Pure (Pure_Copy place)
-                        else
-                          E_Apply
-                            { f = Pure_Copy (P_Ident claim_name)
-                            ; args = [ Pure_AddrOf place ]
-                            })
-                ; drop =
-                    gen_lazy_named "drop" (fun drop_name ->
-                      let drop_impl = generate_drop_impl ty c_ty in
-                      add_drop_impl_with_type_erased drop_name c_ty drop_impl;
-                      fun (value : C_ast.pure_expr) ->
-                        if Lazy.force is_copy
-                        then ()
-                        else
-                          insert_stmt
-                            (S_Expr
-                               (E_Apply
-                                  { f = Pure_Copy (P_Ident drop_name); args = [ value ] })))
-                ; dbg_write =
-                    gen_lazy_named "dbg_write" (fun dbg_write_name ->
-                      let dbg_write_impl = generate_dbg_write_impl ty c_ty in
-                      add_dbg_write_impl_with_type_erased
-                        dbg_write_name
-                        c_ty
-                        dbg_write_impl;
-                      dbg_write_name)
-                }
-            in
-            ctx.captured_types
-            <- ctx.captured_types |> ValueMap.add ty_as_value (Completed result);
-            result
-          with
-          | Cancel -> raise Cancel
-          | e ->
-            Log.error (fun log -> log "while transpiling ty %a" Ty.print ty);
-            raise e))
+                                 { f = Pure_Copy (P_Ident drop_name); args = [ value ] })))
+               ; dbg_write =
+                   gen_lazy_named "dbg_write" (fun dbg_write_name ->
+                     let dbg_write_impl = generate_dbg_write_impl ty c_ty in
+                     add_dbg_write_impl_with_type_erased
+                       dbg_write_name
+                       c_ty
+                       dbg_write_impl;
+                     dbg_write_name)
+               }
+           in
+           ctx.captured_types
+           <- ctx.captured_types |> ValueMap.add ty_as_value (Completed result);
+           result)
+    with
+    | Cancel -> raise Cancel
+    | e ->
+      Log.error (fun log -> log "while transpiling ty %a" Ty.print ty);
+      Printexc.raise_with_backtrace e (Printexc.get_raw_backtrace ())
 
   and variant_tag_ty (ty_name : string) (ty : Types.ty_variant) : C_ast.ty =
     let ctx = Effect.perform GetCtx in
@@ -2286,7 +2297,11 @@ module Impl = struct
              Dynarray.add_last ctx.statics static);
          P_Ident value_name
        with
-       | effect GetCurrentBlock, k -> Effect.continue k ctx.init_statics)
+       | effect GetCurrentBlock, k -> Effect.continue k ctx.init_statics
+       | Cancel -> raise Cancel
+       | e ->
+         Log.error (fun log -> log "wrile transpiling value %a" Value.print value);
+         Printexc.raise_with_backtrace e (Printexc.get_raw_backtrace ()))
 
   and transpile_value_shape (shape : Types.value_shape) : C_ast.expr =
     let interpreter = (Effect.perform CurrentFnCaptured).interpreter_state in
@@ -2975,7 +2990,7 @@ module Impl = struct
            E_Pure (Pure_Copy (P_Ident var)))
       | Types.E_Apply { f; arg } -> call_fn ~args_is_tuple:true f arg
       | Types.E_InstantiateGeneric _ ->
-        let value = Interpreter.eval interpreter expr in
+        let value = interpret_eval interpreter expr in
         Some (E_Pure (Pure_Copy (transpile_value value)))
       | Types.E_Assign { assignee; value } ->
         assign assignee (transpile_place_expr value);
@@ -3005,7 +3020,7 @@ module Impl = struct
               | Raw s -> N_Raw s
               | TyExpr e ->
                 N_Raw
-                  ((Interpreter.eval_ty interpreter e |> transpile_ty).c_ty |> ty_to_ident)
+                  ((interpret_eval_ty interpreter e |> transpile_ty).c_ty |> ty_to_ident)
               | Expr e ->
                 N_Interpolated
                   (make_pure
@@ -3249,7 +3264,7 @@ module Impl = struct
         None
       | Types.E_ImplCast _ -> None
       | Types.E_Cast _ ->
-        let value = Interpreter.eval interpreter expr in
+        let value = interpret_eval interpreter expr in
         (* TODO same as const *)
         Some (E_Pure (Pure_Copy (transpile_value value)))
       | Types.E_TargetDependent target_dependent ->
@@ -3264,11 +3279,11 @@ module Impl = struct
          | None -> fail "no C cfg branch at %a" print_span expr.data.span)
       | Types.E_Error -> fail "transpiling error expr"
     with
-    | Cancel -> raise Cancel
     | effect GetSpan, k -> Effect.continue k expr.data.span
+    | Cancel -> raise Cancel
     | e ->
       Log.error (fun log -> log "while transpiling expr at %a" print_span span);
-      raise e
+      Printexc.raise_with_backtrace e (Printexc.get_raw_backtrace ())
   ;;
 
   let postprocess () =

@@ -638,11 +638,11 @@ and eval_place : state -> Types.place_expr -> evaled_place_expr =
     Log.trace (fun log -> log "evaled place at %a" Span.print span);
     result
   with
-  | Unwind _ as exc -> raise exc
-  | exc ->
+  | Unwind _ as e -> raise e
+  | e ->
     Log.error (fun log ->
       log "While evaluating place expr at %a" Span.print expr.data.span);
-    raise exc
+    Printexc.raise_with_backtrace e (Printexc.get_raw_backtrace ())
 
 and monomorphized_place ~span ~(state : state) (place : place) : place =
   match Hashtbl.find_opt state.monomorphization_state.place place.id with
@@ -1352,8 +1352,8 @@ and eval : state -> expr -> value =
              (VarScope.of_value result));
          result
        with
-       | Unwind _ as exc -> raise exc
-       | exc ->
+       | Unwind _ as e -> raise e
+       | e ->
          let backtrace = Printexc.get_raw_backtrace () in
          Log.error (fun log ->
            log
@@ -1362,7 +1362,7 @@ and eval : state -> expr -> value =
              expr
              Span.print
              expr.data.span);
-         Printexc.raise_with_backtrace exc backtrace)
+         Printexc.raise_with_backtrace e backtrace)
 
 and find_target_dependent_branch
   :  state

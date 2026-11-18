@@ -575,6 +575,7 @@ let with_cache f arg =
 ;;
 
 let complete_value value = with_cache Impl.complete_value value
+let complete_ty ty = with_cache Impl.complete_ty ty
 
 let complete_compiled : 'a. 'a compiled_kind -> 'a -> unit =
   fun (type a) (kind : a compiled_kind) ->

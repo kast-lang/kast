@@ -76,7 +76,7 @@ let rewrite_one ({ from = _; into } : Args.rewrite) (ast : Ast.t) : Ast.t =
                 rule.name
                 Span.print
                 ast.data);
-            raise e)
+            Printexc.raise_with_backtrace e (Printexc.get_raw_backtrace ()))
        | None ->
          { shape = Ast.Complex { rule; root = rewrite_group root }; data = ast.data })
     | Ast.Syntax node ->

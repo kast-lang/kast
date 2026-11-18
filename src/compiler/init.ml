@@ -283,9 +283,9 @@ and init_place_expr : span -> State.t -> Expr.Place.Shape.t -> Expr.Place.t =
         }
     }
   with
-  | exc ->
+  | e ->
     Log.error (fun log -> log "while initializing place expr at %a" Span.print span);
-    raise exc
+    Printexc.raise_with_backtrace e (Printexc.get_raw_backtrace ())
 
 and cast_as_module_ty : span:span -> State.t -> Expr.Place.t -> ty =
   fun ~span state value ->
@@ -307,7 +307,15 @@ and cast_result_ty : span:span -> State.t -> expr -> value -> ty =
   State.Scope.fork (fun () ->
     let value = Kast_interpreter.eval state.interpreter value in
     match target |> Value.await_inferred with
-    | V_Generic _ ->
+    | V_Generic generic ->
+      State.Scope.fork (fun () ->
+        let f =
+          generic.fn.def
+          |> Interpreter.await_compiled ~span
+          |> Option.unwrap_or_else (fun () -> fail "failed to await fn compiled")
+        in
+        Value.ty_of value
+        |> Inference.Ty.expect_inferred_as ~span f.args.pattern.data.signature.ty);
       let result =
         Kast_interpreter.instantiate
           ~result_ty:(Ty.inferred ~span T_Ty)
@@ -655,9 +663,9 @@ let init_assignee : span -> State.t -> Expr.Assignee.Shape.t -> Expr.assignee =
         }
     }
   with
-  | exc ->
+  | e ->
     Log.error (fun log -> log "while initializing assignee expr at %a" Span.print span);
-    raise exc
+    Printexc.raise_with_backtrace e (Printexc.get_raw_backtrace ())
 ;;
 
 let init_pattern : span -> State.t -> Pattern.Shape.t -> pattern =
@@ -719,9 +727,9 @@ let init_pattern : span -> State.t -> Pattern.Shape.t -> pattern =
         }
     }
   with
-  | exc ->
+  | e ->
     Log.error (fun log -> log "while initializing pattern at %a" Span.print span);
-    raise exc
+    Printexc.raise_with_backtrace e (Printexc.get_raw_backtrace ())
 ;;
 
 let init_ty_expr : span -> State.t -> (unit -> Expr.Ty.Shape.t) -> Expr.ty =
@@ -768,9 +776,9 @@ let init_ty_expr : span -> State.t -> (unit -> Expr.Ty.Shape.t) -> Expr.ty =
       | TE_Error -> ());
     result
   with
-  | exc ->
+  | e ->
     Log.error (fun log -> log "while initializing type expr at %a" Span.print span);
-    raise exc
+    Printexc.raise_with_backtrace e (Printexc.get_raw_backtrace ())
 ;;
 
 let init_error : 'a. span -> State.t -> 'a compiled_kind -> 'a =
