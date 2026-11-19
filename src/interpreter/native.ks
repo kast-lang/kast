@@ -18,7 +18,10 @@ const Native = (
     );
 
     const init_ty = (name :: &str, ty :: Ty) => (
-        init_value(&format!("type \(name)") |> as_str, Rc.new({ .shape = :Type ty, .ty = Ty.TYPE }));
+        init_value(
+            &format!("type \(name)") |> as_str,
+            Rc.new({ .shape = :Type ty, .ty = Ty.TYPE }),
+        );
     );
 
     const init_op = (name :: &str, f :: (Int, Int) -> Int) => (
@@ -31,17 +34,15 @@ const Native = (
             let result = f(a, b);
             Rc.new({ .shape = :Int result, .ty = Ty.INT })
         );
-        let ty = Rc.new({
-            .shape = :Fn Rc.new({
-                .args = (
-                    let mut args = ArrayList.new();
-                    &mut args |> ArrayList.push_back(Ty.INT);
-                    &mut args |> ArrayList.push_back(Ty.INT);
-                    args
-                ),
-                .result = Ty.INT,
-            }),
-        });
+        let ty = Ty.new_inferred(:Fn Rc.new({
+            .args = (
+                let mut args = ArrayList.new();
+                &mut args |> ArrayList.push_back(Ty.INT);
+                &mut args |> ArrayList.push_back(Ty.INT);
+                args
+            ),
+            .result = Ty.INT,
+        }));
         init_value(name, Rc.new({
             .shape = :NativeFn {
                 .name = RcStr.allocate(name),
@@ -63,16 +64,14 @@ const Native = (
             ));
             Value.UNIT
         );
-        let ty = Rc.new({
-            .shape = :Fn Rc.new({
-                .args = (
-                    let mut args = ArrayList.new();
-                    &mut args |> ArrayList.push_back(Ty.STRING);
-                    args
-                ),
-                .result = Ty.UNIT,
-            }),
-        });
+        let ty = Ty.new_inferred(:Fn Rc.new({
+            .args = (
+                let mut args = ArrayList.new();
+                &mut args |> ArrayList.push_back(Ty.STRING);
+                args
+            ),
+            .result = Ty.UNIT,
+        }));
         init_value(name, Rc.new({
             .shape = :NativeFn {
                 .name = RcStr.allocate(name),

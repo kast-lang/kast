@@ -50,21 +50,23 @@ impl TyShape as module = (
     );
 );
 
-const Ty = Rc.t[newtype {
-    .shape :: TyShape,
-}];
+const Ty = Inference.Var.t[TyShape];
 
 impl Ty as module = (
     module:
 
-    const UNIT :: Ty = Rc.new({ .shape = :Unit });
-    const BOOL :: Ty = Rc.new({ .shape = :Bool });
-    const INT :: Ty = Rc.new({ .shape = :Int });
-    const STRING :: Ty = Rc.new({ .shape = :String });
-    const TYPE :: Ty = Rc.new({ .shape = :Type });
-    const AST :: Ty = Rc.new({ .shape = :Ast });
+    const UNIT :: Ty = Inference.Var.new_inferred(:Unit);
+    const BOOL :: Ty = Inference.Var.new_inferred(:Bool);
+    const INT :: Ty = Inference.Var.new_inferred(:Int);
+    const STRING :: Ty = Inference.Var.new_inferred(:String);
+    const TYPE :: Ty = Inference.Var.new_inferred(:Type);
+    const AST :: Ty = Inference.Var.new_inferred(:Ast);
 
     const print = (self :: &Ty) => (
-        TyShape.print(&self^^.shape);
+        Inference.Var.print(self, TyShape.print);
     );
+
+    const new_inferred = Inference.Var.new_inferred[TyShape];
+    const new_not_inferred = Inference.Var.new_not_inferred[TyShape];
+    const ensure_inferred_or = Inference.Var.ensure_inferred_or[TyShape];
 );

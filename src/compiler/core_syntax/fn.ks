@@ -45,7 +45,7 @@ const compile_fn = (
     });
     {
         .shape = :Expr :Fn { .args, .body },
-        .ty = Rc.new({ .shape = :Fn ty }),
+        .ty = Ty.new_inferred(:Fn ty),
     }
 );
 

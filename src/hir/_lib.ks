@@ -8,6 +8,7 @@ use std.rc.Rc;
 
 module:
 
+use (import "./inference.ks").*;
 include "./ty.ks";
 include "./value.ks";
 include "./expr.ks";

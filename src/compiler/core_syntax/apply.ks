@@ -13,7 +13,20 @@ const compile_apply = (
         |> Ast.unwrap_child_group
         |> AstHelpers.expect_single_child(:Some "args");
     let f = compile[Expr](f_ast, .expected_ty = :None);
-    let f_ty = match f^.ty^.shape with (
+    let f_ty = &f^.ty |> Ty.ensure_inferred_or(() => (
+        let diagnostic = {
+            .severity = :Error,
+            .source = :Compiler,
+            .span = f_ast^.span,
+            .message = () => (
+                locked_output.write_str("Could not infer the type of callable");
+                Ty.print(&f^.ty);
+            ),
+            .related = ArrayList.new(),
+        };
+        Diagnostic.report_and_unwind(diagnostic)
+    ));
+    let f_ty = match f_ty^ with (
         | :Fn ref ty => ty
         | _ => (
             let diagnostic = {

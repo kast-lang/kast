@@ -45,6 +45,21 @@ const Compiler = (
         .scope = Scope.new(.parent = :None),
     };
 
+    const or_default_type = (ty :: Option.t[Ty], default :: Ty) -> { Ty, &TyShape } => (
+        let ty = ty |> Option.unwrap_or(default);
+        let ty_shape = with_return (
+            &ty |> Ty.ensure_inferred_or(() => (
+                type_check_impl(
+                    .actual = default,
+                    .expected = ty,
+                );
+                return &default
+                    |> Ty.ensure_inferred_or(() => panic("impossible"))
+            ))
+        );
+        { ty, ty_shape }
+    );
+
     const Compilable = [Self] newtype {
         .set_span :: (&mut Self, Span) -> (),
         .unit :: (.span :: Span) -> Self,
@@ -58,8 +73,8 @@ const Compiler = (
         .set_span = (...) => (),
         .unit = (.span) => { .shape = :Expr :Unit, .ty = Ty.UNIT },
         .number = (&{ .raw = ref raw }, .span, .expected_ty) => (
-            let ty = expected_ty |> Option.unwrap_or(Ty.INT);
-            let value_shape :: ValueShape = match ty^.shape with (
+            let { ty, ty_shape } = expected_ty |> or_default_type(Ty.INT);
+            let value_shape :: ValueShape = match ty_shape^ with (
                 | :Int => :Int parse(raw |> RcStr.as_str)
                 | _ => (
                     let diagnostic = {
@@ -82,8 +97,8 @@ const Compiler = (
             }
         ),
         .string = (&{ .contents, ... }, .span, .expected_ty) => (
-            let ty = expected_ty |> Option.unwrap_or(Ty.STRING);
-            let value_shape :: ValueShape = match ty^.shape with (
+            let { ty, ty_shape } = expected_ty |> or_default_type(Ty.STRING);
+            let value_shape :: ValueShape = match ty_shape^ with (
                 | :String => :String contents
                 | _ => (
                     let diagnostic = {
@@ -107,7 +122,7 @@ const Compiler = (
         ),
         .ident = (name, .span, .expected_ty) => with_return (
             let local = Scope.lookup(name, .span);
-            match local^ with (
+            let result = match local^ with (
                 | :Binding binding => {
                     .shape = :Place :Binding binding,
                     .ty = binding^.ty,
@@ -116,7 +131,15 @@ const Compiler = (
                     .shape = :Expr :Const place,
                     .ty = place^.ty,
                 }
-            )
+            );
+            if expected_ty is :Some expected_ty then (
+                type_check(
+                    .actual = result.ty,
+                    .expected = expected_ty,
+                    .span,
+                );
+            );
+            result
         ),
         .core_syntax = (core_syntax, ...args) => (
             core_syntax^.compile.any_expr(...args)
@@ -297,7 +320,8 @@ const Compiler = (
         .ident = (name, .span, .expected_ty) => (
             let ty = match expected_ty with (
                 | :Some ty => ty
-                | :None => (
+                | :None => with_return (
+                    return Ty.new_not_inferred();
                     let diagnostic = {
                         .severity = :Error,
                         .source = :Compiler,
