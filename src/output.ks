@@ -13,6 +13,7 @@ const OutputUnsync = newtype {
     .write :: &str -> (),
     .inc_indentation :: () -> (),
     .dec_indentation :: () -> (),
+    .flush :: () -> (),
 };
 
 const Output = @context OutputSync;
@@ -72,11 +73,19 @@ const locked_output = (
         );
         write_str(&escaped |> as_str);
     );
+
+    const flush = () => (
+        (@current LockedOutput)^.flush();
+    );
 );
 
-const new_std_output = (write :: &str -> (), .color :: Bool) -> OutputSync => (
+const new_std_output = (
+    .write :: &str -> (),
+    .flush :: () -> (),
+    .color :: Bool,
+) -> OutputSync => (
     let indentation_string = if color then "│  " else "    ";
-    new_output(.write, .indentation_string, .color)
+    new_output(.write, .flush, .indentation_string, .color)
 );
 
 const output_to_string = (f :: () -> ()) -> String => (
@@ -85,6 +94,7 @@ const output_to_string = (f :: () -> ()) -> String => (
         .write = s => (
             &mut result |> std.StringBuilder.add_str(s);
         ),
+        .flush = () => (),
         .indentation_string = "    ",
         .color = false,
     );
@@ -95,6 +105,7 @@ const output_to_string = (f :: () -> ()) -> String => (
 
 const new_output = (
     .write :: &str -> (),
+    .flush :: () -> (),
     .indentation_string :: &str,
     .color :: Bool,
 ) -> OutputSync => (
@@ -140,6 +151,7 @@ const new_output = (
             indentation^ -= 1;
         ),
         .write,
+        .flush,
     };
     { .inner = Rc.new(Mutex.new(unsync)) }
 );

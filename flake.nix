@@ -134,6 +134,7 @@
           RAYLIB = "${raylib}";
           RAYLIB_WEB = "${inputs.self.packages.${system}.raylib-web}/libraylib.web.a";
           CFLAGS = ''
+            -I.
             -Wfatal-errors
             -Wmissing-field-initializers
             -O1

@@ -47,7 +47,7 @@ const Repl = (
     const run_with = (
         .ruleset :: &SyntaxRuleset.t,
         .eval :: Line -> (),
-    ) => (
+    ) => with_return (
         let mut repl_number :: Int32 = 0;
         let tokenize = (contents :: &str) => (
             with Diagnostic.HandlerContext = {
@@ -108,6 +108,7 @@ const Repl = (
                 .write = s => (
                     &mut result |> StringBuilder.add_str(s);
                 ),
+                .flush = () => (),
                 .indentation_string = "    ",
                 .color = true,
             );
@@ -131,13 +132,19 @@ const Repl = (
                 .prompt = &prompt |> as_str,
                 .tokenize,
                 .highlight,
+                .handle_eof = () => (
+                    return;
+                ),
                 .handle_ctrl_c = () => (
                     ctrl_c_pressed_times += 1;
                     if ctrl_c_pressed_times == 1 then (
-                        locked_output.write_str("\nPress Ctrl-C again to exit\n");
+                        lock_output(() => (
+                            locked_output.write_str("\nPress Ctrl-C again to exit\n");
+                            locked_output.flush();
+                        ));
                         continue;
                     ) else (
-                        std.sys.exit(-1);
+                        return;
                     );
                 ),
             );

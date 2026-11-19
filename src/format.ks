@@ -227,6 +227,7 @@ const Format = (
             .write = s => (
                 std.StringBuilder.add_str(&mut result, s);
             ),
+            .flush = () => (),
             .indentation_string = "    ",
             # should depend on user setting
             .color = false,

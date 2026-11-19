@@ -14,17 +14,19 @@ use (import "./repl.ks").*;
 use (import "./run.ks").*;
 use (import "./structural_find_and_replace.ks").*;
 use (import "./tokenize.ks").*;
-use (import "./mini.ks").*;
+# use (import "./mini.ks").*;
 
 with IdGenCtx = IdGen.new();
 
 with Stdout = new_std_output(
-    std.io.stdout.write,
+    .write = std.io.stdout.write,
+    .flush = () => @native "fflush(stdout)",
     .color = Common.output_color(std.io.stdout.isatty(), :Auto),
 );
 @defer Output_drop(@current Stdout);
 with Stderr = new_std_output(
-    std.io.stderr.write,
+    .write = std.io.stderr.write,
+    .flush = () => @native "fflush(stderr)",
     .color = Common.output_color(std.io.stderr.isatty(), :Auto),
 );
 @defer Output_drop(@current Stderr);
@@ -46,7 +48,7 @@ const Args = (
         | :StructuralFindAndReplace StructuralFindAndReplace.Args.t
         | :Repl Repl.Args.t
         | :Run Run.Args.t
-        | :Mini Mini.Args.t
+        # | :Mini Mini.Args.t
     );
 
     const t = newtype {
@@ -87,16 +89,16 @@ const Args = (
                 if arg == "find-ast" then (
                     unwind subcommand (:StructuralFindAndReplace StructuralFindAndReplace.Args.parse(i + 1, .fix_syntax = :None));
                 );
-                @comment_out (
-                    if arg == "repl" then (
-                        unwind subcommand (:Repl Repl.Args.parse(i + 1));
-                    );
-                    if arg == "run" then (
-                        unwind subcommand (:Run Run.Args.parse(i + 1));
-                    );
+                if arg == "repl" then (
+                    unwind subcommand (:Repl Repl.Args.parse(i + 1));
                 );
-                if arg == "mini" then (
-                    unwind subcommand (:Mini Mini.Args.parse(i + 1));
+                if arg == "run" then (
+                    unwind subcommand (:Run Run.Args.parse(i + 1));
+                );
+                @comment_out (
+                    if arg == "mini" then (
+                        unwind subcommand (:Mini Mini.Args.parse(i + 1));
+                    );
                 );
                 &mut common |> Common.Args.parse_arg(&mut i);
             );
@@ -112,12 +114,14 @@ const Args = (
 let { .common = common_args, .subcommand } = Args.parse();
 
 with Stdout = new_std_output(
-    std.io.stdout.write,
+    .write = std.io.stdout.write,
+    .flush = () => @native "fflush(stdout)",
     .color = Common.output_color(std.io.stdout.isatty(), common_args.color),
 );
 @defer Output_drop(@current Stdout);
 with Stderr = new_std_output(
-    std.io.stderr.write,
+    .write = std.io.stderr.write,
+    .flush = () => @native "fflush(stderr)",
     .color = Common.output_color(std.io.stderr.isatty(), common_args.color),
 );
 @defer Output_drop(@current Stderr);
@@ -136,5 +140,5 @@ match subcommand with (
     | :StructuralFindAndReplace args => StructuralFindAndReplace.run(common_args, args)
     | :Repl args => Repl.run(common_args, args)
     | :Run args => Run.run(common_args, args)
-    | :Mini args => Mini.run(common_args, args)
+    # | :Mini args => Mini.run(common_args, args)
 );

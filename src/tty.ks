@@ -74,10 +74,11 @@ const tty = (
     );
 
     const ContextT = newtype {
-        .last_read :: RcStr,
+        .debug_last_read :: RcStr,
         .read_buffer :: Queue.t[Input],
         .write_buffer :: StringBuilder.t,
         .handle_ctrl_c :: () -> (),
+        .handle_eof :: () -> (),
         .cursor_position_report :: Option.t[type { Int32, Int32 }],
     };
     const Context = @context ContextT;
@@ -222,21 +223,25 @@ const tty = (
         let buf_size :: Int32 = 1024;
         let buffer :: @opaque_type "char*" = @native "Kast_allocate_raw(\(buf_size))";
         let read :: Int32 = @native "read(fileno(stdin), \(buffer), \(buf_size))";
+        if read < 0 then panic("read interrupted by signal");
         if read == 0 then panic("failed to read stdin");
         let data :: String = @native "String_from_raw_parts(\(buffer), \(read))";
         let data = RcStr.from_String(data);
-        ctx^.last_read = RcStr.from_String(format!("\(ctx^.last_read)\(data)"));
-        while &ctx^.last_read |> RcStr.length > 40 do (
-            let c = &ctx^.last_read |> RcStr.at(0);
+        ctx^.debug_last_read = RcStr.from_String(format!("\(ctx^.debug_last_read)\(data)"));
+        while &ctx^.debug_last_read |> RcStr.length > 40 do (
+            let c = &ctx^.debug_last_read |> RcStr.at(0);
             let i = Char.string_encoding_len(c);
-            ctx^.last_read = &ctx^.last_read
-                |> RcStr.substring(i, RcStr.length(&ctx^.last_read) - i);
+            ctx^.debug_last_read = &ctx^.debug_last_read
+                |> RcStr.substring(i, RcStr.length(&ctx^.debug_last_read) - i);
         );
         with raw.Context = { .data };
         while raw.peek() is :Some c do (
             if c == '\x03' then (
                 raw.advance();
                 ctx^.handle_ctrl_c();
+            ) else if c == '\x04' then (
+                raw.advance();
+                ctx^.handle_eof();
             ) else if c == '\r' or c == '\n' then (
                 raw.advance();
                 push_input(Input.new(:Enter));
@@ -426,14 +431,19 @@ const tty = (
     const run = [T] (
         f :: () -> T,
         .handle_ctrl_c :: () -> (),
+        .handle_eof :: () -> (),
     ) -> T => (
         # setup raw mode
+        # https://viewsourcecode.org/snaptoken/kilo/02.enteringRawMode.html
         @native "#include <termios.h>";
         let orig_termios :: @opaque_type "struct termios" = @native "#uninitialized";
         @native ''{
             tcgetattr(STDIN_FILENO, \(&orig_termios));
             struct termios raw = \(orig_termios);
-            raw.c_lflag &= ~(ICANON | ECHO);
+            raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+            /* raw.c_oflag &= ~(OPOST); */
+            raw.c_cflag |= (CS8);
+            raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
             raw.c_cc[VMIN] = 1;
             raw.c_cc[VTIME] = 0;
             tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
@@ -443,7 +453,8 @@ const tty = (
 
         with Context = {
             .handle_ctrl_c,
-            .last_read = RcStr.allocate(""),
+            .handle_eof,
+            .debug_last_read = RcStr.allocate(""),
             .read_buffer = Queue.new(),
             .write_buffer = StringBuilder.new(),
             .cursor_position_report = :None,

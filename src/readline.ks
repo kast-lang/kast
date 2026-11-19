@@ -238,7 +238,7 @@ const Readline = (
             if DEBUG then (
                 # dbg.print writes directly to stderr so need to flush first
                 tty.flush();
-                dbg.print((@current tty.Context).last_read);
+                dbg.print((@current tty.Context).debug_last_read);
                 dbg.print(input);
             );
             tty.move_cursor_to(...cursor_pos);
@@ -258,6 +258,7 @@ const Readline = (
         .tokenize :: &str -> ArrayList.t[Range],
         .highlight :: &str -> String,
         .handle_ctrl_c :: () -> (),
+        .handle_eof :: () -> (),
     ) -> String => (
         tty.run(
             () => (
@@ -271,6 +272,7 @@ const Readline = (
                 read_line_impl()
             ),
             .handle_ctrl_c,
+            .handle_eof,
         )
     );
 );
