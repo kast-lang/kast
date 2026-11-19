@@ -3154,6 +3154,7 @@ module Impl = struct
         let token_var = gen_name "unwindable_token" in
         let token_ty = ty_repr token.data.signature.ty in
         let_var
+          ~drop:false
           token_ty
           token_var
           (Some
@@ -3208,7 +3209,7 @@ module Impl = struct
              });
         unwind_ctx.return ();
         insert_stmt (S_GotoLabel label_result);
-        Some (claim_c result_place expr.data.signature.ty)
+        Some (E_Pure (Pure_Copy result_place))
         (* let token_ident = gen_name "token" in *)
         (* Unwindable *)
         (*   { token_ident *)
