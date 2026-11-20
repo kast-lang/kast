@@ -7,8 +7,29 @@ const ValueShape = newtype (
     | :String RcStr
     | :Type Ty
     | :Fn Fn
+    | :Tuple TupleValue
     | :NativeFn NativeFn
     | :Ast Ast.t
+);
+
+const TupleValue = newtype {
+    .fields :: Tuple.t[Place],
+};
+
+impl TupleValue as module = (
+    module:
+
+    const print = (self :: &TupleValue) => (
+        Tuple.print(
+            &self^.fields,
+            .open = "{",
+            .close = "}",
+            .delimiter = ",",
+            .before_field_name = ".",
+            .after_field_name = " = ",
+            .print_value = Place.print,
+        );
+    );
 );
 
 const Fn = newtype {
@@ -37,6 +58,7 @@ impl ValueShape as module = (
             | :Fn _ => (
                 locked_output.write_str("<fn>");
             )
+            | :Tuple ref t => TupleValue.print(t)
             | :NativeFn ref f => (
                 locked_output.write_str("<native ");
                 locked_output.write(&f^.name);

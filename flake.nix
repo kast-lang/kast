@@ -85,6 +85,9 @@
             (pkgs.writeShellScriptBin "kast" ''
               record-logs kast ./target/kast.exe "$@"
             '')
+            (pkgs.writeShellScriptBin "kast-release" ''
+              record-logs kast ./target/kast-release.exe "$@"
+            '')
             (faketty.overrideAttrs (final: prev: {
               src = pkgs.fetchFromGitHub {
                 owner = "kuviman";

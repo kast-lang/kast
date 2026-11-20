@@ -12,6 +12,10 @@ const ExprShape = newtype (
     | :Then ArrayList.t[Expr]
     | :Fn { .args :: ArrayList.t[Pattern], .body :: Expr }
     | :Apply { .f :: Expr, .args :: ArrayList.t[Expr] }
+    | :Module {
+        .body :: Expr,
+        .bindings :: ArrayList.t[Binding],
+    }
     | :Scope Expr
     | :Quote QuoteExpr.t
 );
@@ -57,6 +61,11 @@ const PlaceExprShape = newtype (
     | :Temp Expr
     | :Binding Binding
     | :Scope PlaceExpr
+    | :Field {
+        .obj :: PlaceExpr,
+        .field :: RcStr,
+    }
+    | :Const Place
 );
 
 const PlaceExpr = Rc.t[newtype {

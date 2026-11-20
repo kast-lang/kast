@@ -26,6 +26,26 @@ const type_check = (
     type_check_impl(.actual, .expected)
 );
 
+const type_check_fn = (
+    .actual :: &FnTy,
+    .expected :: &FnTy,
+) => (
+    let fail = () => (@current TypeCheckContext).fail(() => (
+        locked_output.write_str("TODO type check fn");
+    ));
+    fail();
+);
+
+const type_check_tuple = (
+    .actual :: &TupleTy,
+    .expected :: &TupleTy,
+) => (
+    let fail = () => (@current TypeCheckContext).fail(() => (
+        locked_output.write_str("TODO type check tuple");
+    ));
+    fail();
+);
+
 const type_check_impl = (
     .actual :: Ty,
     .expected :: Ty,
@@ -42,9 +62,30 @@ const type_check_impl = (
             | { &(:Unit), &(:Unit) } => ()
             | { &(:Unit), _ } => fail()
             | { _, &(:Unit) } => fail()
+            | { &(:Bool), &(:Bool) } => ()
+            | { &(:Bool), _ } => fail()
+            | { _, &(:Bool) } => fail()
             | { &(:Int), &(:Int) } => ()
             | { &(:Int), _ } => fail()
             | { _, &(:Int) } => fail()
+            | { &(:String), &(:String) } => ()
+            | { &(:String), _ } => fail()
+            | { _, &(:String) } => fail()
+            | { &(:Ast), &(:Ast) } => ()
+            | { &(:Ast), _ } => fail()
+            | { _, &(:Ast) } => fail()
+            | { &(:Fn ref a), &(:Fn ref b) } => type_check_fn(
+                .actual = a,
+                .expected = b,
+            )
+            | { &(:Fn _), _ } => fail()
+            | { _, &(:Fn _) } => fail()
+            | { &(:Tuple ref a), &(:Tuple ref b) } => type_check_tuple(
+                .actual = a,
+                .expected = b,
+            )
+            | { &(:Tuple _), _ } => fail()
+            | { _, &(:Tuple _) } => fail()
             | { &(:Type), &(:Type) } => ()
             | { &(:Type), _ } => fail()
             | { _, &(:Type) } => fail()

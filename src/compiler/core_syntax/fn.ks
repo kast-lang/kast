@@ -30,7 +30,10 @@ const compile_fn = (
         |> Tuple.get_named(&RcStr.allocate("body"))
         |> Ast.unwrap_child_value;
     let body = (
-        with Scope.Context = Scope.new(.parent = :Some (@current Scope.Context));
+        with Scope.Context = Scope.new(
+            .parent = :Some (@current Scope.Context),
+            .recursive = false,
+        );
         for arg in &args |> ArrayList.iter do (
             Scope.inject_pattern_bindings(arg);
         );

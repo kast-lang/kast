@@ -3,4 +3,5 @@ const Binding = Rc.t[newtype {
     .name :: RcStr,
     .ty :: Ty,
     .mutable :: Bool,
+    .span :: Span,
 }];

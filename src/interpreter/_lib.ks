@@ -68,6 +68,38 @@ const Interpreter = (
         place^^.state = :Occupied value;
     );
 
+    const get_field = (
+        place :: &Place,
+        field :: &RcStr,
+        .span :: Span,
+    ) -> Place => (
+        let value = read_place(place, .span);
+        let field_doesnt_exist = () => (
+            let diagnostic = {
+                .severity = :Error,
+                .source = :Internal,
+                .span,
+                .message = () => (
+                    locked_output.write_str("No field ");
+                    locked_output.write(field);
+                    locked_output.write_str(" in ");
+                    Value.print(&value);
+                ),
+                .related = ArrayList.new(),
+            };
+            Diagnostic.report_and_unwind(diagnostic)
+        );
+        match value^.shape with (
+            | :Tuple ref tuple => (
+                match &tuple^.fields |> Tuple.get_named_opt(field) with (
+                    | :Some &field_place => field_place
+                    | :None => field_doesnt_exist()
+                )
+            )
+            | _ => field_doesnt_exist()
+        )
+    );
+
     const eval_place = (expr :: &PlaceExpr) -> Place => (
         let span = expr^^.span;
         let result = match expr^^.shape with (
@@ -76,6 +108,20 @@ const Interpreter = (
             )
             | :Binding ref binding => (
                 Scope.get(binding, .span)
+            )
+            | :Scope ref expr => (
+                with Scope.Context = Scope.new(
+                    .parent = :Some (@current Scope.Context),
+                );
+                eval_place(expr)
+            )
+            | :Const place => place
+            | :Field {
+                .obj = ref obj,
+                .field = ref field,
+            } => (
+                let obj = eval_place(obj);
+                get_field(&obj, field, .span)
             )
         );
         result
@@ -218,13 +264,34 @@ const Interpreter = (
                 apply(f, args, .caller = span)
             )
             | :Scope ref body => (
-                with Scope.Context = Scope.new(.parent = :Some (@current Scope.Context));
+                with Scope.Context = Scope.new(
+                    .parent = :Some (@current Scope.Context),
+                );
                 eval(body)
             )
             | :Quote ref quote_expr => Rc.new({
                 .shape = :Ast quote(quote_expr),
                 .ty = Ty.AST,
             })
+            | :Module ref module_expr => (
+                with Scope.Context = Scope.new(
+                    .parent = :Some (@current Scope.Context),
+                );
+                eval(&module_expr^.body);
+                let mut fields = Tuple.new();
+                for binding in &module_expr^.bindings |> ArrayList.iter do (
+                    &mut fields |> Tuple.add_named(
+                        binding^^.name,
+                        Scope.get(binding, .span = binding^^.span),
+                    );
+                );
+                Rc.new({
+                    .shape = :Tuple {
+                        .fields,
+                    },
+                    .ty = expr^^.ty,
+                })
+            )
         );
         result
     );

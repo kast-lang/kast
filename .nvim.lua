@@ -1,3 +1,3 @@
 vim.lsp.config("kast", {
-    cmd = { "./target/kast-release.exe" }
+    cmd = { "kast-release", "lsp" }
 })

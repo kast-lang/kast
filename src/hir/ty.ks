@@ -5,7 +5,28 @@ const TyShape = newtype (
     | :String
     | :Type
     | :Fn FnTy
+    | :Tuple TupleTy
     | :Ast
+);
+
+const TupleTy = Rc.t[newtype {
+    .fields :: Tuple.t[Ty],
+}];
+
+impl TupleTy as module = (
+    module:
+
+    const print = (self :: &TupleTy) => (
+        Tuple.print(
+            &self^^.fields,
+            .open = "{",
+            .close = "}",
+            .delimiter = ",",
+            .before_field_name = ".",
+            .after_field_name = " :: ",
+            .print_value = Ty.print,
+        );
+    );
 );
 
 const FnTy = Rc.t[newtype {
@@ -45,6 +66,7 @@ impl TyShape as module = (
             | :String => locked_output.write_str("String")
             | :Type => locked_output.write_str("Type")
             | :Fn ref f => FnTy.print(f)
+            | :Tuple ref t => TupleTy.print(t)
             | :Ast => locked_output.write_str("Ast")
         );
     );

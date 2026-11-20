@@ -1,7 +1,5 @@
 module:
 
-const Int = Int32;
-
 const fib = (n :: Int) -> Int => (
     if n < 2 then (
         1
@@ -10,4 +8,4 @@ const fib = (n :: Int) -> Int => (
     )
 );
 
-dbg.print(fib(10));
+fib(10);

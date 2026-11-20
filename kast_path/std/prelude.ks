@@ -17,4 +17,10 @@ impl syntax ($a - $b) = `(sub($a, $b));
 impl syntax ($a * $b) = `(mul($a, $b));
 impl syntax ($a / $b) = `(div($a, $b));
 
-const print :: String -> () = @native "print";
+const io = (
+    module:
+
+    const print :: String -> () = @native "print";
+);
+
+const print = io.print;

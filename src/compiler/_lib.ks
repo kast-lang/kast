@@ -42,7 +42,10 @@ const Compiler = (
             .core_syntax = CoreSyntax.init(),
             .custom_syntax = OrdMap.new(),
         },
-        .scope = Scope.new(.parent = :None),
+        .scope = Scope.new(
+            .parent = :None,
+            .recursive = false,
+        ),
     };
 
     const or_default_type = (ty :: Option.t[Ty], default :: Ty) -> { Ty, &TyShape } => (
@@ -122,7 +125,7 @@ const Compiler = (
         ),
         .ident = (name, .span, .expected_ty) => with_return (
             let local = Scope.lookup(name, .span);
-            let result = match local^ with (
+            let result = match local^.shape with (
                 | :Binding binding => {
                     .shape = :Place :Binding binding,
                     .ty = binding^.ty,
@@ -270,7 +273,7 @@ const Compiler = (
         ),
         .ident = (name, .span, .expected_ty) => (
             let local = Scope.lookup(name, .span);
-            match local^ with (
+            match local^.shape with (
                 | :Binding binding => (
                     if not binding^.mutable then (
                         let diagnostic = {
@@ -281,7 +284,17 @@ const Compiler = (
                                 locked_output.write(&binding^.name);
                                 locked_output.write_str(" is not mutable");
                             ),
-                            .related = ArrayList.new(),
+                            .related = (
+                                let mut list = ArrayList.new();
+                                &mut list |> ArrayList.push_back({
+                                    .message = () => (
+                                        locked_output.write(name);
+                                        locked_output.write_str(" is defined here");
+                                    ),
+                                    .span = local^.binding^.span,
+                                });
+                                list
+                            ),
                         };
                         Diagnostic.report_and_unwind(diagnostic)
                     );
@@ -297,9 +310,21 @@ const Compiler = (
                         .source = :Compiler,
                         .span,
                         .message = () => (
-                            locked_output.write_str("Can't assign to a constant");
+                            locked_output.write_str("Can't assign to ");
+                            locked_output.write(name);
+                            locked_output.write_str(" since it is a constant");
                         ),
-                        .related = ArrayList.new(),
+                        .related = (
+                            let mut list = ArrayList.new();
+                            &mut list |> ArrayList.push_back({
+                                .message = () => (
+                                    locked_output.write(name);
+                                    locked_output.write_str(" is defined here");
+                                ),
+                                .span = local^.binding^.span,
+                            });
+                            list
+                        ),
                     };
                     Diagnostic.report_and_unwind(diagnostic)
                 )
@@ -339,6 +364,7 @@ const Compiler = (
                 .name = name^,
                 .ty,
                 .mutable = @current InMut,
+                .span,
             });
             Rc.new({
                 .shape = :Binding binding,

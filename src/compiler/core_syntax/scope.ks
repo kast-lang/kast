@@ -15,7 +15,10 @@ impl AnyExpr as CompileTrait = {
         .body :: &Ast.t,
         .expected_ty :: Option.t[Ty],
     ) => (
-        with Scope.Context = Scope.new(.parent = :Some (@current Scope.Context));
+        with Scope.Context = Scope.new(
+            .parent = :Some (@current Scope.Context),
+            .recursive = false,
+        );
         let body_span = body^.span;
         let body = compile[AnyExpr](body, .expected_ty);
         {

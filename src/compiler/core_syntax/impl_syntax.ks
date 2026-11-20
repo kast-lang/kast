@@ -10,14 +10,16 @@ const M = (
     const inject_ast_bindings = (ast :: &Ast.t) => with_return (
         if ast^.shape^ is :Rule { .rule = ref rule, .root = ref root } then (
             if &rule^^.name |> RcStr.as_str == "core:unquote" then (
-                let name = root
-                    |> AstHelpers.expect_single_child(:None)
+                let name_ast = root
+                    |> AstHelpers.expect_single_child(:None);
+                let name = name_ast
                     |> AstHelpers.expect_ident;
                 let binding :: Binding = Rc.new({
                     .id = Id.gen(),
                     .name,
                     .ty = Ty.AST,
                     .mutable = false,
+                    .span = name_ast^.span,
                 });
                 Scope.inject_binding(&binding);
                 &mut (@current Context).bindings |> OrdMap.add(name, binding);
@@ -55,7 +57,10 @@ const compile_impl_syntax = (
     with M.Context = {
         .bindings = OrdMap.new(),
     };
-    with Scope.Context = Scope.new(.parent = :Some (@current Scope.Context));
+    with Scope.Context = Scope.new(
+        .parent = :Some (@current Scope.Context),
+        .recursive = false,
+    );
     let { rule, pattern_root } = match pattern^.shape^ with (
         | :Rule { .rule = ref rule, .root = ref root } => (
             M.inject_group_bindings(root);

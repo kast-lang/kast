@@ -32,6 +32,8 @@ const CoreSyntax = (
         add(&mut map, import "./scope.ks");
         add(&mut map, import "./impl_syntax.ks");
         add(&mut map, import "./mut.ks");
+        add(&mut map, import "./module.ks");
+        add(&mut map, import "./field.ks");
         map
     );
 );

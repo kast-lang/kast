@@ -10,7 +10,9 @@ const Scope = (
         .locals :: OrdMap.t[Id, Place],
     }];
 
-    const new = (.parent :: Option.t[Scope.t]) -> Scope.t => Rc.new({
+    const new = (
+        .parent :: Option.t[Scope.t],
+    ) -> Scope.t => Rc.new({
         .parent,
         .locals = OrdMap.new(),
     });

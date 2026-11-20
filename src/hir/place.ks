@@ -13,6 +13,20 @@ const Place = Rc.t[newtype {
 impl Place as module = (
     module:
 
+    const print = (self :: &Place) => (
+        match self^^.state with (
+            | :Uninitialized => (
+                locked_output.write_str("<uninitialized>");
+            )
+            | :Occupied ref value => (
+                Value.print(value);
+            )
+            | :MovedOut => (
+                locked_output.write_str("<moved out>");
+            )
+        );
+    );
+
     const uninitialized = (.ty :: Ty) -> Place => Rc.new({
         .id = Id.gen(),
         .state = :Uninitialized,
