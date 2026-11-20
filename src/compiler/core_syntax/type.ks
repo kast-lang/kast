@@ -5,11 +5,7 @@ const compile_type = (
     .root :: &Ast.Group,
 ) -> TyExpr => (
     Rc.new({
-        .shape = :Expr Rc.new({
-            .shape = :Const Place.init(Rc.new({ .shape = :Type Ty.TYPE, .ty = Ty.TYPE })),
-            .ty = Ty.TYPE,
-            .span = ast^.span,
-        }),
+        .shape = :Const Ty.TYPE,
         .span = ast^.span,
     })
 );
