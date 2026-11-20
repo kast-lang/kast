@@ -9,6 +9,7 @@ use (import "../parser.ks").*;
 use (import "../compiler/_lib.ks").*;
 use (import "../interpreter/_lib.ks").*;
 use (import "../hir/_lib.ks").*;
+use std.rc.Rc;
 
 module:
 
@@ -135,7 +136,7 @@ const Common = (
         let ruleset = default_syntax_ruleset();
         let { .compiler, .state = mut compiler_state, .scope } = Compiler.init();
         with Compiler.Context = compiler;
-        with Compiler.StateContext = &mut compiler_state;
+        with Compiler.StateContext = Rc.new(compiler_state);
         with Compiler.Scope.Context = scope;
         with Compiler.InMut = false;
         let { .interpreter, .state = interpreter_state, .scope } = Interpreter.init();

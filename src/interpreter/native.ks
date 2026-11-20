@@ -24,6 +24,34 @@ const Native = (
         );
     );
 
+    const init_cmp_op = (name :: &str, f :: (Int, Int) -> Bool) => (
+        let @"impl" = @move (args :: ArrayList.t[ValueWithSpan], .caller :: Span) -> Value => (
+            if &args |> ArrayList.length != 2 then (
+                panic("Expected 2 args");
+            );
+            let a = args.[0] |> expect_value.with_span.into_int;
+            let b = args.[1] |> expect_value.with_span.into_int;
+            let result = f(a, b);
+            Rc.new({ .shape = :Bool result, .ty = Ty.BOOL })
+        );
+        let ty = Ty.new_inferred(:Fn Rc.new({
+            .args = (
+                let mut args = ArrayList.new();
+                &mut args |> ArrayList.push_back(Ty.INT);
+                &mut args |> ArrayList.push_back(Ty.INT);
+                args
+            ),
+            .result = Ty.BOOL,
+        }));
+        init_value(name, Rc.new({
+            .shape = :NativeFn {
+                .name = RcStr.allocate(name),
+                .@"impl",
+            },
+            .ty,
+        }))
+    );
+
     const init_op = (name :: &str, f :: (Int, Int) -> Int) => (
         let @"impl" = @move (args :: ArrayList.t[ValueWithSpan], .caller :: Span) -> Value => (
             if &args |> ArrayList.length != 2 then (
@@ -81,6 +109,33 @@ const Native = (
         }))
     );
 
+    const init_debug_print = () => (
+        let name = "debug.print";
+        let @"impl" = @move (args :: ArrayList.t[ValueWithSpan], .caller :: Span) -> Value => (
+            lock_output(() => (
+                for arg in args |> ArrayList.into_iter do (
+                    Value.print(&arg.0);
+                );
+            ));
+            Value.UNIT
+        );
+        let ty = Ty.new_inferred(:Fn Rc.new({
+            .args = (
+                let mut args = ArrayList.new();
+                &mut args |> ArrayList.push_back(Ty.INT);
+                args
+            ),
+            .result = Ty.UNIT,
+        }));
+        init_value(name, Rc.new({
+            .shape = :NativeFn {
+                .name = RcStr.allocate(name),
+                .@"impl",
+            },
+            .ty,
+        }))
+    );
+
     const init = () -> Map => (
         let mut map = OrdMap.new();
         with InitContext = &mut map;
@@ -95,7 +150,14 @@ const Native = (
         init_op("-", (a, b) => a - b);
         init_op("*", (a, b) => a * b);
         init_op("/", (a, b) => a / b);
+        init_cmp_op("<", (a, b) => a < b);
+        init_cmp_op("<=", (a, b) => a <= b);
+        init_cmp_op("==", (a, b) => a == b);
+        init_cmp_op("!=", (a, b) => a != b);
+        init_cmp_op(">=", (a, b) => a >= b);
+        init_cmp_op(">", (a, b) => a > b);
         init_print();
+        init_debug_print();
         map
     );
 

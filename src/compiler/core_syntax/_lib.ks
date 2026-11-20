@@ -34,6 +34,7 @@ const CoreSyntax = (
         add(&mut map, import "./mut.ks");
         add(&mut map, import "./module.ks");
         add(&mut map, import "./field.ks");
+        add(&mut map, import "./if.ks");
         map
     );
 );

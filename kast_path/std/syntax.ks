@@ -43,8 +43,8 @@
 @syntax "core:fn" 7 @wrap never = move=("@move" " ")? raw_fn=("fn" " ")? call_convention=("@call" " " _: >= 5000 " ")? async=("async" _=("=" value)? " ")? args " " context=("with" " " _ " ")? result=("->" " " _ " " _=("with" " " context " ")?)? "=>" " " body;
 @syntax "comptime_only" 7.1 @wrap never = "@comptime_only" " " _;
 
-@syntax "if_without_else" 7.5 @wrap never = "if" " " cond " " "then" " " then_case;
-@syntax "core:if" 7.5 @wrap never = "if" " " cond " " "then" " " then_case " " "else" " " else_case ->;
+@syntax "if_without_else" 7.5 @wrap never = "if" " " condition " " "then" " " then_case;
+@syntax "core:if" 7.5 @wrap never = "if" " " condition " " "then" " " then_case " " "else" " " else_case ->;
 @syntax "if_is" 7.5 @wrap never = "if" " " value " " "is" " " pattern " " "then" " " body;
 @syntax "if_is_else" 7.5 @wrap never = "if" " " value " " "is" " " pattern " " "then" " " body " " "else" " " else_body ->;
 @syntax "core:match" 7.5 @wrap if_any = "match" " " value " " "with" " " "(" " "/"\n\t" branches:any " "/"\\\n" ")";

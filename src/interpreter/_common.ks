@@ -6,6 +6,7 @@ use (import "../output.ks").*;
 use (import "../rc_str.ks").*;
 use (import "../diagnostic.ks").*;
 use (import "../hir/_lib.ks").*;
+use (import "../lazy.ks").*;
 use std.rc.Rc;
 
 const impl_value_into = (
@@ -47,6 +48,7 @@ use (import "../token.ks").*;
 use (import "../tuple.ks").*;
 use (import "../hir/_lib.ks").*;
 use (import "../rc_str.ks").*;
+use (import "../lazy.ks").*;
 use std.collections.OrdMap;
 use std.rc.Rc;
 
@@ -54,6 +56,7 @@ const expect_value = (
     module:
 
     const into_int = include_ast impl_value_into("Int", Int, `(Int));
+    const into_bool = include_ast impl_value_into("Bool", Bool, `(Bool));
     const into_string = include_ast impl_value_into("String", RcStr, `(String));
     const into_type = include_ast impl_value_into("Type", Ty, `(Type));
     const into_ast = include_ast impl_value_into("Ast", Ast.t, `(Ast));

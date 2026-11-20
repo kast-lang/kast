@@ -10,11 +10,22 @@ const ExprShape = newtype (
     | :Native RcStr
     | :Stmt Expr
     | :Then ArrayList.t[Expr]
-    | :Fn { .args :: ArrayList.t[Pattern], .body :: Expr }
-    | :Apply { .f :: Expr, .args :: ArrayList.t[Expr] }
+    | :Fn {
+        .args :: ArrayList.t[Pattern],
+        .body :: Lazy.t[Expr],
+    }
+    | :Apply {
+        .f :: Expr,
+        .args :: ArrayList.t[Expr],
+    }
     | :Module {
         .body :: Expr,
         .bindings :: ArrayList.t[Binding],
+    }
+    | :If {
+        .condition :: Expr,
+        .then_case :: Expr,
+        .else_case :: Expr,
     }
     | :Scope Expr
     | :Quote QuoteExpr.t

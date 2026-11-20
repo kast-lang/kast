@@ -192,7 +192,7 @@ const Interpreter = (
                     let arg_pattern = &f^.args |> ArrayList.at(i);
                     pattern_match_and_inject_bindings(arg_pattern, Place.init(arg));
                 );
-                eval(&f^.body)
+                eval(Lazy.force(&f^.body))
             )
             | :NativeFn native => (
                 native.@"impl"(args, .caller)
@@ -291,6 +291,19 @@ const Interpreter = (
                     },
                     .ty = expr^^.ty,
                 })
+            )
+            | :If {
+                .condition = ref condition,
+                .then_case = ref then_case,
+                .else_case = ref else_case,
+            } => (
+                let condition = eval(condition)
+                    |> expect_value.into_bool(.span = condition^^.span);
+                if condition then (
+                    eval(then_case)
+                ) else (
+                    eval(else_case)
+                )
             )
         );
         result

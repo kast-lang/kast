@@ -17,7 +17,7 @@ const Compiler = (
         .custom_syntax :: OrdMap.t[RcStr, CustomSyntax],
     };
 
-    const StateContext = @context type (&mut State);
+    const StateContext = @context type (Rc.t[State]);
     const Context = CompilerContext;
     const InMut = super.InMut;
 

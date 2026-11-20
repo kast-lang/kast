@@ -25,6 +25,9 @@ const compile_fn = (
                 |> Ast.unwrap_child_group
                 |> AstHelpers.expect_single_child(:None);
             eval_ast_as_type(result_type_ast)
+        ))
+        |> Option.unwrap_or_else(() => (
+            Ty.new_not_inferred()
         ));
     let body_ast = &root^.children
         |> Tuple.get_named(&RcStr.allocate("body"))
@@ -37,14 +40,17 @@ const compile_fn = (
         for arg in &args |> ArrayList.iter do (
             Scope.inject_pattern_bindings(arg);
         );
-        compile[Expr](body_ast, .expected_ty = result_type)
+        let body_ast = body_ast^;
+        Lazy.new(@move () => (
+            compile[Expr](&body_ast, .expected_ty = :Some result_type)
+        ))
     );
     let ty :: FnTy = Rc.new({
         .args = &args
             |> ArrayList.iter
             |> std.iter.map(pattern => pattern^^.ty)
             |> ArrayList.from_iter,
-        .result = body^.ty,
+        .result = result_type,
     });
     {
         .shape = :Expr :Fn { .args, .body },

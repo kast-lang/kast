@@ -116,11 +116,11 @@
         "tcc-overlay": "tcc-overlay"
       },
       "locked": {
-        "lastModified": 1795083632,
-        "narHash": "sha256-uavS8APQJD316mRMZX89fybPeEmNFZ524jHya7YFW7U=",
+        "lastModified": 1795175672,
+        "narHash": "sha256-Ok/FLBokpQqXTfhSrIToOnt5PYyJOV0xWGqmdiLHJE4=",
         "owner": "kast-lang",
         "repo": "kast",
-        "rev": "5d89d2527520694ea9d492b44b43383116aad16a",
+        "rev": "033af001a585001ae0a7a3feaff5cff420c80339",
         "type": "github"
       },
       "original": {

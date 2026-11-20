@@ -12,6 +12,7 @@ use (import "../output.ks").*;
 use (import "../hir/_lib.ks").*;
 use (import "../interpreter/_lib.ks").*;
 use (import "../mini/ast_helpers.ks").*;
+use (import "../lazy.ks").*;
 use std.collections.OrdMap;
 use std.rc.Rc;
 

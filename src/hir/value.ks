@@ -34,7 +34,7 @@ impl TupleValue as module = (
 
 const Fn = newtype {
     .args :: ArrayList.t[Pattern],
-    .body :: Expr,
+    .body :: Lazy.t[Expr],
 };
 
 const NativeFn = newtype {

@@ -8,4 +8,5 @@ const fib = (n :: Int) -> Int => (
     )
 );
 
-fib(10);
+debug.print(fib(10));
+print("\n");
