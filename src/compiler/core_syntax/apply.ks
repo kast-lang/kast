@@ -20,7 +20,6 @@ const compile_apply = (
             .span = f_ast^.span,
             .message = () => (
                 locked_output.write_str("Could not infer the type of callable");
-                Ty.print(&f^.ty);
             ),
             .related = ArrayList.new(),
         };

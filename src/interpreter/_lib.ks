@@ -17,7 +17,7 @@ const Interpreter = (
         .natives :: Native.Map,
     };
 
-    const StateContext = @context State;
+    const StateContext = @context Rc.t[State];
     const Context = InterpreterContext;
 
     const init = () -> {
@@ -234,7 +234,7 @@ const Interpreter = (
                 .ty = Ty.TYPE,
             })
             | :Native ref s => (
-                Native.get(&(@current StateContext).natives, s, expr^^.ty, .span)
+                Native.get(&(@current StateContext)^.natives, s, expr^^.ty, .span)
             )
             | :Stmt ref expr => (
                 let ignored = eval(expr);

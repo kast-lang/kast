@@ -141,7 +141,7 @@ const Common = (
         with Compiler.InMut = false;
         let { .interpreter, .state = interpreter_state, .scope } = Interpreter.init();
         with Interpreter.Context = interpreter;
-        with Interpreter.StateContext = interpreter_state;
+        with Interpreter.StateContext = Rc.new(interpreter_state);
         with Interpreter.Scope.Context = scope;
         (
             # Prelude
