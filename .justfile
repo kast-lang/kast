@@ -13,6 +13,10 @@ build continuous="" main="src/cli/_main.ks" name="kast":
         --post-compile-cmd 'just post-build target/{{name}}.c target/{{name}}.exe' \
         {{main}}
 
+build-release:
+    CFLAGS='-g -O3 -lbacktrace' just build
+    cp target/kast.exe target/kast-release.exe
+
 post-build src="target/kast.c" out="target/kast.exe":
     ${KAST_BIN:-kast-bootstrap} cc {{src}} -o {{out}}
 
