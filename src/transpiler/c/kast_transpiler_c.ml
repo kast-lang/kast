@@ -771,7 +771,11 @@ module Impl = struct
               | Types.T_UnwindToken _ -> copy
               | Types.T_Target -> copy
               | Types.T_ContextTy -> copy
-              | Types.T_ImplicitContext -> copy
+              | Types.T_ImplicitContext ->
+                E_Apply
+                  { f = Pure_Native [ N_Raw "Context_claim" ]
+                  ; args = [ Pure_Copy (P_Ident arg_name) ]
+                  }
               | Types.T_CompilerScope -> copy
               | Types.T_Opaque _ -> copy
               | Types.T_Blocked _ -> copy
@@ -1226,7 +1230,13 @@ module Impl = struct
           | Types.T_UnwindToken _ -> ()
           | Types.T_Target -> ()
           | Types.T_ContextTy -> ()
-          | Types.T_ImplicitContext -> todo
+          | Types.T_ImplicitContext ->
+            insert_stmt
+              (S_Expr
+                 (E_Apply
+                    { f = Pure_Native [ N_Raw "Context_drop" ]
+                    ; args = [ Pure_Copy (P_Ident var) ]
+                    }))
           | Types.T_CompilerScope -> ()
           | Types.T_Opaque _ -> ()
           | Types.T_Blocked _ -> ()
@@ -3613,6 +3623,79 @@ let transpile_expr (interpreter : Interpreter.state) (expr : expr) : C_ast.progr
       }
     in
     ctx.fns <- ctx.fns |> StringMap.add "Context_new" context_new;
+    let context_claim : C_ast.fn_def =
+      { args = [ { name = "ctx"; ty = T_Ptr (T_Named "Context") } ]
+      ; result_ty = T_Named "Context"
+      ; body =
+          Impl.new_block (fun () ->
+            let var = "result" in
+            Impl.let_c_var (T_Named "Context") var (Some (E_Native [ N_Raw "*ctx" ]));
+            ctx.contexts
+            |> Id.Map.iter (fun _id (context_ty : Types.value_context_ty) ->
+              if not (Impl.is_copy_impl context_ty.ty)
+              then
+                Impl.insert_stmt
+                  (S_If
+                     { cond =
+                         E_Native
+                           [ N_Raw
+                               ("ctx->" ^ Impl.context_initialized_field_name context_ty)
+                           ]
+                     ; then_case =
+                         Impl.new_block (fun () ->
+                           Impl.insert_stmt
+                             (S_Assign
+                                { assignee =
+                                    P_Field
+                                      { obj = P_Ident var
+                                      ; field = Impl.context_field_name context_ty
+                                      }
+                                ; value =
+                                    LazyNamed.force
+                                      (Impl.transpile_ty context_ty.ty).claim
+                                      (P_Field
+                                         { obj = P_Deref (Pure_Copy (P_Ident "ctx"))
+                                         ; field = Impl.context_field_name context_ty
+                                         })
+                                }))
+                     ; else_case = None
+                     }));
+            Impl.insert_stmt (S_Return (E_Pure (Pure_Copy (P_Ident var)))))
+      ; comment = None
+      }
+    in
+    ctx.fns <- ctx.fns |> StringMap.add "Context_claim" context_claim;
+    let context_drop : C_ast.fn_def =
+      { args = [ { name = "ctx"; ty = T_Named "Context" } ]
+      ; result_ty = T_Void
+      ; body =
+          Impl.new_block (fun () ->
+            ctx.contexts
+            |> Id.Map.iter (fun _id (context_ty : Types.value_context_ty) ->
+              if not (Impl.is_copy_impl context_ty.ty)
+              then
+                Impl.insert_stmt
+                  (S_If
+                     { cond =
+                         E_Native
+                           [ N_Raw
+                               ("ctx." ^ Impl.context_initialized_field_name context_ty)
+                           ]
+                     ; then_case =
+                         Impl.new_block (fun () ->
+                           LazyNamed.force
+                             (Impl.transpile_ty context_ty.ty).drop
+                             (Pure_Copy
+                                (P_Field
+                                   { obj = P_Ident "ctx"
+                                   ; field = Impl.context_field_name context_ty
+                                   })))
+                     ; else_case = None
+                     })))
+      ; comment = None
+      }
+    in
+    ctx.fns <- ctx.fns |> StringMap.add "Context_drop" context_drop;
     context_ty_def
     := Some
          ({ shape =
